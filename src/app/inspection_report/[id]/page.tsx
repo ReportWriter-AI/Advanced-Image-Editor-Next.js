@@ -97,6 +97,7 @@ export default function InspectionReportPage() {
   const params = useParams();
   const { id } = params; // this is inspection_id
   const [defects, setDefects] = useState<any[]>([]);
+  const [informationBlocks, setInformationBlocks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentSection, setCurrentSection] = useState(null)
   const [currentNumber, setCurrentNumber] = useState(3)
@@ -1127,8 +1128,23 @@ export default function InspectionReportPage() {
       }
     }
 
+    async function fetchInformationBlocks() {
+      try {
+        const res = await fetch(`/api/information-sections/${id}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) {
+            setInformationBlocks(json.data);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching information blocks:", err);
+      }
+    }
+
     if (id) {
       fetchDefects();
+      fetchInformationBlocks();
     }
   }, [id]);
 
@@ -1863,6 +1879,7 @@ export default function InspectionReportPage() {
                 <div key={section.id}>
                   {/* Main Section Heading (Black) - Only show when section changes */}
                   {isNewSection && (
+                    <>
                     <div 
                       className={styles.sectionHeading}
                       style={{
@@ -1874,6 +1891,146 @@ export default function InspectionReportPage() {
                         {section.sectionHeading}
                       </h2>
                     </div>
+
+                    {/* Information Block - appears at top of section BEFORE defects */}
+                    {(() => {
+                      const sectionName = section.sectionName || section.sectionHeading || '';
+                      const block = informationBlocks.find(b => {
+                        const blockSection = typeof b.section_id === 'object' ? b.section_id?.name : null;
+                        if (!blockSection || !sectionName) return false;
+                        // Match by removing leading numbers like "9 - " from both
+                        const cleanSection = sectionName.replace(/^\d+\s*-\s*/, '');
+                        const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
+                        return cleanBlock === cleanSection;
+                      });
+                      
+                      if (!block) return null;
+                      
+                      const hasContent = (block.selected_checklist_ids?.length > 0) || 
+                                       (block.selected_comment_ids?.length > 0) || 
+                                       block.custom_text;
+                      
+                      if (!hasContent) return null;
+                      
+                      return (
+                        <div style={{ 
+                          marginTop: '1.25rem', 
+                          marginBottom: '2rem', 
+                          backgroundColor: '#f0f9ff', 
+                          border: '3px solid #2563eb', 
+                          borderRadius: '0.625rem', 
+                          padding: '1.5rem',
+                          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
+                        }}>
+                          {/* Header */}
+                          <div style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            marginBottom: '1.25rem',
+                            paddingBottom: '0.75rem',
+                            borderBottom: '2px solid #2563eb'
+                          }}>
+                            <div style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              backgroundColor: '#2563eb',
+                              marginRight: '0.75rem'
+                            }} />
+                            <h3 style={{ 
+                              fontSize: '1rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.05em',
+                              color: '#1e40af',
+                              margin: 0,
+                              textTransform: 'uppercase'
+                            }}>INFORMATION</h3>
+                          </div>
+                          
+                          {/* Selected Checklists */}
+                          {block.selected_checklist_ids?.length > 0 && (
+                            <div style={{ marginBottom: block.selected_comment_ids?.length > 0 || block.custom_text ? '1.5rem' : '0' }}>
+                              <div style={{ 
+                                fontSize: '0.875rem', 
+                                fontWeight: 600,
+                                color: '#1e40af',
+                                marginBottom: '0.75rem',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.025em'
+                              }}>Selected Checklists</div>
+                              <ul style={{ 
+                                marginLeft: '1.25rem', 
+                                fontSize: '0.9375rem', 
+                                lineHeight: '1.75',
+                                color: '#1e3a8a',
+                                paddingLeft: '0.5rem'
+                              }}>
+                                {block.selected_checklist_ids.map((cl: any, idx: number) => (
+                                  <li key={cl._id || cl} style={{ 
+                                    marginBottom: '0.5rem',
+                                    paddingLeft: '0.25rem'
+                                  }}>
+                                    {cl.text || cl}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {/* Comments */}
+                          {block.selected_comment_ids?.length > 0 && (
+                            <div style={{ marginBottom: block.custom_text ? '1.5rem' : '0' }}>
+                              <div style={{ 
+                                fontSize: '0.875rem', 
+                                fontWeight: 600,
+                                color: '#1e40af',
+                                marginBottom: '0.75rem',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.025em'
+                              }}>Comments</div>
+                              <div style={{ 
+                                fontSize: '0.9375rem', 
+                                lineHeight: '1.75',
+                                color: '#1e3a8a'
+                              }}>
+                                {block.selected_comment_ids.map((cm: any, idx: number) => (
+                                  <p key={cm._id || idx} style={{ 
+                                    marginBottom: idx < block.selected_comment_ids.length - 1 ? '1rem' : '0',
+                                    paddingLeft: '0.25rem'
+                                  }}>
+                                    {cm.text || cm}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Custom Notes */}
+                          {block.custom_text && (
+                            <div>
+                              <div style={{ 
+                                fontSize: '0.875rem', 
+                                fontWeight: 600,
+                                color: '#1e40af',
+                                marginBottom: '0.75rem',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.025em'
+                              }}>Custom Notes</div>
+                              <div style={{ 
+                                fontSize: '0.9375rem', 
+                                lineHeight: '1.75',
+                                color: '#1e3a8a',
+                                whiteSpace: 'pre-wrap',
+                                paddingLeft: '0.25rem'
+                              }}>
+                                {block.custom_text}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    </>
                   )}
                   
                   {/* Subsection Heading (Colored with badge) - Always show */}
