@@ -28,6 +28,7 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
   const [localHeaderName, setLocalHeaderName] = useState(headerName);
   const [localHeaderAddress, setLocalHeaderAddress] = useState(headerAddress);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,6 +75,7 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
       }
       setPreviewUrl(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
   };
 
@@ -143,6 +145,7 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
           <h4>Upload Header Image</h4>
           <div className="upload-options">
             <div className="upload-buttons">
+              {/* File input for gallery/file selection */}
               <input 
                 type="file"
                 ref={fileInputRef}
@@ -152,12 +155,31 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
                 accept="image/jpeg,image/png,image/jpg,image/webp,image/heic,image/heif,.jpeg,.jpg,.png,.webp,.heic,.heif,image/*"
                 disabled={uploading}
               />
+              {/* Camera input for mobile camera access */}
+              <input 
+                type="file"
+                ref={cameraInputRef}
+                onChange={handleFileChange} 
+                id="header-camera-upload" 
+                className="hidden" 
+                accept="image/*"
+                capture="environment"
+                disabled={uploading}
+              />
               <label 
                 htmlFor="header-image-upload" 
                 className={`btn upload-btn ${uploading ? 'disabled' : ''}`}
               >
                 <i className="fas fa-upload mr-2"></i>
-                {uploading ? 'Uploading...' : 'Upload Image'}
+                {uploading ? 'Uploading...' : 'Choose from Gallery'}
+              </label>
+              <label 
+                htmlFor="header-camera-upload" 
+                className={`btn upload-btn ${uploading ? 'disabled' : ''}`}
+                style={{ marginLeft: '10px' }}
+              >
+                <i className="fas fa-camera mr-2"></i>
+                {uploading ? 'Uploading...' : 'Take Photo'}
               </label>
             </div>
             

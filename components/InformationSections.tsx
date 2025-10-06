@@ -448,6 +448,12 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       });
       
       console.log('✅ FormState updated, total images:', formState.images.length + 1);
+      
+      // Automatically open image editor for annotation
+      console.log('🎨 Opening image editor for annotation...');
+      const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(uploadData.url)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${checklistId}&inspectionId=${inspectionId}`;
+      router.push(editorUrl);
+      
     } catch (error) {
       console.error('❌ Error uploading image:', error);
       alert('Failed to upload image. Please try again.');
