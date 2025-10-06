@@ -617,6 +617,10 @@ export default function InspectionReportPage() {
                   ${itemImages.map((img: any) => `
                   <div style="position: relative;">
                     <img src="${escapeHtml(img.url)}" alt="Item image" class="rpt-img rpt-info-image" />
+                    ${img.location ? `
+                    <div style="text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500;">
+                      ${escapeHtml(img.location)}
+                    </div>` : ''}
                   </div>`).join('')}
                 </div>` : ''}
               </div>`;
@@ -636,6 +640,10 @@ export default function InspectionReportPage() {
                   ${itemImages.map((img: any) => `
                   <div style="position: relative;">
                     <img src="${escapeHtml(img.url)}" alt="Item image" class="rpt-img rpt-info-image" />
+                    ${img.location ? `
+                    <div style="text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500;">
+                      ${escapeHtml(img.location)}
+                    </div>` : ''}
                   </div>`).join('')}
                 </div>` : ''}
               </div>`;
@@ -2129,6 +2137,17 @@ export default function InspectionReportPage() {
                                                   onClick={() => openLightbox(img.url)}
                                                   className={styles.informationImage}
                                                 />
+                                                {img.location && (
+                                                  <div style={{ 
+                                                    textAlign: 'center', 
+                                                    fontSize: '0.75rem', 
+                                                    color: '#6b7280', 
+                                                    marginTop: '0.25rem',
+                                                    fontWeight: 500
+                                                  }}>
+                                                    {img.location}
+                                                  </div>
+                                                )}
                                               </div>
                                             ))}
                                           </div>
@@ -2167,6 +2186,17 @@ export default function InspectionReportPage() {
                                                   onClick={() => openLightbox(img.url)}
                                                   className={styles.informationImage}
                                                 />
+                                                {img.location && (
+                                                  <div style={{ 
+                                                    textAlign: 'center', 
+                                                    fontSize: '0.75rem', 
+                                                    color: '#6b7280', 
+                                                    marginTop: '0.25rem',
+                                                    fontWeight: 500
+                                                  }}>
+                                                    {img.location}
+                                                  </div>
+                                                )}
                                               </div>
                                             ))}
                                           </div>

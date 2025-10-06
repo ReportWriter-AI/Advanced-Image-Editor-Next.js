@@ -89,6 +89,7 @@ export async function POST(
             url: typeof img?.url === 'string' ? img.url : '',
             annotations: typeof img?.annotations === 'string' ? img.annotations : undefined,
             checklist_id: typeof img?.checklist_id === 'string' ? img.checklist_id : undefined,
+            location: typeof img?.location === 'string' ? img.location : undefined,
           }))
           .filter(i => i.url)
       : [];
@@ -172,6 +173,7 @@ export async function PUT(
             url: typeof img?.url === 'string' ? img.url : '',
             annotations: typeof img?.annotations === 'string' ? img.annotations : undefined,
             checklist_id: typeof img?.checklist_id === 'string' ? img.checklist_id : undefined,
+            location: typeof img?.location === 'string' ? img.location : undefined,
           }))
           .filter(i => i.url)
       : [];

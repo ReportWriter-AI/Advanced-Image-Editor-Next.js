@@ -72,6 +72,7 @@ export default function ImageEditorPage() {
     'Built-In Appliances',
     'Electrical',
     'Exterior',
+    'Fireplace / Chimney',
     'Foundation & Structure',
     'Furnace / Heater',
     'Grounds',
@@ -113,6 +114,11 @@ export default function ImageEditorPage() {
       'Doorbell',
       'Exterior Support Columns',
       'Steps, Stairways, & Railings'
+    ],
+    'Fireplace / Chimney': [
+      'Fireplace',
+      'Chimney',
+      'Flue'
     ],
     'Interior': [
       'Doors',
@@ -499,7 +505,7 @@ export default function ImageEditorPage() {
   
 
   // Color options for all tools (arrow, circle, square)
-  const toolColors = ['#d63636', '#FF8C00', '#0066CC', '#800080']; // red, orange, blue, purple
+  const toolColors = ['#d63636', '#FF8C00', '#0066CC', '#10b981', '#800080']; // red, orange, blue, green, purple
 
   // Function to handle color selection for all tools
   const handleColorSelection = (color: string) => {

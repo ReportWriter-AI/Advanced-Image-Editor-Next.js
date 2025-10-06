@@ -4,8 +4,10 @@ import { ISection } from './Section';
 export interface ISectionChecklist extends Document {
   section_id: Types.ObjectId | ISection;
   text: string;
-  comment?: string;
+  value?: string; // For status items - user-entered values (e.g., "Concrete", "Rain")
+  comment?: string; // For information items - template text
   type: 'status' | 'information';
+  tab: 'information' | 'limitations'; // Which tab to display this item in
   order_index: number;
   createdAt: Date;
   updatedAt: Date;
@@ -15,8 +17,10 @@ const SectionChecklistSchema = new Schema<ISectionChecklist>(
   {
     section_id: { type: Schema.Types.ObjectId, ref: 'Section', required: true, index: true },
     text: { type: String, required: true, trim: true },
-    comment: { type: String, trim: true },
+    value: { type: String, trim: true }, // Optional - for status items (user-entered values)
+    comment: { type: String, trim: true }, // Optional - for information items (template text)
     type: { type: String, enum: ['status', 'information'], required: true, default: 'information' },
+    tab: { type: String, enum: ['information', 'limitations'], required: true, default: 'information' },
     order_index: { type: Number, required: true },
   },
   { timestamps: true }

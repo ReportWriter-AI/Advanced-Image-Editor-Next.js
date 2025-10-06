@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
  * Seed script for Information Sections feature.
  * Populates: Section, SectionChecklist collections

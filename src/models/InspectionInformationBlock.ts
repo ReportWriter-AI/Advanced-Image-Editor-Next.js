@@ -6,6 +6,7 @@ export interface IInspectionInformationBlockImage {
   url: string;
   annotations?: string;
   checklist_id?: string; // Associate image with specific checklist item
+  location?: string; // Location tag for the image (e.g., "Garage", "Left Side of House")
 }
 
 export interface IInspectionInformationBlock extends Document {
@@ -23,6 +24,7 @@ const ImageSchema = new Schema<IInspectionInformationBlockImage>(
     url: { type: String, required: true, trim: true },
     annotations: { type: String, trim: true },
     checklist_id: { type: String, trim: true }, // ID of the checklist item this image belongs to
+    location: { type: String, trim: true }, // Location tag for the image
   },
   { _id: false }
 );

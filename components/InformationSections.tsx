@@ -22,6 +22,7 @@ interface IBlockImage {
   url: string; 
   annotations?: string; 
   checklist_id?: string; // Associate image with specific checklist item
+  location?: string; // Location tag for the image (e.g., "Garage", "Left Side of House")
 }
 
 interface IInformationBlock {
@@ -465,6 +466,25 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     });
   };
 
+  const handleLocationUpdate = (checklistId: string, imageIndex: number, location: string) => {
+    if (!formState) return;
+    
+    const checklistImages = formState.images.filter(img => img.checklist_id === checklistId);
+    const imageToUpdate = checklistImages[imageIndex];
+    
+    // Find the image in the full images array and update its location
+    const updatedImages = formState.images.map(img => 
+      img === imageToUpdate ? { ...img, location } : img
+    );
+    
+    setFormState({
+      ...formState,
+      images: updatedImages,
+    });
+    
+    console.log('📍 Location updated for image:', location);
+  };
+
   const getChecklistImages = (checklistId: string): IBlockImage[] => {
     if (!formState) return [];
     return formState.images.filter(img => img.checklist_id === checklistId);
@@ -683,15 +703,62 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       {/* Modal */}
       {modalOpen && activeSection && formState && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)', padding: '1rem' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '0.375rem', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', width: '100%', maxWidth: '42rem', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ borderBottom: '1px solid #e5e7eb', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div 
+          style={{ 
+            position: 'fixed', 
+            inset: 0, 
+            zIndex: 50, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            backgroundColor: 'rgba(0,0,0,0.4)', 
+            padding: '1rem',
+            overscrollBehavior: 'contain' // Prevent pull-to-refresh on iOS
+          }}
+          onClick={(e) => {
+            // Close modal if clicking overlay
+            if (e.target === e.currentTarget) {
+              setModalOpen(false);
+              setActiveSection(null);
+              setEditingBlockId(null);
+            }
+          }}
+        >
+          <div style={{ 
+            backgroundColor: 'white', 
+            borderRadius: '0.375rem', 
+            boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', 
+            width: '100%', 
+            maxWidth: '42rem', 
+            maxHeight: '85vh', // Reduced from 90vh to ensure space from edges
+            overflow: 'hidden', 
+            display: 'flex', 
+            flexDirection: 'column',
+            touchAction: 'pan-y' // Allow vertical scrolling only
+          }}>
+            <div style={{ 
+              borderBottom: '1px solid #e5e7eb', 
+              padding: '0.75rem 1rem', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              flexShrink: 0 // Prevent header from shrinking
+            }}>
               <h4 style={{ fontWeight: 600, fontSize: '1.125rem' }}>
                 {editingBlockId ? 'Edit' : 'Add'} Information Block - {activeSection.name}
               </h4>
               <button onClick={() => { setModalOpen(false); setActiveSection(null); setEditingBlockId(null); }} style={{ color: '#6b7280', cursor: 'pointer', border: 'none', background: 'none', fontSize: '1.25rem' }}>✕</button>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ 
+              flex: 1, 
+              overflowY: 'auto', 
+              padding: '1.5rem 1rem', // Increased top/bottom padding
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '1.5rem',
+              WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
+              overscrollBehavior: 'contain' // Prevent pull-to-refresh
+            }}>
               {/* Status Fields Section */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
@@ -801,8 +868,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               {checklistImages.length > 0 && (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
                                   {checklistImages.map((img, idx) => (
-                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                      <div style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '0.25rem', overflow: 'hidden', border: '2px solid #3b82f6' }}>
+                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '180px' }}>
+                                      <div style={{ position: 'relative', width: '180px', height: '180px', borderRadius: '0.375rem', overflow: 'hidden', border: '2px solid #3b82f6' }}>
                                         <img 
                                           src={img.url} 
                                           alt={`Image ${idx + 1}`}
@@ -812,22 +879,42 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                           onClick={() => handleImageDelete(cl._id, idx)}
                                           style={{
                                             position: 'absolute',
-                                            top: '4px',
-                                            right: '4px',
-                                            padding: '0.2rem 0.3rem',
-                                            fontSize: '0.7rem',
-                                            borderRadius: '0.2rem',
+                                            top: '6px',
+                                            right: '6px',
+                                            padding: '0.25rem 0.4rem',
+                                            fontSize: '0.75rem',
+                                            borderRadius: '0.25rem',
                                             backgroundColor: '#ef4444',
                                             color: 'white',
                                             border: 'none',
                                             cursor: 'pointer',
-                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                            fontWeight: 600
                                           }}
                                           title="Delete image"
                                         >
                                           ✕
                                         </button>
                                       </div>
+                                      
+                                      {/* Location Input */}
+                                      <input
+                                        type="text"
+                                        placeholder="Location (e.g., Garage, Left Side)"
+                                        value={img.location || ''}
+                                        onChange={(e) => handleLocationUpdate(cl._id, idx, e.target.value)}
+                                        style={{
+                                          padding: '0.5rem',
+                                          fontSize: '0.75rem',
+                                          borderRadius: '0.25rem',
+                                          border: '1px solid #d1d5db',
+                                          width: '180px',
+                                          outline: 'none'
+                                        }}
+                                        onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                                      />
+                                      
                                       <button
                                         onClick={() => {
                                           // Navigate to image editor with the image URL and inspectionId
@@ -835,15 +922,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                           router.push(editorUrl);
                                         }}
                                         style={{
-                                          padding: '0.35rem 0.5rem',
-                                          fontSize: '0.7rem',
+                                          padding: '0.5rem 0.75rem',
+                                          fontSize: '0.75rem',
                                           borderRadius: '0.25rem',
                                           backgroundColor: '#3b82f6',
                                           color: 'white',
                                           border: 'none',
                                           cursor: 'pointer',
-                                          width: '120px',
-                                          fontWeight: 500
+                                          width: '180px',
+                                          fontWeight: 600
                                         }}
                                         onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
                                         onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
@@ -975,8 +1062,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               {checklistImages.length > 0 && (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
                                   {checklistImages.map((img, idx) => (
-                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                      <div style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '0.25rem', overflow: 'hidden', border: '2px solid #10b981' }}>
+                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '180px' }}>
+                                      <div style={{ position: 'relative', width: '180px', height: '180px', borderRadius: '0.375rem', overflow: 'hidden', border: '2px solid #10b981' }}>
                                         <img 
                                           src={img.url} 
                                           alt={`Image ${idx + 1}`}
@@ -986,22 +1073,42 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                           onClick={() => handleImageDelete(cl._id, idx)}
                                           style={{
                                             position: 'absolute',
-                                            top: '4px',
-                                            right: '4px',
-                                            padding: '0.2rem 0.3rem',
-                                            fontSize: '0.7rem',
-                                            borderRadius: '0.2rem',
+                                            top: '6px',
+                                            right: '6px',
+                                            padding: '0.25rem 0.4rem',
+                                            fontSize: '0.75rem',
+                                            borderRadius: '0.25rem',
                                             backgroundColor: '#ef4444',
                                             color: 'white',
                                             border: 'none',
                                             cursor: 'pointer',
-                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                            fontWeight: 600
                                           }}
                                           title="Delete image"
                                         >
                                           ✕
                                         </button>
                                       </div>
+                                      
+                                      {/* Location Input */}
+                                      <input
+                                        type="text"
+                                        placeholder="Location (e.g., Garage, Left Side)"
+                                        value={img.location || ''}
+                                        onChange={(e) => handleLocationUpdate(cl._id, idx, e.target.value)}
+                                        style={{
+                                          padding: '0.5rem',
+                                          fontSize: '0.75rem',
+                                          borderRadius: '0.25rem',
+                                          border: '1px solid #d1d5db',
+                                          width: '180px',
+                                          outline: 'none'
+                                        }}
+                                        onFocus={(e) => e.currentTarget.style.borderColor = '#10b981'}
+                                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                                      />
+                                      
                                       <button
                                         onClick={() => {
                                           // Navigate to image editor with the image URL and inspectionId
@@ -1009,15 +1116,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                           router.push(editorUrl);
                                         }}
                                         style={{
-                                          padding: '0.35rem 0.5rem',
-                                          fontSize: '0.7rem',
+                                          padding: '0.5rem 0.75rem',
+                                          fontSize: '0.75rem',
                                           borderRadius: '0.25rem',
                                           backgroundColor: '#3b82f6',
                                           color: 'white',
                                           border: 'none',
                                           cursor: 'pointer',
-                                          width: '120px',
-                                          fontWeight: 500
+                                          width: '180px',
+                                          fontWeight: 600
                                         }}
                                         onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
                                         onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
@@ -1040,7 +1147,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 </div>
               </div>
             </div>
-            <div style={{ borderTop: '1px solid #e5e7eb', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+            <div style={{ 
+              borderTop: '1px solid #e5e7eb', 
+              padding: '1rem 1rem', // Increased padding
+              display: 'flex', 
+              justifyContent: 'flex-end', 
+              gap: '0.5rem',
+              flexShrink: 0, // Prevent footer from shrinking
+              backgroundColor: 'white' // Ensure footer has background
+            }}>
               <button
                 onClick={() => { setModalOpen(false); setActiveSection(null); setEditingBlockId(null); }}
                 style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', borderRadius: '0.25rem', backgroundColor: '#e5e7eb', border: 'none', cursor: 'pointer' }}

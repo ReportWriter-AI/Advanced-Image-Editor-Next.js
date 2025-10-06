@@ -16,6 +16,7 @@ export type InformationBlockImage = {
   url: string;
   annotations?: string;
   checklist_id?: string;
+  location?: string;
 };
 
 export type InformationBlockItem = {
@@ -238,6 +239,10 @@ function generateInformationSectionHTML(block: InformationBlock): string {
             ${itemImages.map(img => `
             <div style="position: relative;">
               <img src="${escapeHtml(img.url)}" alt="Item image" class="info-image" />
+              ${img.location ? `
+              <div style="text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500;">
+                ${escapeHtml(img.location)}
+              </div>` : ''}
             </div>`).join('')}
           </div>` : ''}
         </div>`;
@@ -257,6 +262,10 @@ function generateInformationSectionHTML(block: InformationBlock): string {
             ${itemImages.map(img => `
             <div style="position: relative;">
               <img src="${escapeHtml(img.url)}" alt="Item image" class="info-image" />
+              ${img.location ? `
+              <div style="text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500;">
+                ${escapeHtml(img.location)}
+              </div>` : ''}
             </div>`).join('')}
           </div>` : ''}
         </div>`;
