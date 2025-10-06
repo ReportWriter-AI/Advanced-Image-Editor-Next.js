@@ -2149,120 +2149,375 @@ export default function InspectionReportPage() {
                               }}>INFORMATION</h3>
                             </div>
                             
-                            {/* 3-Column Grid for ALL items (status + information types) */}
-                            {allItems.length > 0 && (
-                              <div 
-                                className={styles.informationGrid}
-                                style={{ 
-                                  marginBottom: block.custom_text ? '1.5rem' : '0'
-                                }}>
-                                {allItems.map((item: any) => {
-                                  const isStatus = item.type === 'status';
-                                  const itemId = item._id || item;
-                                  // Get images associated with this checklist item
-                                  const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                            {/* Separate rendering for status vs information items */}
+                            {(() => {
+                              const statusItems = allItems.filter((item: any) => item.type === 'status');
+                              const informationItems = allItems.filter((item: any) => item.type === 'information');
+                              
+                              return (
+                                <>
+                                  {/* 3-Column Grid for STATUS items only */}
+                                  {statusItems.length > 0 && (
+                                    <div 
+                                      className={styles.informationGrid}
+                                      style={{ 
+                                        marginBottom: (informationItems.length > 0 || block.custom_text) ? '1.5rem' : '0'
+                                      }}>
+                                      {statusItems.map((item: any) => {
+                                        const itemId = item._id || item;
+                                        const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                        const parts = item.text?.split(':') || [];
+                                        const label = parts[0]?.trim() || '';
+                                        const value = parts.slice(1).join(':').trim() || '';
+                                        
+                                        return (
+                                          <div key={itemId} className={styles.informationGridItem}>
+                                            <div>
+                                              <span style={{ fontWeight: 700, color: '#000000' }}>{label}:</span>
+                                              {value && (
+                                                <span style={{ 
+                                                  marginLeft: '0.25rem',
+                                                  fontWeight: 400,
+                                                  color: '#6b7280'
+                                                }}>
+                                                  {value}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {itemImages.length > 0 && (
+                                              <div className={styles.informationImages}>
+                                                {itemImages.map((img: any, imgIdx: number) => (
+                                                  <div key={imgIdx} style={{ position: 'relative' }}>
+                                                    <img
+                                                      src={img.url}
+                                                      alt="Item image"
+                                                      onClick={() => openLightbox(img.url)}
+                                                      className={styles.informationImage}
+                                                    />
+                                                    {img.location && (
+                                                      <div style={{ 
+                                                        textAlign: 'center', 
+                                                        fontSize: '0.75rem', 
+                                                        color: '#6b7280', 
+                                                        marginTop: '0.25rem',
+                                                        fontWeight: 500
+                                                      }}>
+                                                        {img.location}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                   
-                                  if (isStatus) {
-                                    // Status items: ONLY "Label: Value" format - NO comments
-                                    const parts = item.text?.split(':') || [];
-                                    const label = parts[0]?.trim() || '';
-                                    const value = parts.slice(1).join(':').trim() || '';
-                                    
-                                    return (
-                                      <div key={itemId} className={styles.informationGridItem}>
-                                        <div>
-                                          <span style={{ fontWeight: 700, color: '#000000' }}>{label}:</span>
-                                          {value && (
-                                            <span style={{ 
-                                              marginLeft: '0.25rem',
-                                              fontWeight: 400,
-                                              color: '#6b7280'
-                                            }}>
-                                              {value}
-                                            </span>
-                                          )}
-                                        </div>
-                                        {/* Display images for this item */}
-                                        {itemImages.length > 0 && (
-                                          <div className={styles.informationImages}>
-                                            {itemImages.map((img: any, imgIdx: number) => (
-                                              <div key={imgIdx} style={{ position: 'relative' }}>
-                                                <img
-                                                  src={img.url}
-                                                  alt="Item image"
-                                                  onClick={() => openLightbox(img.url)}
-                                                  className={styles.informationImage}
-                                                />
-                                                {img.location && (
-                                                  <div style={{ 
-                                                    textAlign: 'center', 
-                                                    fontSize: '0.75rem', 
-                                                    color: '#6b7280', 
-                                                    marginTop: '0.25rem',
-                                                    fontWeight: 500
+                                  {/* Vertical Stack for INFORMATION items (full-width) */}
+                                  {informationItems.length > 0 && (
+                                    <div style={{ 
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '1.75rem',
+                                      marginBottom: block.custom_text ? '1.5rem' : '0'
+                                    }}>
+                                      {informationItems.map((item: any) => {
+                                        const itemId = item._id || item;
+                                        const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                        const itemText = item.text || item;
+                                        const itemComment = item.comment || '';
+                                        
+                                        // Helper function to format structured content
+                                        const formatContent = (text: string) => {
+                                          // First, intelligently split the text into logical sections
+                                          // Add line breaks before major patterns
+                                          let preprocessed = text
+                                            // Special case: Add break after "FINAL WALK-THROUGH" before the paragraph
+                                            .replace(/(FINAL WALK-THROUGH)([A-Z][a-z])/g, '$1\n\n$2')
+                                            // Add break after "Read sellers disclosure." before "The links below"
+                                            .replace(/(Read sellers disclosure\.)(\s*The links below)/g, '$1\n\n$2')
+                                            // Add break after "ENERGY SAVING WEBSITES/TIPS:" before "Perhaps"
+                                            .replace(/(ENERGY SAVING WEBSITES\/TIPS:)(\s*Perhaps)/g, '$1\n\n$2')
+                                            // Add break after "can be made." before "By checking out"
+                                            .replace(/(can be made\.)(\s*By checking out)/g, '$1\n\n$2')
+                                            // Add break before ALL CAPS headings (but not at start)
+                                            .replace(/([a-z.,)])([A-Z][A-Z\s,/]+[-:])/g, '$1\n\n$2')
+                                            // Separate concatenated URLs (energystar.gov/http://)
+                                            .replace(/(\.gov\/)(https?:\/\/)/gi, '$1\n$2')
+                                            .replace(/(\.org)(https?:\/\/)/gi, '$1\n$2')
+                                            // Add break AFTER category headings and BEFORE their URLs
+                                            .replace(/([A-Z\s,/]+-)(https?:\/\/)/g, '$1\n$2')
+                                            // Add break before numbered items
+                                            .replace(/([a-z.,)])(\d+\.\s)/g, '$1\n$2')
+                                            // Add break before bullet items
+                                            .replace(/([a-z.,)])(-\s[A-Z])/g, '$1\n$2')
+                                            // Add break before URLs (but not at start)
+                                            .replace(/([a-z)])(\s*https?:\/\/)/gi, '$1\n$2')
+                                            // Add break after paragraph sentences before "The following"
+                                            .replace(/(inspection\.)(\s*The following)/g, '$1\n\n$2')
+                                            // Add break before "Perhaps you never"
+                                            .replace(/([a-z.,)])(\s*Perhaps you never)/g, '$1\n\n$2')
+                                            // Add break before "By checking out"
+                                            .replace(/(contractor:)(\s*https?)/gi, '$1\n$2');
+                                          
+                                          const lines = preprocessed.split('\n');
+                                          const elements: JSX.Element[] = [];
+                                          let currentParagraph = '';
+                                          
+                                          lines.forEach((line, idx) => {
+                                            const trimmed = line.trim();
+                                            if (!trimmed) return; // Skip empty lines
+                                            
+                                            // Numbered list item (e.g., "1. Check the heating...")
+                                            if (/^\d+\.\s/.test(trimmed)) {
+                                              if (currentParagraph) {
+                                                elements.push(
+                                                  <p key={`p-${idx}`} style={{ 
+                                                    margin: '0 0 1rem 0', 
+                                                    lineHeight: '1.6',
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151'
                                                   }}>
-                                                    {img.location}
-                                                  </div>
-                                                )}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  } else {
-                                    // Information items: Bold title + indented explanation
-                                    return (
-                                      <div key={itemId} className={styles.informationGridItem}>
-                                        <div style={{ 
-                                          fontWeight: 700,
-                                          color: '#000000',
-                                          marginBottom: item.comment ? '0.375rem' : '0'
-                                        }}>
-                                          {item.text || item}
-                                        </div>
-                                        {item.comment && (
-                                          <div style={{ 
-                                            marginLeft: '0.75rem',
-                                            fontSize: '0.8125rem',
-                                            color: '#4a5568',
-                                            lineHeight: '1.4'
+                                                    {currentParagraph}
+                                                  </p>
+                                                );
+                                                currentParagraph = '';
+                                              }
+                                              elements.push(
+                                                <div key={`num-${idx}`} style={{ 
+                                                  marginLeft: '1rem', 
+                                                  marginBottom: '0.5rem',
+                                                  fontSize: '0.875rem',
+                                                  lineHeight: '1.6',
+                                                  color: '#374151'
+                                                }}>
+                                                  {trimmed}
+                                                </div>
+                                              );
+                                            }
+                                            // Bullet list item (e.g., "- All Interior...")
+                                            else if (/^-\s/.test(trimmed)) {
+                                              if (currentParagraph) {
+                                                elements.push(
+                                                  <p key={`p-${idx}`} style={{ 
+                                                    margin: '0 0 1rem 0', 
+                                                    lineHeight: '1.6',
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151'
+                                                  }}>
+                                                    {currentParagraph}
+                                                  </p>
+                                                );
+                                                currentParagraph = '';
+                                              }
+                                              elements.push(
+                                                <div key={`bullet-${idx}`} style={{ 
+                                                  marginLeft: '1.5rem', 
+                                                  marginBottom: '0.375rem',
+                                                  fontSize: '0.875rem',
+                                                  lineHeight: '1.6',
+                                                  paddingLeft: '0.5rem',
+                                                  position: 'relative',
+                                                  color: '#374151'
+                                                }}>
+                                                  <span style={{ position: 'absolute', left: '-1rem' }}>•</span>
+                                                  {trimmed.substring(2)}
+                                                </div>
+                                              );
+                                            }
+                                            // Resource category heading (e.g., "ROOFING, FLASHINGS AND CHIMNEYS-")
+                                            else if (/^[A-Z][A-Z\s,/]+-$/.test(trimmed)) {
+                                              if (currentParagraph) {
+                                                elements.push(
+                                                  <p key={`p-${idx}`} style={{ 
+                                                    margin: '0 0 1rem 0', 
+                                                    lineHeight: '1.6',
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151'
+                                                  }}>
+                                                    {currentParagraph}
+                                                  </p>
+                                                );
+                                                currentParagraph = '';
+                                              }
+                                              elements.push(
+                                                <div key={`cat-${idx}`} style={{ 
+                                                  fontWeight: 700,
+                                                  marginTop: '0.75rem',
+                                                  marginBottom: '0.25rem',
+                                                  fontSize: '0.8125rem', // Slightly smaller
+                                                  color: '#111827'
+                                                }}>
+                                                  {trimmed}
+                                                </div>
+                                              );
+                                            }
+                                            // Section heading (ALL CAPS with : like "ENERGY SAVING WEBSITES/TIPS:")
+                                            else if (/^[A-Z][A-Z\s,/]+:/.test(trimmed)) {
+                                              if (currentParagraph) {
+                                                elements.push(
+                                                  <p key={`p-${idx}`} style={{ 
+                                                    margin: '0 0 1rem 0', 
+                                                    lineHeight: '1.6',
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151'
+                                                  }}>
+                                                    {currentParagraph}
+                                                  </p>
+                                                );
+                                                currentParagraph = '';
+                                              }
+                                              elements.push(
+                                                <div key={`heading-${idx}`} style={{ 
+                                                  fontWeight: 700,
+                                                  marginTop: idx === 0 ? '0' : '1.5rem',
+                                                  marginBottom: '0.75rem',
+                                                  fontSize: '0.9375rem',
+                                                  color: '#111827'
+                                                }}>
+                                                  {trimmed}
+                                                </div>
+                                              );
+                                            }
+                                            // URL links
+                                            else if (/^https?:\/\//i.test(trimmed)) {
+                                              if (currentParagraph) {
+                                                elements.push(
+                                                  <p key={`p-${idx}`} style={{ 
+                                                    margin: '0 0 1rem 0', 
+                                                    lineHeight: '1.6',
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151'
+                                                  }}>
+                                                    {currentParagraph}
+                                                  </p>
+                                                );
+                                                currentParagraph = '';
+                                              }
+                                              elements.push(
+                                                <div key={`link-${idx}`} style={{ 
+                                                  marginBottom: '0.375rem',
+                                                  marginLeft: '0.5rem'
+                                                }}>
+                                                  <a 
+                                                    href={trimmed} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    style={{ 
+                                                      color: '#2563eb',
+                                                      fontSize: '0.8125rem',
+                                                      wordBreak: 'break-all',
+                                                      textDecoration: 'none'
+                                                    }}
+                                                  >
+                                                    {trimmed}
+                                                  </a>
+                                                </div>
+                                              );
+                                            }
+                                            // Regular paragraph text
+                                            else {
+                                              if (currentParagraph && !currentParagraph.endsWith('.') && !currentParagraph.endsWith(':')) {
+                                                currentParagraph += ' ' + trimmed;
+                                              } else if (currentParagraph) {
+                                                // Flush previous paragraph and start new one
+                                                elements.push(
+                                                  <p key={`p-${idx}-prev`} style={{ 
+                                                    margin: '0 0 1rem 0', 
+                                                    lineHeight: '1.6',
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151'
+                                                  }}>
+                                                    {currentParagraph}
+                                                  </p>
+                                                );
+                                                currentParagraph = trimmed;
+                                              } else {
+                                                currentParagraph = trimmed;
+                                              }
+                                            }
+                                          });
+                                          
+                                          // Flush remaining paragraph
+                                          if (currentParagraph) {
+                                            elements.push(
+                                              <p key={`p-final`} style={{ 
+                                                margin: '0 0 1rem 0', 
+                                                lineHeight: '1.6',
+                                                fontSize: '0.875rem',
+                                                color: '#374151'
+                                              }}>
+                                                {currentParagraph}
+                                              </p>
+                                            );
+                                          }
+                                          
+                                          return elements.length > 0 ? elements : text;
+                                        };
+                                        
+                                        return (
+                                          <div key={itemId} style={{ 
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '0.75rem'
                                           }}>
-                                            {item.comment}
-                                          </div>
-                                        )}
-                                        {/* Display images for this item */}
-                                        {itemImages.length > 0 && (
-                                          <div className={styles.informationImages}>
-                                            {itemImages.map((img: any, imgIdx: number) => (
-                                              <div key={imgIdx} style={{ position: 'relative' }}>
-                                                <img
-                                                  src={img.url}
-                                                  alt="Item image"
-                                                  onClick={() => openLightbox(img.url)}
-                                                  className={styles.informationImage}
-                                                />
-                                                {img.location && (
-                                                  <div style={{ 
-                                                    textAlign: 'center', 
-                                                    fontSize: '0.75rem', 
-                                                    color: '#6b7280', 
-                                                    marginTop: '0.25rem',
-                                                    fontWeight: 500
-                                                  }}>
-                                                    {img.location}
-                                                  </div>
-                                                )}
+                                            {/* Title */}
+                                            <div style={{ 
+                                              fontWeight: 700,
+                                              color: '#000000',
+                                              fontSize: '1rem',
+                                              marginBottom: '0.5rem'
+                                            }}>
+                                              {itemText}
+                                            </div>
+                                            
+                                            {/* Formatted Content */}
+                                            {itemComment && (
+                                              <div style={{ 
+                                                fontSize: '0.875rem',
+                                                color: '#374151',
+                                                lineHeight: '1.6'
+                                              }}>
+                                                {formatContent(itemComment)}
                                               </div>
-                                            ))}
+                                            )}
+                                            
+                                            {/* Images */}
+                                            {itemImages.length > 0 && (
+                                              <div className={styles.informationImages} style={{ marginTop: '0.75rem' }}>
+                                                {itemImages.map((img: any, imgIdx: number) => (
+                                                  <div key={imgIdx} style={{ position: 'relative' }}>
+                                                    <img
+                                                      src={img.url}
+                                                      alt="Item image"
+                                                      onClick={() => openLightbox(img.url)}
+                                                      className={styles.informationImage}
+                                                    />
+                                                    {img.location && (
+                                                      <div style={{ 
+                                                        textAlign: 'center', 
+                                                        fontSize: '0.75rem', 
+                                                        color: '#6b7280', 
+                                                        marginTop: '0.25rem',
+                                                        fontWeight: 500
+                                                      }}>
+                                                        {img.location}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
                                           </div>
-                                        )}
-                                      </div>
-                                    );
-                                  }
-                                })}
-                              </div>
-                            )}
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
                           
                             {/* Custom Notes */}
                             {block.custom_text && (
