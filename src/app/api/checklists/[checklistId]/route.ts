@@ -22,12 +22,15 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const { text, comment, type } = body || {};
+    const { text, comment, type, answer_choices } = body || {};
 
     const updateData: any = {};
     if (text !== undefined) updateData.text = typeof text === 'string' ? text.trim() : text;
     if (comment !== undefined) updateData.comment = comment ? comment.trim() : undefined;
     if (type !== undefined && ['status', 'information'].includes(type)) updateData.type = type;
+    if (answer_choices !== undefined) {
+      updateData.answer_choices = Array.isArray(answer_choices) && answer_choices.length > 0 ? answer_choices : undefined;
+    }
 
     const updated = await SectionChecklist.findByIdAndUpdate(
       checklistId,

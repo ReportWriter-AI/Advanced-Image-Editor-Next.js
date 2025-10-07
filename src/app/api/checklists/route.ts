@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   try {
     await dbConnect();
     const body = await req.json();
-    const { section_id, text, comment, type, order_index } = body || {};
+    const { section_id, text, comment, type, order_index, answer_choices } = body || {};
 
     if (!section_id || !mongoose.isValidObjectId(section_id)) {
       return NextResponse.json({ success: false, error: 'Valid section_id is required' }, { status: 400 });
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
       comment: comment ? comment.trim() : undefined,
       type,
       order_index: order_index ?? maxOrder + 1,
+      answer_choices: Array.isArray(answer_choices) && answer_choices.length > 0 ? answer_choices : undefined,
     });
 
     return NextResponse.json({ success: true, data: checklist }, { status: 201 });

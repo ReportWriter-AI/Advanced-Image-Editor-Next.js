@@ -61,6 +61,7 @@ export async function POST(
     const {
       section_id,
       selected_checklist_ids = [],
+      selected_answers = [],
       custom_text = '',
       images = [],
     } = body || {};
@@ -68,6 +69,7 @@ export async function POST(
     console.log('📥 POST - Received data:', {
       section_id,
       selected_checklist_ids,
+      selected_answers,
       custom_text,
       images,
       imageCount: images.length
@@ -80,6 +82,21 @@ export async function POST(
     // Validate checklist IDs
     const cleanChecklistIds = Array.isArray(selected_checklist_ids)
       ? selected_checklist_ids.filter((id: string) => mongoose.isValidObjectId(id))
+      : [];
+
+    // Validate and clean selected_answers
+    const cleanSelectedAnswers = Array.isArray(selected_answers)
+      ? selected_answers
+          .filter((item: any) => 
+            item && 
+            typeof item.checklist_id === 'string' && 
+            mongoose.isValidObjectId(item.checklist_id) &&
+            Array.isArray(item.selected_answers)
+          )
+          .map((item: any) => ({
+            checklist_id: item.checklist_id,
+            selected_answers: item.selected_answers.filter((ans: any) => typeof ans === 'string')
+          }))
       : [];
 
     // Validate images array
@@ -101,6 +118,7 @@ export async function POST(
       inspection_id: inspectionId,
       section_id,
       selected_checklist_ids: cleanChecklistIds,
+      selected_answers: cleanSelectedAnswers,
       custom_text: typeof custom_text === 'string' ? custom_text : '',
       images: cleanImages,
     });
@@ -149,6 +167,7 @@ export async function PUT(
     const body = await req.json();
     const {
       selected_checklist_ids = [],
+      selected_answers = [],
       custom_text = '',
       images = [],
     } = body || {};
@@ -156,6 +175,7 @@ export async function PUT(
     console.log('📥 PUT - Received data:', {
       blockId,
       selected_checklist_ids,
+      selected_answers,
       custom_text,
       images,
       imageCount: images.length
@@ -164,6 +184,21 @@ export async function PUT(
     // Validate checklist IDs
     const cleanChecklistIds = Array.isArray(selected_checklist_ids)
       ? selected_checklist_ids.filter((id: string) => mongoose.isValidObjectId(id))
+      : [];
+
+    // Validate and clean selected_answers
+    const cleanSelectedAnswers = Array.isArray(selected_answers)
+      ? selected_answers
+          .filter((item: any) => 
+            item && 
+            typeof item.checklist_id === 'string' && 
+            mongoose.isValidObjectId(item.checklist_id) &&
+            Array.isArray(item.selected_answers)
+          )
+          .map((item: any) => ({
+            checklist_id: item.checklist_id,
+            selected_answers: item.selected_answers.filter((ans: any) => typeof ans === 'string')
+          }))
       : [];
 
     // Validate images array
@@ -185,6 +220,7 @@ export async function PUT(
       { _id: blockId, inspection_id: inspectionId },
       {
         selected_checklist_ids: cleanChecklistIds,
+        selected_answers: cleanSelectedAnswers,
         custom_text: typeof custom_text === 'string' ? custom_text : '',
         images: cleanImages,
       },

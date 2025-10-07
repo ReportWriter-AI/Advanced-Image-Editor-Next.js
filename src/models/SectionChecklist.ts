@@ -8,6 +8,7 @@ export interface ISectionChecklist extends Document {
   comment?: string; // For information items - template text
   type: 'status' | 'information';
   tab: 'information' | 'limitations'; // Which tab to display this item in
+  answer_choices?: string[]; // NEW: Predefined answer choices (e.g., ["AO Smith", "Rheem", "GE"])
   order_index: number;
   createdAt: Date;
   updatedAt: Date;
@@ -21,6 +22,7 @@ const SectionChecklistSchema = new Schema<ISectionChecklist>(
     comment: { type: String, trim: true }, // Optional - for information items (template text)
     type: { type: String, enum: ['status', 'information'], required: true, default: 'information' },
     tab: { type: String, enum: ['information', 'limitations'], required: true, default: 'information' },
+    answer_choices: { type: [String], default: undefined }, // NEW: Array of predefined answer choices
     order_index: { type: Number, required: true },
   },
   { timestamps: true }

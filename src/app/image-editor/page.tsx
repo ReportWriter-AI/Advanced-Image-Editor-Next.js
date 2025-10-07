@@ -389,13 +389,18 @@ export default function ImageEditorPage() {
 
         setSubmitStatus('Done! Returning...');
         
-        // Return to the calling page
+        // Try to close the window/tab first
         setTimeout(() => {
-          window.close(); // Close the tab
-          // If window.close() doesn't work (popup blocker), redirect
-          if (!window.closed) {
-            window.location.href = returnTo;
-          }
+          window.close();
+          
+          // If window.close() doesn't work after 100ms (e.g., not opened by window.open),
+          // navigate back using router
+          setTimeout(() => {
+            if (!window.closed) {
+              // Use router.back() to preserve modal state instead of full reload
+              router.back();
+            }
+          }, 100);
         }, 500);
 
       } catch (error) {

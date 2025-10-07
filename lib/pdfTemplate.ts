@@ -25,6 +25,7 @@ export type InformationBlockItem = {
   comment?: string;
   type: 'status' | 'information';
   order_index?: number;
+  selected_answers?: string[]; // Selected answer choices for this item
 };
 
 export type InformationBlock = {
@@ -36,6 +37,7 @@ export type InformationBlock = {
     order_index: number;
   } | string;
   selected_checklist_ids: InformationBlockItem[];
+  selected_answers?: Array<{ checklist_id: string; selected_answers: string[] }>; // Answer choices selections
   custom_text?: string;
   images: InformationBlockImage[];
 };
@@ -214,12 +216,22 @@ function generateInformationSectionHTML(block: InformationBlock): string {
   
   if (!hasContent) return '';
   
+  // Create a map for quick lookup of selected answers by checklist_id
+  const selectedAnswersMap = new Map<string, string[]>();
+  if (block.selected_answers) {
+    block.selected_answers.forEach(item => {
+      selectedAnswersMap.set(item.checklist_id, item.selected_answers);
+    });
+  }
+  
   // Generate grid items HTML
   const gridItemsHtml = allItems.map((item: InformationBlockItem) => {
     const isStatus = item.type === 'status';
     const itemId = item._id || '';
     // Get images associated with this checklist item
     const itemImages = (block.images || []).filter(img => img.checklist_id === itemId);
+    // Get selected answers for this item
+    const selectedAnswers = selectedAnswersMap.get(itemId) || [];
     
     if (isStatus) {
       // Status items: ONLY "Label: Value" format - NO comments
@@ -234,6 +246,10 @@ function generateInformationSectionHTML(block: InformationBlock): string {
             <span style="margin-left: 0.25rem; font-weight: 400; color: #6b7280;">
               ${escapeHtml(value)}\n            </span>` : ''}
           </div>
+          ${selectedAnswers.length > 0 ? `
+          <div style="margin-left: 0.25rem; font-weight: 400; color: #6b7280; font-size: 0.875rem;">
+            ${selectedAnswers.map(ans => escapeHtml(ans)).join(', ')}
+          </div>` : ''}
           ${itemImages.length > 0 ? `
           <div class="info-images">
             ${itemImages.map(img => `
@@ -256,6 +272,10 @@ function generateInformationSectionHTML(block: InformationBlock): string {
           ${item.comment ? `
           <div style="margin-left: 0.75rem; font-size: 0.8125rem; color: #4a5568; line-height: 1.4;">
             ${escapeHtml(item.comment)}
+          </div>` : ''}
+          ${selectedAnswers.length > 0 ? `
+          <div style="margin-left: 0.75rem; font-size: 0.8125rem; color: #6b7280; line-height: 1.4;">
+            ${selectedAnswers.map(ans => escapeHtml(ans)).join(', ')}
           </div>` : ''}
           ${itemImages.length > 0 ? `
           <div class="info-images">
@@ -317,6 +337,24 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
   let lastSection: string | null = null;
   let subCounter = 0;
 
+  // Create a set of all sections that have defects
+  const sectionsWithDefects = new Set(sorted.map(d => d.section.replace(/^\d+\s*-\s*/, '')));
+  
+  // Find information blocks that don't have defects
+  const informationOnlySections: string[] = [];
+  if (reportType === 'full' && informationBlocks.length > 0) {
+    informationBlocks.forEach(block => {
+      const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
+      if (blockSection) {
+        const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
+        // Exclude Section 1 (Inspection Details) as it appears after Section 2
+        if (!sectionsWithDefects.has(cleanBlock) && cleanBlock !== 'Inspection Details') {
+          informationOnlySections.push(blockSection);
+        }
+      }
+    });
+  }
+
   const sectionsHtml = sorted
     .map((d, index) => {
       const isNewSection = d.section !== lastSection;
@@ -362,7 +400,8 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
           // Match by removing leading numbers like "9 - " from both
           const cleanSection = d.section.replace(/^\d+\s*-\s*/, '');
           const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-          return cleanBlock === cleanSection;
+          // Exclude Section 1 (Inspection Details) as it appears after Section 2
+          return cleanBlock === cleanSection && cleanBlock !== 'Inspection Details';
         });
         
         if (matchingBlock) {
@@ -434,6 +473,28 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
       `;
     })
     .join("\n");
+  
+  // Generate HTML for information-only sections (sections with no defects)
+  const informationOnlySectionsHtml = informationOnlySections.map(sectionName => {
+    const matchingBlock = informationBlocks.find(block => {
+      const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
+      return blockSection === sectionName;
+    });
+    
+    if (!matchingBlock) return '';
+    
+    currentMain += 1;
+    const cleanSectionName = sectionName.replace(/^\d+\s*-\s*/, '');
+    
+    return `
+      <div class="section-heading" style="--selected-color: #111827;">
+        <h2 class="section-heading-text" style="color: #111827;">
+          Section ${currentMain} - ${escapeHtml(cleanSectionName)}
+        </h2>
+      </div>
+      ${generateInformationSectionHTML(matchingBlock)}
+    `;
+  }).join("\n");
 
   // Build cost summary rows with numbering matching detail sections
   const costSummaryRows = sorted.reduce<{
@@ -1007,6 +1068,16 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
   <section class="cover cover--section2 keep-together">
     <h2>Section 2 - Inspection Scope &amp; Limitations</h2>
     <hr style="margin: 8px 0 16px 0; border: none; height: 1px; background-color: #000000;">
+    ${(() => {
+      // Find Section 1 (Inspection Details) information block if it exists
+      const section1Block = informationBlocks.find(block => {
+        const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
+        if (!blockSection) return false;
+        const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
+        return cleanBlock === 'Inspection Details' || blockSection === '1 - Inspection Details';
+      });
+      return section1Block ? generateInformationSectionHTML(section1Block) : '';
+    })()}
     <h3>Inspection Categories &amp; Summary</h3>
     <h4 class="category-immediate">Immediate Attention</h4>
     <p class="category-immediate"><strong>Major Defects:</strong> Issues that compromise the home’s structural integrity, may result in additional damage if not repaired, or are considered a safety hazard. These items are color-coded red in the report and should be corrected as soon as possible.</p>
@@ -1025,18 +1096,11 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     <hr />
     <h3>Repair Estimates Disclaimer</h3>
     <p>This report may include repair recommendations and estimated costs. These are based on typical labor and material rates in our region, generated from AI image review. They are approximate and not formal quotes.</p>
-    <ul>
-      <li>Estimates are not formal quotes.</li>
-      <li>They do not account for unique site conditions and may vary depending on contractor, materials, and methods.</li>
-      <li>Final pricing must always be obtained through qualified, licensed contractors with on-site evaluation.</li>
-      <li>AGI Property Inspections does not guarantee the accuracy of estimates or assume responsibility for work performed by outside contractors.</li>
-    </ul>
+    <p>Estimates are not formal quotes. They do not account for unique site conditions and may vary depending on contractor, materials, and methods. Final pricing must always be obtained through qualified, licensed contractors with on-site evaluation. AGI Property Inspections does not guarantee the accuracy of estimates or assume responsibility for work performed by outside contractors.</p>
     <hr />
     <h3>Recommendations</h3>
-    <ul>
-      <li>Contractors / Further Evaluation: Repairs noted should be performed by licensed professionals. Keep receipts for warranty and documentation purposes.</li>
-      <li>Causes of Damage / Methods of Repair: Suggested repair methods are based on inspector experience and opinion. Final determination should always be made by licensed contractors.</li>
-    </ul>
+    <p>Contractors / Further Evaluation: Repairs noted should be performed by licensed professionals. Keep receipts for warranty and documentation purposes.</p>
+    <p>Causes of Damage / Methods of Repair: Suggested repair methods are based on inspector experience and opinion. Final determination should always be made by licensed contractors.</p>
     <hr />
     <h3>Excluded Items</h3>
     <p>The following are not included in this inspection: septic systems, security systems, irrigation systems, pools, hot tubs, wells, sheds, playgrounds, saunas, outdoor lighting, central vacuums, water filters, water softeners, sound or intercom systems, generators, sport courts, sea walls, outbuildings, operating skylights, awnings, exterior BBQ grills, and firepits.</p>
@@ -1066,13 +1130,15 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
   ${reportType === 'full' ? '<div class="page-break"></div>' : ''}
 
   ${sectionsHtml}
+  
+  ${informationOnlySectionsHtml}
 
   ${reportType === 'full' ? `
-  <!-- Hardcoded Section 17 - Resources and Disclaimers -->
+  <!-- Hardcoded Section - Resources and Disclaimers -->
   <div class="page-break"></div>
   <div class="section-heading" style="--selected-color: #111827; border-bottom: 2px solid #111827;">
     <h2 class="section-heading-text" style="color: #111827;">
-      17 - Resources and Disclaimers
+      Resources and Disclaimers
     </h2>
   </div>
   <div style="margin-top: 1.25rem; margin-bottom: 2rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 1.5rem;">

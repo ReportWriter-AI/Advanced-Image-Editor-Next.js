@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import FileUpload from './FileUpload';
 
@@ -8,6 +8,7 @@ interface ISectionChecklist {
   text: string;
   comment?: string;
   type: 'status' | 'information';
+  answer_choices?: string[]; // NEW: Predefined answer choices for this checklist item
   order_index: number;
 }
 
@@ -30,6 +31,7 @@ interface IInformationBlock {
   inspection_id: string;
   section_id: ISection | string;
   selected_checklist_ids: ISectionChecklist[] | string[];
+  selected_answers?: Array<{ checklist_id: string; selected_answers: string[] }>; // NEW: Selected answer choices
   custom_text?: string;
   images: IBlockImage[];
 }
@@ -37,6 +39,7 @@ interface IInformationBlock {
 interface AddBlockFormState {
   section_id: string;
   selected_checklist_ids: Set<string>;
+  selected_answers: Map<string, Set<string>>; // NEW: Maps checklist_id to set of selected answer choices
   custom_text: string;
   images: IBlockImage[]; // Store images for the block
 }
@@ -59,6 +62,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const [saving, setSaving] = useState(false);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
 
+  // Auto-save state
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Local input values for location fields (to prevent last character issue)
+  const [locationInputs, setLocationInputs] = useState<Record<string, string>>({});
+
   // Admin checklist management
   const [checklistFormOpen, setChecklistFormOpen] = useState(false);
   const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null);
@@ -66,8 +77,12 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     text: string;
     comment: string;
     type: 'status' | 'information';
-  }>({ text: '', comment: '', type: 'status' });
+    answer_choices: string[];
+  }>({ text: '', comment: '', type: 'status', answer_choices: [] });
   const [savingChecklist, setSavingChecklist] = useState(false);
+  const [newAnswerChoice, setNewAnswerChoice] = useState('');
+  const [editingAnswerIndex, setEditingAnswerIndex] = useState<number | null>(null);
+  const [editingAnswerValue, setEditingAnswerValue] = useState('');
 
   const fetchSections = useCallback(async () => {
     setLoadingSections(true);
@@ -102,6 +117,36 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   useEffect(() => { fetchSections(); }, [fetchSections]);
   useEffect(() => { fetchBlocks(); }, [fetchBlocks]);
 
+  // Initialize locationInputs from formState when images load
+  useEffect(() => {
+    if (!formState) return;
+    
+    const newLocationInputs: Record<string, string> = {};
+    
+    // Group images by checklist_id first, then create keys using the correct filtered index
+    const imagesByChecklist: Record<string, typeof formState.images> = {};
+    formState.images.forEach(img => {
+      if (img.checklist_id) {
+        if (!imagesByChecklist[img.checklist_id]) {
+          imagesByChecklist[img.checklist_id] = [];
+        }
+        imagesByChecklist[img.checklist_id].push(img);
+      }
+    });
+    
+    // Now create location input keys using the filtered index (matching the rendering logic)
+    Object.entries(imagesByChecklist).forEach(([checklistId, images]) => {
+      images.forEach((img, idx) => {
+        const inputKey = `${checklistId}-${idx}`;
+        if (img.location) {
+          newLocationInputs[inputKey] = img.location;
+        }
+      });
+    });
+    
+    setLocationInputs(newLocationInputs);
+  }, [formState?.images.length]); // Only run when images array length changes (add/remove)
+
   // Check for pending annotations from image-editor
   useEffect(() => {
     const checkPendingAnnotation = async () => {
@@ -114,7 +159,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           // Clear the pending annotation immediately
           localStorage.removeItem('pendingAnnotation');
 
-          // If modal is open, update the formState
+          // Check if we should auto-reopen the modal
+          const returnToSectionData = localStorage.getItem('returnToSection');
+          const shouldReopenModal = returnToSectionData && !modalOpen;
+
+          // If modal is open, update the formState immediately
           if (modalOpen && formState) {
             // Find the image in formState that matches the checklistId
             const imageIndex = formState.images.findIndex(img => img.checklist_id === annotation.checklistId);
@@ -128,15 +177,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 annotations: annotation.annotations
               };
 
-              setFormState({
+              const updatedFormState = {
                 ...formState,
                 images: updatedImages
-              });
+              };
+
+              setFormState(updatedFormState);
 
               console.log('✅ Updated image with annotations in formState');
+              
+              // Trigger auto-save to persist the change
+              await performAutoSaveWithState(updatedFormState);
             }
           } else {
-            // Modal is closed - need to save directly to the database
+            // Modal is closed - save to database and optionally reopen
             console.log('💾 Modal closed, saving annotation directly to database');
 
             try {
@@ -168,7 +222,58 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       annotations: annotation.annotations
                     };
 
-                    // Save the updated block
+                    // Create updated block with new image
+                    const updatedBlock = {
+                      ...targetBlock,
+                      images: updatedImages
+                    };
+
+                    // Check if we should reopen the modal
+                    const returnToSectionData = localStorage.getItem('returnToSection');
+                    const shouldReopenModal = returnToSectionData && !modalOpen;
+
+                    // INSTANT REOPEN: Open modal immediately with updated data (before saving)
+                    if (shouldReopenModal && returnToSectionData) {
+                      try {
+                        const { sectionId } = JSON.parse(returnToSectionData);
+                        console.log('� INSTANT REOPEN: Opening modal immediately');
+                        
+                        // Find the section - if sections is empty, fetch it
+                        let section = sections.find((s: ISection) => s._id === sectionId);
+                        
+                        if (!section) {
+                          console.log('⚠️ Sections not loaded yet, fetching...');
+                          // Fetch sections if not available
+                          const sectionsRes = await fetch('/api/information-sections/sections');
+                          const sectionsJson = await sectionsRes.json();
+                          
+                          if (sectionsJson.success) {
+                            setSections(sectionsJson.data);
+                            section = sectionsJson.data.find((s: ISection) => s._id === sectionId);
+                          }
+                        }
+                        
+                        if (section) {
+                          console.log('✅ Opening modal INSTANTLY with annotated image');
+                          // Update blocks state immediately
+                          setBlocks(blocksJson.data.map((b: IInformationBlock) => 
+                            b._id === targetBlock._id ? updatedBlock : b
+                          ));
+                          
+                          // Open modal immediately - user sees annotated image instantly!
+                          openAddModal(section, updatedBlock);
+                        }
+                        
+                        // Clear the return section data
+                        localStorage.removeItem('returnToSection');
+                      } catch (e) {
+                        console.error('Error auto-opening section:', e);
+                        localStorage.removeItem('returnToSection');
+                      }
+                    }
+
+                    // BACKGROUND SAVE: Save to database in the background (doesn't block UI)
+                    console.log('💾 Saving annotation to database in background...');
                     const updateRes = await fetch(`/api/information-sections/${inspectionId}?blockId=${targetBlock._id}`, {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
@@ -183,10 +288,12 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
                     const updateJson = await updateRes.json();
                     if (updateJson.success) {
-                      console.log('✅ Annotation saved directly to database');
-                      // Note: Success alert is shown by DefectEditModal, not here (to avoid duplicate)
-                      // Refresh blocks to show the updated image
-                      await fetchBlocks();
+                      console.log('✅ Annotation saved to database (background)');
+                      
+                      // Refresh blocks if modal wasn't reopened
+                      if (!shouldReopenModal) {
+                        await fetchBlocks();
+                      }
                     } else {
                       console.error('❌ Failed to save annotation:', updateJson.error);
                       alert('❌ Failed to save annotation. Please try again.');
@@ -280,6 +387,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             setFormState({
               section_id: section._id,
               selected_checklist_ids: new Set(selectedIds),
+              selected_answers: convertSelectedAnswersToMap(latestBlock.selected_answers),
               custom_text: latestBlock.custom_text || '',
               images: latestBlock.images || [],
             });
@@ -296,6 +404,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             setFormState({
               section_id: section._id,
               selected_checklist_ids: new Set(selectedIds),
+              selected_answers: convertSelectedAnswersToMap(existingBlock.selected_answers),
               custom_text: existingBlock.custom_text || '',
               images: existingBlock.images || [],
             });
@@ -316,6 +425,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         setFormState({
           section_id: section._id,
           selected_checklist_ids: new Set(selectedIds),
+          selected_answers: convertSelectedAnswersToMap(existingBlock.selected_answers),
           custom_text: existingBlock.custom_text || '',
           images: existingBlock.images || [],
         });
@@ -326,6 +436,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       setFormState({
         section_id: section._id,
         selected_checklist_ids: new Set(),
+        selected_answers: new Map(), // Empty for new blocks
         custom_text: '',
         images: [],
       });
@@ -337,8 +448,66 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const toggleChecklist = (id: string) => {
     if (!formState) return;
     const setIds = new Set(formState.selected_checklist_ids);
-    setIds.has(id) ? setIds.delete(id) : setIds.add(id);
-    setFormState({ ...formState, selected_checklist_ids: setIds });
+    if (setIds.has(id)) {
+      // Unchecking - clear answers for this checklist
+      setIds.delete(id);
+      const newAnswers = new Map(formState.selected_answers);
+      newAnswers.delete(id);
+      const updatedFormState = { ...formState, selected_checklist_ids: setIds, selected_answers: newAnswers };
+      setFormState(updatedFormState);
+      setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
+    } else {
+      // Checking - just add to selected
+      setIds.add(id);
+      const updatedFormState = { ...formState, selected_checklist_ids: setIds };
+      setFormState(updatedFormState);
+      setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
+    }
+  };
+
+  // Helper function to convert selected_answers array from DB to Map
+  const convertSelectedAnswersToMap = (selectedAnswersArray?: Array<{ checklist_id: string; selected_answers: string[] }>): Map<string, Set<string>> => {
+    const answersMap = new Map<string, Set<string>>();
+    if (selectedAnswersArray && Array.isArray(selectedAnswersArray)) {
+      selectedAnswersArray.forEach(item => {
+        if (item && item.checklist_id && Array.isArray(item.selected_answers)) {
+          answersMap.set(item.checklist_id, new Set(item.selected_answers));
+        }
+      });
+    }
+    return answersMap;
+  };
+
+  // Toggle answer choice for a specific checklist item
+  const toggleAnswer = (checklistId: string, answer: string) => {
+    if (!formState) return;
+    
+    const newAnswers = new Map(formState.selected_answers);
+    const currentAnswers = newAnswers.get(checklistId) || new Set<string>();
+    const updatedAnswers = new Set(currentAnswers);
+    
+    if (updatedAnswers.has(answer)) {
+      updatedAnswers.delete(answer);
+    } else {
+      updatedAnswers.add(answer);
+    }
+    
+    if (updatedAnswers.size > 0) {
+      newAnswers.set(checklistId, updatedAnswers);
+    } else {
+      newAnswers.delete(checklistId);
+    }
+    
+    const updatedFormState = { ...formState, selected_answers: newAnswers };
+    setFormState(updatedFormState);
+    
+    // Trigger immediate auto-save with updated state
+    setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
+  };
+
+  // Get selected answers for a checklist item
+  const getSelectedAnswers = (checklistId: string): Set<string> => {
+    return formState?.selected_answers.get(checklistId) || new Set<string>();
   };
 
   const handleSave = async () => {
@@ -351,6 +520,12 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       imagesWithChecklistId: formState.images.filter(img => img.checklist_id).length
     });
 
+    // Convert selected_answers Map to array format for API
+    const selectedAnswersArray = Array.from(formState.selected_answers.entries()).map(([checklist_id, answers]) => ({
+      checklist_id,
+      selected_answers: Array.from(answers)
+    }));
+
     try {
       if (editingBlockId) {
         // Update existing block
@@ -359,6 +534,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             selected_checklist_ids: Array.from(formState.selected_checklist_ids),
+            selected_answers: selectedAnswersArray,
             custom_text: formState.custom_text,
             images: formState.images,
           }),
@@ -373,6 +549,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           body: JSON.stringify({
             section_id: formState.section_id,
             selected_checklist_ids: Array.from(formState.selected_checklist_ids),
+            selected_answers: selectedAnswersArray,
             custom_text: formState.custom_text,
             images: formState.images,
           }),
@@ -393,6 +570,131 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       setSaving(false);
     }
   };
+
+  // Auto-save function with debouncing (for location text inputs)
+  // Takes optional newState parameter to save the most recent state
+  const triggerAutoSave = useCallback((stateToSave?: AddBlockFormState) => {
+    // Clear existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    
+    // Set new timer to save after 1 second of inactivity
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const finalState = stateToSave || formState;
+      if (finalState) {
+        await performAutoSaveWithState(finalState);
+      }
+    }, 1000);
+  }, [formState, editingBlockId, inspectionId]);
+
+  // Auto-save immediately (for image uploads and checkbox toggles)
+  const performAutoSaveImmediate = useCallback(async () => {
+    await performAutoSave();
+  }, [formState, editingBlockId, inspectionId]);
+
+  // Perform auto-save with specific state (for immediate saves after state changes)
+  const performAutoSaveWithState = async (stateToSave: AddBlockFormState) => {
+    if (!stateToSave || !inspectionId) return;
+    
+    setAutoSaving(true);
+
+    console.log('💾 Auto-saving information block with images:', {
+      images: stateToSave.images,
+      imageCount: stateToSave.images.length,
+      imagesWithChecklistId: stateToSave.images.filter(img => img.checklist_id).length
+    });
+
+    // Convert selected_answers Map to array format for API
+    const selectedAnswersArray = Array.from(stateToSave.selected_answers.entries()).map(([checklist_id, answers]) => ({
+      checklist_id,
+      selected_answers: Array.from(answers)
+    }));
+
+    try {
+      // Check if the block is now empty (no selected items and no custom text)
+      const hasSelectedItems = stateToSave.selected_checklist_ids.size > 0;
+      const hasCustomText = stateToSave.custom_text && stateToSave.custom_text.trim().length > 0;
+      const isEmpty = !hasSelectedItems && !hasCustomText;
+
+      if (editingBlockId && isEmpty) {
+        // Delete the block if it's empty, but keep the modal open
+        console.log('🗑️ Block is empty, deleting in background...');
+        const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${editingBlockId}`, {
+          method: 'DELETE',
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to delete block');
+        
+        // Reset editingBlockId so future saves will create a new block
+        setEditingBlockId(null);
+        
+        // Refresh blocks list in background
+        await fetchBlocks();
+        
+        console.log('✅ Empty block deleted successfully (modal stays open)');
+      } else if (editingBlockId) {
+        // Update existing block
+        const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${editingBlockId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            selected_checklist_ids: Array.from(stateToSave.selected_checklist_ids),
+            selected_answers: selectedAnswersArray,
+            custom_text: stateToSave.custom_text,
+            images: stateToSave.images,
+          }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to update block');
+      } else if (!isEmpty) {
+        // Create new block only if it's not empty
+        const res = await fetch(`/api/information-sections/${inspectionId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section_id: stateToSave.section_id,
+            selected_checklist_ids: Array.from(stateToSave.selected_checklist_ids),
+            selected_answers: selectedAnswersArray,
+            custom_text: stateToSave.custom_text,
+            images: stateToSave.images,
+          }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to save block');
+        
+        // If this was a new block, set the editingBlockId so subsequent saves are updates
+        if (json.data && json.data._id) {
+          setEditingBlockId(json.data._id);
+        }
+      }
+
+      // Update last saved timestamp
+      const now = new Date();
+      setLastSaved(now.toLocaleTimeString());
+      
+      console.log('✅ Auto-saved successfully at', now.toLocaleTimeString());
+      
+    } catch (e: any) {
+      console.error('Auto-save error:', e);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  const performAutoSave = async () => {
+    if (!formState) return;
+    await performAutoSaveWithState(formState);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleDelete = async (blockId: string) => {
     if (!confirm('Are you sure you want to delete this information block?')) return;
@@ -442,13 +744,18 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       console.log('💾 Adding image to formState:', newImage);
 
-      setFormState({
+      const updatedFormState = {
         ...formState,
         images: [...formState.images, newImage],
-      });
+      };
+      
+      setFormState(updatedFormState);
 
       console.log('✅ FormState updated, total images:', formState.images.length + 1);
-      console.log('📌 Image uploaded successfully. User can now click "🖊️ Annotate" button to edit.');
+      console.log('📌 Image uploaded successfully. Auto-saving now...');
+
+      // Save immediately with the updated state
+      await performAutoSaveWithState(updatedFormState);
 
     } catch (error) {
       console.error('❌ Error uploading image:', error);
@@ -462,10 +769,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     const checklistImages = formState.images.filter(img => img.checklist_id === checklistId);
     const imageToDelete = checklistImages[imageIndex];
 
-    setFormState({
+    const updatedFormState = {
       ...formState,
       images: formState.images.filter(img => img !== imageToDelete),
-    });
+    };
+    
+    setFormState(updatedFormState);
+    
+    // Trigger immediate auto-save with updated state
+    setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
   };
 
   const handleLocationUpdate = (checklistId: string, imageIndex: number, location: string) => {
@@ -485,6 +797,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     });
 
     console.log('📍 Location updated for image:', location);
+    
+    // Trigger debounced auto-save (waits 1 second after user stops typing)
+    triggerAutoSave();
   };
 
   const getChecklistImages = (checklistId: string): IBlockImage[] => {
@@ -500,12 +815,66 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         text: existingChecklist.text,
         comment: existingChecklist.comment || '',
         type: existingChecklist.type,
+        answer_choices: existingChecklist.answer_choices || [],
       });
     } else {
       setEditingChecklistId(null);
-      setChecklistFormData({ text: '', comment: '', type });
+      setChecklistFormData({ text: '', comment: '', type, answer_choices: [] });
     }
+    setNewAnswerChoice('');
+    setEditingAnswerIndex(null);
+    setEditingAnswerValue('');
     setChecklistFormOpen(true);
+  };
+
+  // Admin: Add new answer choice
+  const handleAddAnswerChoice = () => {
+    const trimmed = newAnswerChoice.trim();
+    if (!trimmed) return;
+    
+    if (checklistFormData.answer_choices.includes(trimmed)) {
+      alert('This option already exists');
+      return;
+    }
+
+    setChecklistFormData({
+      ...checklistFormData,
+      answer_choices: [...checklistFormData.answer_choices, trimmed]
+    });
+    setNewAnswerChoice('');
+  };
+
+  // Admin: Start editing an answer choice
+  const startEditingAnswer = (index: number) => {
+    setEditingAnswerIndex(index);
+    setEditingAnswerValue(checklistFormData.answer_choices[index]);
+  };
+
+  // Admin: Save edited answer choice
+  const saveEditedAnswer = () => {
+    if (editingAnswerIndex === null) return;
+    
+    const trimmed = editingAnswerValue.trim();
+    if (!trimmed) return;
+
+    const updatedChoices = [...checklistFormData.answer_choices];
+    updatedChoices[editingAnswerIndex] = trimmed;
+    
+    setChecklistFormData({
+      ...checklistFormData,
+      answer_choices: updatedChoices
+    });
+    setEditingAnswerIndex(null);
+    setEditingAnswerValue('');
+  };
+
+  // Admin: Delete answer choice
+  const deleteAnswerChoice = (index: number) => {
+    const updatedChoices = checklistFormData.answer_choices.filter((_, i) => i !== index);
+    setChecklistFormData({
+      ...checklistFormData,
+      answer_choices: updatedChoices
+    });
   };
 
   // Admin: Save checklist (create or update)
@@ -544,7 +913,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       await fetchSections();
       setChecklistFormOpen(false);
       setEditingChecklistId(null);
-      setChecklistFormData({ text: '', comment: '', type: 'status' });
+      setChecklistFormData({ text: '', comment: '', type: 'status', answer_choices: [] });
+      setNewAnswerChoice('');
+      setEditingAnswerIndex(null);
+      setEditingAnswerValue('');
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -603,10 +975,13 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {sections.map(section => (
+        {sections.filter(section => section.order_index !== 17).map(section => (
           <div key={section._id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.375rem', padding: '1rem', backgroundColor: 'white', boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <h3 style={{ fontWeight: 500, fontSize: '1rem' }}>{section.name}</h3>
+              <h3 style={{ fontWeight: 500, fontSize: '1rem' }}>
+                {section.name}
+                {section.order_index === 1 && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#6b7280', fontWeight: 400 }}></span>}
+              </h3>
               <button
                 onClick={() => openAddModal(section)}
                 style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem', borderRadius: '0.25rem', backgroundColor: '#2563eb', color: 'white', border: 'none', cursor: 'pointer' }}
@@ -717,14 +1092,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             padding: '1rem',
             overscrollBehavior: 'contain' // Prevent pull-to-refresh on iOS
           }}
-          onClick={(e) => {
-            // Close modal if clicking overlay
-            if (e.target === e.currentTarget) {
-              setModalOpen(false);
-              setActiveSection(null);
-              setEditingBlockId(null);
-            }
-          }}
         >
           <div style={{
             backgroundColor: 'white',
@@ -806,6 +1173,66 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 {cl.comment && (
                                   <div style={{ marginLeft: '0rem', marginTop: '0.25rem', color: '#6b7280', fontSize: '0.8rem' }}>
                                     {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
+                                  </div>
+                                )}
+                                
+                                {/* Answer Choices - show when selected and choices exist */}
+                                {isSelected && cl.answer_choices && cl.answer_choices.length > 0 && (
+                                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
+                                      Select Options:
+                                    </div>
+                                    <div style={{ 
+                                      display: 'grid', 
+                                      gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', 
+                                      gap: '0.5rem' 
+                                    }}>
+                                      {cl.answer_choices.map((choice, idx) => {
+                                        const selectedAnswers = getSelectedAnswers(cl._id);
+                                        const isAnswerSelected = selectedAnswers.has(choice);
+                                        
+                                        return (
+                                          <label 
+                                            key={idx}
+                                            style={{ 
+                                              display: 'flex', 
+                                              alignItems: 'center',
+                                              gap: '0.4rem',
+                                              padding: '0.4rem 0.5rem',
+                                              borderRadius: '0.25rem',
+                                              backgroundColor: isAnswerSelected ? '#dbeafe' : '#f9fafb',
+                                              border: `1px solid ${isAnswerSelected ? '#3b82f6' : '#e5e7eb'}`,
+                                              cursor: 'pointer',
+                                              fontSize: '0.75rem',
+                                              transition: 'all 0.15s ease',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              if (!isAnswerSelected) {
+                                                e.currentTarget.style.backgroundColor = '#f3f4f6';
+                                                e.currentTarget.style.borderColor = '#d1d5db';
+                                              }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (!isAnswerSelected) {
+                                                e.currentTarget.style.backgroundColor = '#f9fafb';
+                                                e.currentTarget.style.borderColor = '#e5e7eb';
+                                              }
+                                            }}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isAnswerSelected}
+                                              onChange={() => toggleAnswer(cl._id, choice)}
+                                              style={{ cursor: 'pointer' }}
+                                              onClick={(e) => e.stopPropagation()}
+                                            />
+                                            <span style={{ color: '#374151', userSelect: 'none' }}>
+                                              {choice}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -903,8 +1330,32 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                       <input
                                         type="text"
                                         placeholder="Location (e.g., Garage, Left Side)"
-                                        value={img.location || ''}
-                                        onChange={(e) => handleLocationUpdate(cl._id, idx, e.target.value)}
+                                        value={locationInputs[`${cl._id}-${idx}`] ?? img.location ?? ''}
+                                        onChange={(e) => {
+                                          const newLocation = e.target.value;
+                                          const inputKey = `${cl._id}-${idx}`;
+                                          
+                                          // Update local input state immediately for instant feedback
+                                          setLocationInputs(prev => ({
+                                            ...prev,
+                                            [inputKey]: newLocation
+                                          }));
+                                          
+                                          // Update formState (this might have slight delay)
+                                          const checklistImages = formState.images.filter(i => i.checklist_id === cl._id);
+                                          const imageToUpdate = checklistImages[idx];
+                                          const updatedImages = formState.images.map(i =>
+                                            i === imageToUpdate ? { ...i, location: newLocation } : i
+                                          );
+                                          const updatedFormState = {
+                                            ...formState,
+                                            images: updatedImages,
+                                          };
+                                          setFormState(updatedFormState);
+                                          
+                                          // Trigger debounced auto-save with the updated state
+                                          triggerAutoSave(updatedFormState);
+                                        }}
                                         style={{
                                           padding: '0.5rem',
                                           fontSize: '0.75rem',
@@ -919,6 +1370,13 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
                                       <button
                                         onClick={() => {
+                                          // Store section info so we can return to this section after annotation
+                                          localStorage.setItem('returnToSection', JSON.stringify({
+                                            sectionId: activeSection._id,
+                                            sectionName: activeSection.name,
+                                            blockId: editingBlockId
+                                          }));
+                                          
                                           // Navigate to image editor with the image URL and inspectionId
                                           const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(img.url)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${cl._id}&inspectionId=${inspectionId}`;
                                           router.push(editorUrl);
@@ -1000,6 +1458,66 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 {cl.comment && (
                                   <div style={{ marginLeft: '0rem', marginTop: '0.25rem', color: '#6b7280', fontSize: '0.8rem' }}>
                                     {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
+                                  </div>
+                                )}
+                                
+                                {/* Answer Choices - show when selected and choices exist */}
+                                {isSelected && cl.answer_choices && cl.answer_choices.length > 0 && (
+                                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
+                                      Select Options:
+                                    </div>
+                                    <div style={{ 
+                                      display: 'grid', 
+                                      gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', 
+                                      gap: '0.5rem' 
+                                    }}>
+                                      {cl.answer_choices.map((choice, idx) => {
+                                        const selectedAnswers = getSelectedAnswers(cl._id);
+                                        const isAnswerSelected = selectedAnswers.has(choice);
+                                        
+                                        return (
+                                          <label 
+                                            key={idx}
+                                            style={{ 
+                                              display: 'flex', 
+                                              alignItems: 'center',
+                                              gap: '0.4rem',
+                                              padding: '0.4rem 0.5rem',
+                                              borderRadius: '0.25rem',
+                                              backgroundColor: isAnswerSelected ? '#d1fae5' : '#f9fafb',
+                                              border: `1px solid ${isAnswerSelected ? '#10b981' : '#e5e7eb'}`,
+                                              cursor: 'pointer',
+                                              fontSize: '0.75rem',
+                                              transition: 'all 0.15s ease',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              if (!isAnswerSelected) {
+                                                e.currentTarget.style.backgroundColor = '#f3f4f6';
+                                                e.currentTarget.style.borderColor = '#d1d5db';
+                                              }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (!isAnswerSelected) {
+                                                e.currentTarget.style.backgroundColor = '#f9fafb';
+                                                e.currentTarget.style.borderColor = '#e5e7eb';
+                                              }
+                                            }}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isAnswerSelected}
+                                              onChange={() => toggleAnswer(cl._id, choice)}
+                                              style={{ cursor: 'pointer' }}
+                                              onClick={(e) => e.stopPropagation()}
+                                            />
+                                            <span style={{ color: '#374151', userSelect: 'none' }}>
+                                              {choice}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -1097,8 +1615,32 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                       <input
                                         type="text"
                                         placeholder="Location (e.g., Garage, Left Side)"
-                                        value={img.location || ''}
-                                        onChange={(e) => handleLocationUpdate(cl._id, idx, e.target.value)}
+                                        value={locationInputs[`${cl._id}-${idx}`] ?? img.location ?? ''}
+                                        onChange={(e) => {
+                                          const newLocation = e.target.value;
+                                          const inputKey = `${cl._id}-${idx}`;
+                                          
+                                          // Update local input state immediately for instant feedback
+                                          setLocationInputs(prev => ({
+                                            ...prev,
+                                            [inputKey]: newLocation
+                                          }));
+                                          
+                                          // Update formState (this might have slight delay)
+                                          const checklistImages = formState.images.filter(i => i.checklist_id === cl._id);
+                                          const imageToUpdate = checklistImages[idx];
+                                          const updatedImages = formState.images.map(i =>
+                                            i === imageToUpdate ? { ...i, location: newLocation } : i
+                                          );
+                                          const updatedFormState = {
+                                            ...formState,
+                                            images: updatedImages,
+                                          };
+                                          setFormState(updatedFormState);
+                                          
+                                          // Trigger debounced auto-save with the updated state
+                                          triggerAutoSave(updatedFormState);
+                                        }}
                                         style={{
                                           padding: '0.5rem',
                                           fontSize: '0.75rem',
@@ -1113,6 +1655,13 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
                                       <button
                                         onClick={() => {
+                                          // Store section info so we can return to this section after annotation
+                                          localStorage.setItem('returnToSection', JSON.stringify({
+                                            sectionId: activeSection._id,
+                                            sectionName: activeSection.name,
+                                            blockId: editingBlockId
+                                          }));
+                                          
                                           // Navigate to image editor with the image URL and inspectionId
                                           const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(img.url)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${cl._id}&inspectionId=${inspectionId}`;
                                           router.push(editorUrl);
@@ -1151,27 +1700,71 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             </div>
             <div style={{
               borderTop: '1px solid #e5e7eb',
-              padding: '1rem 1rem', // Increased padding
+              padding: '1rem 1rem',
               display: 'flex',
-              justifyContent: 'flex-end',
+              justifyContent: 'space-between',
+              alignItems: 'center',
               gap: '0.5rem',
-              flexShrink: 0, // Prevent footer from shrinking
-              backgroundColor: 'white' // Ensure footer has background
+              flexShrink: 0,
+              backgroundColor: 'white'
             }}>
+              {/* Auto-save status indicator */}
+              <div style={{ 
+                fontSize: '13px',
+                color: autoSaving ? '#f59e0b' : '#10b981',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}>
+                {autoSaving ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin"></i>
+                    <span>Saving...</span>
+                  </>
+                ) : lastSaved ? (
+                  <>
+                    <i className="fas fa-check-circle"></i>
+                    <span>Saved at {lastSaved}</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-info-circle"></i>
+                    <span>Changes auto-save</span>
+                  </>
+                )}
+              </div>
+              
               <button
-                onClick={() => { setModalOpen(false); setActiveSection(null); setEditingBlockId(null); }}
-                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', borderRadius: '0.25rem', backgroundColor: '#e5e7eb', border: 'none', cursor: 'pointer' }}
+                onClick={async () => { 
+                  // Save before closing
+                  if (formState && (formState.selected_checklist_ids.size > 0 || formState.custom_text || formState.images.length > 0)) {
+                    await handleSave();
+                  } else {
+                    // No data to save, just close
+                    setModalOpen(false); 
+                    setActiveSection(null); 
+                    setEditingBlockId(null);
+                    setLastSaved(null);
+                    // Clear any pending auto-save timer
+                    if (autoSaveTimerRef.current) {
+                      clearTimeout(autoSaveTimerRef.current);
+                    }
+                  }
+                }}
                 disabled={saving}
-                onMouseOver={(e) => !saving && (e.currentTarget.style.backgroundColor = '#d1d5db')}
-                onMouseOut={(e) => !saving && (e.currentTarget.style.backgroundColor = '#e5e7eb')}
-              >Cancel</button>
-              <button
-                onClick={handleSave}
-                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', borderRadius: '0.25rem', backgroundColor: '#16a34a', color: 'white', border: 'none', cursor: 'pointer', opacity: saving ? 0.5 : 1 }}
-                disabled={saving}
-                onMouseOver={(e) => !saving && (e.currentTarget.style.backgroundColor = '#15803d')}
-                onMouseOut={(e) => !saving && (e.currentTarget.style.backgroundColor = '#16a34a')}
-              >{saving ? 'Saving...' : 'Save'}</button>
+                style={{ 
+                  padding: '0.5rem 1.5rem', 
+                  fontSize: '0.875rem', 
+                  borderRadius: '0.25rem', 
+                  backgroundColor: saving ? '#9ca3af' : '#10b981', 
+                  color: 'white',
+                  border: 'none', 
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontWeight: 600
+                }}
+                onMouseOver={(e) => !saving && (e.currentTarget.style.backgroundColor = '#059669')}
+                onMouseOut={(e) => !saving && (e.currentTarget.style.backgroundColor = '#10b981')}
+              >{saving ? 'Saving...' : '✓ Done'}</button>
             </div>
           </div>
         </div>
@@ -1180,7 +1773,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       {/* Checklist Form Modal (Admin) */}
       {checklistFormOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: '1rem' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '0.375rem', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', width: '100%', maxWidth: '32rem', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '0.375rem', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', width: '100%', maxWidth: '40rem', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ borderBottom: '1px solid #e5e7eb', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f9fafb' }}>
               <h4 style={{ fontWeight: 600, fontSize: '1.125rem', color: '#111827' }}>
                 {editingChecklistId ? 'Edit' : 'Add New'} Checklist Item
@@ -1189,13 +1782,16 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 onClick={() => {
                   setChecklistFormOpen(false);
                   setEditingChecklistId(null);
-                  setChecklistFormData({ text: '', comment: '', type: 'status' });
+                  setChecklistFormData({ text: '', comment: '', type: 'status', answer_choices: [] });
+                  setNewAnswerChoice('');
+                  setEditingAnswerIndex(null);
+                  setEditingAnswerValue('');
                 }}
                 style={{ color: '#6b7280', cursor: 'pointer', border: 'none', background: 'none', fontSize: '1.25rem' }}
               >✕</button>
             </div>
 
-            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto', flex: 1 }}>
               {/* Type Badge */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Type</label>
@@ -1259,6 +1855,198 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                 />
               </div>
+
+              {/* Answer Choices Management */}
+              <div style={{ borderTop: '2px solid #e5e7eb', paddingTop: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.75rem' }}>
+                  📋 Answer Choices (Select Options)
+                </label>
+                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                  Add predefined options that users can select for this checklist item
+                </p>
+
+                {/* Add New Choice */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <input
+                    type="text"
+                    value={newAnswerChoice}
+                    onChange={(e) => setNewAnswerChoice(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddAnswerChoice();
+                      }
+                    }}
+                    placeholder="Enter new option..."
+                    style={{
+                      flex: 1,
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      padding: '0.5rem 0.75rem',
+                      fontSize: '0.875rem',
+                      outline: 'none'
+                    }}
+                    onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                  />
+                  <button
+                    onClick={handleAddAnswerChoice}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.875rem',
+                      borderRadius: '0.375rem',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      whiteSpace: 'nowrap'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {/* List of Choices */}
+                {checklistFormData.answer_choices.length > 0 ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '0.5rem',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '0.375rem',
+                    padding: '0.75rem'
+                  }}>
+                    {checklistFormData.answer_choices.map((choice, index) => (
+                      <div 
+                        key={index}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.5rem',
+                          backgroundColor: '#f9fafb',
+                          borderRadius: '0.25rem',
+                          border: '1px solid #e5e7eb'
+                        }}
+                      >
+                        {editingAnswerIndex === index ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editingAnswerValue}
+                              onChange={(e) => setEditingAnswerValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  saveEditedAnswer();
+                                } else if (e.key === 'Escape') {
+                                  setEditingAnswerIndex(null);
+                                  setEditingAnswerValue('');
+                                }
+                              }}
+                              autoFocus
+                              style={{
+                                flex: 1,
+                                border: '1px solid #3b82f6',
+                                borderRadius: '0.25rem',
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.875rem',
+                                outline: 'none'
+                              }}
+                            />
+                            <button
+                              onClick={saveEditedAnswer}
+                              style={{
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.75rem',
+                                borderRadius: '0.25rem',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                              title="Save"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingAnswerIndex(null);
+                                setEditingAnswerValue('');
+                              }}
+                              style={{
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.75rem',
+                                borderRadius: '0.25rem',
+                                backgroundColor: '#6b7280',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                              title="Cancel"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ flex: 1, fontSize: '0.875rem', color: '#374151' }}>
+                              {choice}
+                            </span>
+                            <button
+                              onClick={() => startEditingAnswer(index)}
+                              style={{
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.75rem',
+                                borderRadius: '0.25rem',
+                                backgroundColor: '#f59e0b',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                              title="Edit"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => deleteAnswerChoice(index)}
+                              style={{
+                                padding: '0.25rem 0.5rem',
+                                fontSize: '0.75rem',
+                                borderRadius: '0.25rem',
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                              title="Delete"
+                            >
+                              🗑️
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '1rem',
+                    textAlign: 'center',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '0.375rem',
+                    border: '1px dashed #d1d5db',
+                    fontSize: '0.875rem',
+                    color: '#6b7280'
+                  }}>
+                    No answer choices added yet. Add options above.
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ borderTop: '1px solid #e5e7eb', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', backgroundColor: '#f9fafb' }}>
@@ -1266,7 +2054,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 onClick={() => {
                   setChecklistFormOpen(false);
                   setEditingChecklistId(null);
-                  setChecklistFormData({ text: '', comment: '', type: 'status' });
+                  setChecklistFormData({ text: '', comment: '', type: 'status', answer_choices: [] });
+                  setNewAnswerChoice('');
+                  setEditingAnswerIndex(null);
+                  setEditingAnswerValue('');
                 }}
                 style={{
                   padding: '0.5rem 1rem',

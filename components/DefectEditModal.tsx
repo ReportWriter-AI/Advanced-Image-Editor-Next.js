@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import HeaderImageUploader from './HeaderImageUploader';
 import dynamic from 'next/dynamic';
 
@@ -45,6 +45,9 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
   const [savingHeaderImage, setSavingHeaderImage] = useState(false);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'defects' | 'information'>('defects');
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
 
 
@@ -234,11 +237,17 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
   const startEditing = (defect: Defect) => {
     setEditingId(defect._id);
     setEditedValues({ ...defect });
+    setLastSaved(null);
   };
 
   const cancelEditing = () => {
+    // Clear any pending auto-save
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
     setEditingId(null);
     setEditedValues({});
+    setLastSaved(null);
   };
 
   const handleFieldChange = (field: keyof Defect, value: string) => {
@@ -250,7 +259,83 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
       }
       return { ...prev, [field]: parsed };
     });
+    
+    // Trigger auto-save with debounce
+    triggerAutoSave();
   };
+
+  // Auto-save function with debouncing
+  const triggerAutoSave = useCallback(() => {
+    // Clear existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    
+    // Set new timer to save after 1 second of inactivity
+    autoSaveTimerRef.current = setTimeout(() => {
+      performAutoSave();
+    }, 1000);
+  }, [editingId, editedValues, defects]);
+
+  const performAutoSave = async () => {
+    if (!editingId) return;
+    const index = defects.findIndex(d => d._id === editingId);
+    if (index === -1) return;
+  
+    const updated: Defect = { ...defects[index], ...(editedValues as Defect) };
+  
+    setAutoSaving(true);
+    
+    try {
+      const response = await fetch(`/api/defects/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inspection_id: updated.inspection_id,
+          defect_description: updated.defect_description,
+          materials: updated.materials,
+          material_total_cost: updated.material_total_cost,
+          location: updated.location,
+          labor_type: updated.labor_type,
+          labor_rate: updated.labor_rate,
+          hours_required: updated.hours_required,
+          recommendation: updated.recommendation,
+        }),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Auto-save error:", errorData.error);
+        return;
+      }
+  
+      const result = await response.json();
+      console.log("✅ Auto-saved successfully:", result.message);
+  
+      // Update local state
+      setDefects(prev =>
+        prev.map(d => (d._id === editingId ? updated : d))
+      );
+      
+      // Update last saved timestamp
+      const now = new Date();
+      setLastSaved(now.toLocaleTimeString());
+      
+    } catch (err) {
+      console.error("Auto-save error:", err);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
 
   const saveEdited = async () => {
     if (!editingId) return;
@@ -413,11 +498,38 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                             )}
                             {isEditing && (
                               <>
-                                <button className="save-defect-btn" onClick={saveEdited}>
-                                  <i className="fas fa-save"></i>
-                                </button>
-                                <button className="cancel-defect-btn" onClick={cancelEditing}>
-                                  <i className="fas fa-times"></i>
+                                <div className="auto-save-indicator" style={{ 
+                                  marginRight: '10px', 
+                                  fontSize: '13px',
+                                  color: autoSaving ? '#f59e0b' : '#10b981',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px'
+                                }}>
+                                  {autoSaving ? (
+                                    <>
+                                      <i className="fas fa-spinner fa-spin"></i>
+                                      <span>Saving...</span>
+                                    </>
+                                  ) : lastSaved ? (
+                                    <>
+                                      <i className="fas fa-check-circle"></i>
+                                      <span>Saved at {lastSaved}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <i className="fas fa-info-circle"></i>
+                                      <span>Auto-save enabled</span>
+                                    </>
+                                  )}
+                                </div>
+                                <button 
+                                  className="cancel-defect-btn" 
+                                  onClick={cancelEditing}
+                                  title="Done editing"
+                                  style={{ background: '#10b981' }}
+                                >
+                                  <i className="fas fa-check"></i>
                                 </button>
                               </>
                             )}
@@ -525,12 +637,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                   className="defect-input"
                                   type="text"
                                   value={editedValues.materials ?? displayDefect.materials ?? ''}
-                                  onChange={(e) =>
-                                    setEditedValues(prev => ({
-                                      ...prev,
-                                      materials: e.target.value,
-                                    }))
-                                  }
+                                  onChange={(e) => handleFieldChange('materials', e.target.value)}
                                 />
                               ) : (
                                 displayDefect.materials || 'No materials specified'

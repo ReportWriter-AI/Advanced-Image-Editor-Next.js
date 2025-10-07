@@ -455,6 +455,180 @@ export default function InspectionReportPage() {
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
 
+      // Helper: Generate information section HTML - MOVED HERE before it's used
+      const generateInformationSectionHTMLForExport = (block: any): string => {
+        const allItems = block.selected_checklist_ids || [];
+        const hasContent = allItems.length > 0 || block.custom_text;
+        
+        if (!hasContent) return '';
+        
+        // Helper function to format text with proper paragraph breaks (for HTML export)
+        const formatTextForHTML = (text: string): string => {
+          if (!text) return '';
+          
+          // Apply the same preprocessing logic as in live report
+          let preprocessed = text
+            // Special patterns for "Inspections Disclaimer"
+            .replace(/(Purpose:)(\s*The home)/g, '$1\n\n$2')
+            .replace(/(sections\.)(\s*No responsibility)/g, '$1\n\n$2')
+            .replace(/(purpose\.)(\s*Scope:)/g, '$1\n\n$2')
+            .replace(/(deadfront\.)(\s*Report Limitations)/g, '$1\n\n$2')
+            .replace(/(Report Limitations & Exclusions:)(\s*The Report)/g, '$1\n\n$2')
+            .replace(/(building\.)(\s*AGI accepts)/g, '$1\n\n$2')
+            .replace(/(building:)(\s*1\.\s)/g, '$1\n\n$2')
+            .replace(/(wiring\);)(\s*2\.\s)/g, '$1\n\n$2')
+            .replace(/(possible\.)(\s*In addition)/g, '$1\n\n$2')
+            .replace(/(them\.)(\s*Any area)/g, '$1\n\n$2')
+            .replace(/(Report\.)(\s*Descriptions in the Report)/g, '$1\n\n$2')
+            .replace(/(appliances\.)(\s*The Report:)/g, '$1\n\n$2')
+            .replace(/(property\.)(\s*AGI has not undertaken)/g, '$1\n\n$2')
+            .replace(/(property\.)(\s*No property survey)/g, '$1\n\n$2')
+            .replace(/(search\.)(\s*Unit Title Properties:)/g, '$1\n\n$2')
+            .replace(/(areas\.)(\s*AGI recommends)/g, '$1\n\n$2')
+            .replace(/(Corporate\.)(\s*Responsibility to Third Parties:)/g, '$1\n\n$2')
+            .replace(/(Report\.)(\s*AGI reserves)/g, '$1\n\n$2')
+            .replace(/(party\.)(\s*Publication:)/g, '$1\n\n$2')
+            .replace(/(inspector\.)(\s*Claims & Disputes:)/g, '$1\n\n$2')
+            .replace(/(matter\.)(\s*Any claim relating)/g, '$1\n\n$2')
+            .replace(/(Agreement\)\.)(\s*Except in the case)/g, '$1\n\n$2')
+            .replace(/(matter\.)(\s*Limitation of Liability:)/g, '$1\n\n$2')
+            .replace(/(client\.)(\s*AGI shall have no)/g, '$1\n\n$2')
+            .replace(/(loss\.)(\s*Subject to any)/g, '$1\n\n$2')
+            .replace(/(inspection\.)(\s*Consumer Guarantees Act:)/g, '$1\n\n$2')
+            .replace(/(law\.)(\s*Partial Invalidity:)/g, '$1\n\n$2')
+            // Other patterns
+            .replace(/(FINAL WALK-THROUGH)([A-Z][a-z])/g, '$1\n\n$2')
+            .replace(/(Read sellers disclosure\.)(\s*The links below)/g, '$1\n\n$2')
+            .replace(/(ENERGY SAVING WEBSITES\/TIPS:)(\s*Perhaps)/g, '$1\n\n$2')
+            .replace(/(can be made\.)(\s*By checking out)/g, '$1\n\n$2')
+            .replace(/([a-z.,)])([A-Z][A-Z\s,/]+[-:])/g, '$1\n\n$2')
+            .replace(/([a-z.,)])(\d+\.\s)/g, '$1\n$2')
+            .replace(/([a-z.,)])(-\s[A-Z])/g, '$1\n$2');
+          
+          // Split into paragraphs and format as HTML
+          const paragraphs = preprocessed.split('\n\n').filter(p => p.trim());
+          return paragraphs.map(p => {
+            const trimmed = p.trim();
+            // Check if it's a numbered list item
+            if (/^\d+\.\s/.test(trimmed)) {
+              return `<div style="margin-left: 1rem; margin-bottom: 0.5rem; font-size: 0.875rem; line-height: 1.6; color: #374151;">${escapeHtml(trimmed)}</div>`;
+            }
+            // Regular paragraph
+            return `<p style="margin: 0 0 1rem 0; line-height: 1.6; font-size: 0.875rem; color: #374151;">${escapeHtml(trimmed)}</p>`;
+          }).join('');
+        };
+        
+        // Separate status items from information items (like in live report)
+        const statusItems = allItems.filter((item: any) => item.type === 'status');
+        const informationItems = allItems.filter((item: any) => item.type === 'information');
+        
+        // Create selectedAnswersMap for answer choices
+        const selectedAnswersMap = new Map();
+        if (block.selected_answers && Array.isArray(block.selected_answers)) {
+          block.selected_answers.forEach((answerEntry: any) => {
+            if (answerEntry.checklist_id && Array.isArray(answerEntry.selected_answers)) {
+              selectedAnswersMap.set(answerEntry.checklist_id, answerEntry.selected_answers);
+            }
+          });
+        }
+        
+        // Generate status items HTML (3-column grid)
+        const statusItemsHtml = statusItems.map((item: any) => {
+          const itemId = item._id || '';
+          const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+          const selectedAnswers = selectedAnswersMap.get(itemId) || [];
+          const parts = (item.text || '').split(':');
+          const label = parts[0]?.trim() || '';
+          const value = parts.slice(1).join(':').trim() || '';
+          
+          return `
+            <div class="rpt-info-grid-item">
+              <div>
+                <span style="font-weight: 700; color: #000000;">${escapeHtml(label)}:</span>${value ? `
+                <span style="margin-left: 0.25rem; font-weight: 400; color: #6b7280;">
+                  ${escapeHtml(value)}
+                </span>` : ''}
+              </div>
+              ${selectedAnswers.length > 0 ? `
+              <div style="margin-left: 0.25rem; font-weight: 400; color: #6b7280; font-size: 0.875rem;">
+                ${selectedAnswers.map((ans: string) => escapeHtml(ans)).join(', ')}
+              </div>` : ''}
+              ${itemImages.length > 0 ? `
+              <div class="rpt-info-images">
+                ${itemImages.map((img: any) => `
+                <div style="position: relative;">
+                  <img src="${escapeHtml(img.url)}" alt="Item image" class="rpt-img rpt-info-image" />
+                  ${img.location ? `
+                  <div style="text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500;">
+                    ${escapeHtml(img.location)}
+                  </div>` : ''}
+                </div>`).join('')}
+              </div>` : ''}
+            </div>`;
+        }).join('');
+        
+        // Generate information items HTML (vertical stack, full width)
+        const informationItemsHtml = informationItems.map((item: any) => {
+          const itemId = item._id || '';
+          const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+          const selectedAnswers = selectedAnswersMap.get(itemId) || [];
+          const formattedComment = item.comment ? formatTextForHTML(item.comment) : '';
+          
+          return `
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              <div style="font-weight: 700; color: #000000; font-size: 0.9375rem;">
+                ${escapeHtml(item.text || '')}
+              </div>
+              ${formattedComment ? `
+              <div style="font-size: 0.875rem; color: #374151; line-height: 1.6;">
+                ${formattedComment}
+              </div>` : ''}
+              ${selectedAnswers.length > 0 ? `
+              <div style="margin-left: 0.75rem; font-size: 0.8125rem; color: #6b7280; line-height: 1.4;">
+                ${selectedAnswers.map((ans: string) => escapeHtml(ans)).join(', ')}
+              </div>` : ''}
+              ${itemImages.length > 0 ? `
+              <div class="rpt-info-images" style="margin-left: 1rem; margin-top: 0.75rem;">
+                ${itemImages.map((img: any) => `
+                <div style="position: relative;">
+                  <img src="${escapeHtml(img.url)}" alt="Item image" class="rpt-img rpt-info-image" />
+                  ${img.location ? `
+                  <div style="text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500;">
+                    ${escapeHtml(img.location)}
+                  </div>` : ''}
+                </div>`).join('')}
+              </div>` : ''}
+            </div>`;
+        }).join('');
+        
+        return `
+        <div class="rpt-information-section">
+          <!-- Header -->
+          <div class="rpt-info-header">
+            <h3 class="rpt-info-heading">INFORMATION</h3>
+          </div>
+          
+          ${statusItems.length > 0 ? `
+          <!-- 3-Column Grid for STATUS items -->
+          <div class="rpt-info-grid" style="${(informationItems.length > 0 || block.custom_text) ? 'margin-bottom: 1.5rem;' : ''}">
+            ${statusItemsHtml}
+          </div>` : ''}
+          
+          ${informationItems.length > 0 ? `
+          <!-- Vertical Stack for INFORMATION items -->
+          <div style="display: flex; flex-direction: column; gap: 1.25rem;${block.custom_text ? ' margin-bottom: 1.5rem;' : ''}">
+            ${informationItemsHtml}
+          </div>` : ''}
+          
+          ${block.custom_text ? `
+          <!-- Custom Notes -->
+          <div class="rpt-info-custom-notes"${(statusItems.length > 0 || informationItems.length > 0) ? ' style="border-top: 1px solid #e2e8f0; padding-top: 1rem;"' : ''}>
+            <div class="rpt-info-custom-label">Custom Notes</div>
+            <div class="rpt-info-custom-text">${escapeHtml(block.custom_text).replace(/\n/g, '<br>')}</div>
+          </div>` : ''}
+        </div>`;
+      };
+
       // Filter sections based on report type
       const sectionsToExport = reportType === 'summary' 
         ? reportSections.filter(section => nearestCategory(section.color) !== 'blue') // Exclude blue maintenance items for summary
@@ -524,6 +698,15 @@ export default function InspectionReportPage() {
         : '';
 
       // Intro sections (Section 1 & 2) content (tagged with data-intro for mode filtering in exported HTML)
+      // Find Section 1 (Inspection Details) information block if it exists
+      const section1Block = informationBlocks.find((block: any) => {
+        const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
+        if (!blockSection) return false;
+        const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
+        return cleanBlock === 'Inspection Details' || blockSection === '1 - Inspection Details';
+      });
+      const section1Html = section1Block ? generateInformationSectionHTMLForExport(section1Block) : '';
+      
       const introHtml = `
         <div class="rpt-section-heading" data-intro-heading="1">
           <h2 class="rpt-section-heading-text" style="color:#111827">Section 1 - Inspection Overview & Client Responsibilities</h2>
@@ -547,6 +730,7 @@ export default function InspectionReportPage() {
         <div class="rpt-section-heading" data-intro-heading="2">
           <h2 class="rpt-section-heading-text" style="color:#111827">Section 2 - Inspection Scope & Limitations</h2>
         </div>
+        ${section1Html}
         <section class="rpt-section intro-section" data-intro="1">
           <div class="rpt-card">
             <h3>Inspection Categories & Summary</h3>
@@ -571,12 +755,13 @@ export default function InspectionReportPage() {
 
             <hr class="rpt-hr" />
             <h3>Repair Estimates Disclaimer</h3>
-            <ul>
-              <li>Estimates are not formal quotes.</li>
-              <li>They do not account for unique site conditions and may vary depending on contractor, materials, and methods.</li>
-              <li>Final pricing must always be obtained through qualified, licensed contractors with on-site evaluation.</li>
-              <li>AGI Property Inspections does not guarantee the accuracy of estimates or assume responsibility for work performed by outside contractors.</li>
-            </ul>
+            <p>This report may include repair recommendations and estimated costs. These are based on typical labor and material rates in our region, generated from AI image review. They are approximate and not formal quotes.</p>
+            <p>Estimates are not formal quotes. They do not account for unique site conditions and may vary depending on contractor, materials, and methods. Final pricing must always be obtained through qualified, licensed contractors with on-site evaluation. AGI Property Inspections does not guarantee the accuracy of estimates or assume responsibility for work performed by outside contractors.</p>
+
+            <hr class="rpt-hr" />
+            <h3>Recommendations</h3>
+            <p>Contractors / Further Evaluation: Repairs noted should be performed by licensed professionals. Keep receipts for warranty and documentation purposes.</p>
+            <p>Causes of Damage / Methods of Repair: Suggested repair methods are based on inspector experience and opinion. Final determination should always be made by licensed contractors.</p>
 
             <hr class="rpt-hr" />
             <h3>Excluded Items</h3>
@@ -589,160 +774,6 @@ export default function InspectionReportPage() {
           </div>
         </section>
       `;
-
-      // Helper: Generate information section HTML
-      const generateInformationSectionHTMLForExport = (block: any): string => {
-        const allItems = block.selected_checklist_ids || [];
-        const hasContent = allItems.length > 0 || block.custom_text;
-        
-        if (!hasContent) return '';
-        
-        // Helper function to format text with proper paragraph breaks (for HTML export)
-        const formatTextForHTML = (text: string): string => {
-          if (!text) return '';
-          
-          // Apply the same preprocessing logic as in live report
-          let preprocessed = text
-            // Special patterns for "Inspections Disclaimer"
-            .replace(/(Purpose:)(\s*The home)/g, '$1\n\n$2')
-            .replace(/(sections\.)(\s*No responsibility)/g, '$1\n\n$2')
-            .replace(/(purpose\.)(\s*Scope:)/g, '$1\n\n$2')
-            .replace(/(deadfront\.)(\s*Report Limitations)/g, '$1\n\n$2')
-            .replace(/(Report Limitations & Exclusions:)(\s*The Report)/g, '$1\n\n$2')
-            .replace(/(building\.)(\s*AGI accepts)/g, '$1\n\n$2')
-            .replace(/(building:)(\s*1\.\s)/g, '$1\n\n$2')
-            .replace(/(wiring\);)(\s*2\.\s)/g, '$1\n\n$2')
-            .replace(/(possible\.)(\s*In addition)/g, '$1\n\n$2')
-            .replace(/(them\.)(\s*Any area)/g, '$1\n\n$2')
-            .replace(/(Report\.)(\s*Descriptions in the Report)/g, '$1\n\n$2')
-            .replace(/(appliances\.)(\s*The Report:)/g, '$1\n\n$2')
-            .replace(/(property\.)(\s*AGI has not undertaken)/g, '$1\n\n$2')
-            .replace(/(property\.)(\s*No property survey)/g, '$1\n\n$2')
-            .replace(/(search\.)(\s*Unit Title Properties:)/g, '$1\n\n$2')
-            .replace(/(areas\.)(\s*AGI recommends)/g, '$1\n\n$2')
-            .replace(/(Corporate\.)(\s*Responsibility to Third Parties:)/g, '$1\n\n$2')
-            .replace(/(Report\.)(\s*AGI reserves)/g, '$1\n\n$2')
-            .replace(/(party\.)(\s*Publication:)/g, '$1\n\n$2')
-            .replace(/(inspector\.)(\s*Claims & Disputes:)/g, '$1\n\n$2')
-            .replace(/(matter\.)(\s*Any claim relating)/g, '$1\n\n$2')
-            .replace(/(Agreement\)\.)(\s*Except in the case)/g, '$1\n\n$2')
-            .replace(/(matter\.)(\s*Limitation of Liability:)/g, '$1\n\n$2')
-            .replace(/(client\.)(\s*AGI shall have no)/g, '$1\n\n$2')
-            .replace(/(loss\.)(\s*Subject to any)/g, '$1\n\n$2')
-            .replace(/(inspection\.)(\s*Consumer Guarantees Act:)/g, '$1\n\n$2')
-            .replace(/(law\.)(\s*Partial Invalidity:)/g, '$1\n\n$2')
-            // Other patterns
-            .replace(/(FINAL WALK-THROUGH)([A-Z][a-z])/g, '$1\n\n$2')
-            .replace(/(Read sellers disclosure\.)(\s*The links below)/g, '$1\n\n$2')
-            .replace(/(ENERGY SAVING WEBSITES\/TIPS:)(\s*Perhaps)/g, '$1\n\n$2')
-            .replace(/(can be made\.)(\s*By checking out)/g, '$1\n\n$2')
-            .replace(/([a-z.,)])([A-Z][A-Z\s,/]+[-:])/g, '$1\n\n$2')
-            .replace(/([a-z.,)])(\d+\.\s)/g, '$1\n$2')
-            .replace(/([a-z.,)])(-\s[A-Z])/g, '$1\n$2');
-          
-          // Split into paragraphs and format as HTML
-          const paragraphs = preprocessed.split('\n\n').filter(p => p.trim());
-          return paragraphs.map(p => {
-            const trimmed = p.trim();
-            // Check if it's a numbered list item
-            if (/^\d+\.\s/.test(trimmed)) {
-              return `<div style="margin-left: 1rem; margin-bottom: 0.5rem; font-size: 0.875rem; line-height: 1.6; color: #374151;">${escapeHtml(trimmed)}</div>`;
-            }
-            // Regular paragraph
-            return `<p style="margin: 0 0 1rem 0; line-height: 1.6; font-size: 0.875rem; color: #374151;">${escapeHtml(trimmed)}</p>`;
-          }).join('');
-        };
-        
-        // Separate status items from information items (like in live report)
-        const statusItems = allItems.filter((item: any) => item.type === 'status');
-        const informationItems = allItems.filter((item: any) => item.type === 'information');
-        
-        // Generate status items HTML (3-column grid)
-        const statusItemsHtml = statusItems.map((item: any) => {
-          const itemId = item._id || '';
-          const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
-          const parts = (item.text || '').split(':');
-          const label = parts[0]?.trim() || '';
-          const value = parts.slice(1).join(':').trim() || '';
-          
-          return `
-            <div class="rpt-info-grid-item">
-              <div>
-                <span style="font-weight: 700; color: #000000;">${escapeHtml(label)}:</span>${value ? `
-                <span style="margin-left: 0.25rem; font-weight: 400; color: #6b7280;">
-                  ${escapeHtml(value)}
-                </span>` : ''}
-              </div>
-              ${itemImages.length > 0 ? `
-              <div class="rpt-info-images">
-                ${itemImages.map((img: any) => `
-                <div style="position: relative;">
-                  <img src="${escapeHtml(img.url)}" alt="Item image" class="rpt-img rpt-info-image" />
-                  ${img.location ? `
-                  <div style="text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500;">
-                    ${escapeHtml(img.location)}
-                  </div>` : ''}
-                </div>`).join('')}
-              </div>` : ''}
-            </div>`;
-        }).join('');
-        
-        // Generate information items HTML (vertical stack, full width)
-        const informationItemsHtml = informationItems.map((item: any) => {
-          const itemId = item._id || '';
-          const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
-          const formattedComment = item.comment ? formatTextForHTML(item.comment) : '';
-          
-          return `
-            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-              <div style="font-weight: 700; color: #000000; font-size: 0.9375rem;">
-                ${escapeHtml(item.text || '')}
-              </div>
-              ${formattedComment ? `
-              <div style="font-size: 0.875rem; color: #374151; line-height: 1.6;">
-                ${formattedComment}
-              </div>` : ''}
-              ${itemImages.length > 0 ? `
-              <div class="rpt-info-images" style="margin-left: 1rem; margin-top: 0.75rem;">
-                ${itemImages.map((img: any) => `
-                <div style="position: relative;">
-                  <img src="${escapeHtml(img.url)}" alt="Item image" class="rpt-img rpt-info-image" />
-                  ${img.location ? `
-                  <div style="text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500;">
-                    ${escapeHtml(img.location)}
-                  </div>` : ''}
-                </div>`).join('')}
-              </div>` : ''}
-            </div>`;
-        }).join('');
-        
-        return `
-        <div class="rpt-information-section">
-          <!-- Header -->
-          <div class="rpt-info-header">
-            <h3 class="rpt-info-heading">INFORMATION</h3>
-          </div>
-          
-          ${statusItems.length > 0 ? `
-          <!-- 3-Column Grid for STATUS items -->
-          <div class="rpt-info-grid" style="${(informationItems.length > 0 || block.custom_text) ? 'margin-bottom: 1.5rem;' : ''}">
-            ${statusItemsHtml}
-          </div>` : ''}
-          
-          ${informationItems.length > 0 ? `
-          <!-- Vertical Stack for INFORMATION items -->
-          <div style="display: flex; flex-direction: column; gap: 1.25rem;${block.custom_text ? ' margin-bottom: 1.5rem;' : ''}">
-            ${informationItemsHtml}
-          </div>` : ''}
-          
-          ${block.custom_text ? `
-          <!-- Custom Notes -->
-          <div class="rpt-info-custom-notes"${(statusItems.length > 0 || informationItems.length > 0) ? ' style="border-top: 1px solid #e2e8f0; padding-top: 1rem;"' : ''}>
-            <div class="rpt-info-custom-label">Custom Notes</div>
-            <div class="rpt-info-custom-text">${escapeHtml(block.custom_text).replace(/\n/g, '<br>')}</div>
-          </div>` : ''}
-        </div>`;
-      };
 
       // Track previous section to detect section changes
       let prevSectionName: string | null = null;
@@ -795,7 +826,8 @@ export default function InspectionReportPage() {
               // Match by removing leading numbers like "9 - " from both
               const cleanSection = currentSectionName.replace(/^\d+\s*-\s*/, '');
               const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-              return cleanBlock === cleanSection;
+              // Exclude Section 1 (Inspection Details) as it appears after Section 2
+              return cleanBlock === cleanSection && cleanBlock !== 'Inspection Details';
             });
             
             if (matchingBlock) {
@@ -1082,10 +1114,10 @@ export default function InspectionReportPage() {
     ${reportType === 'full' ? introHtml : ''}
     ${sectionHtml}
     ${reportType === 'full' ? `
-    <!-- Hardcoded Section 17 - Resources and Disclaimers -->
+    <!-- Hardcoded Section - Resources and Disclaimers -->
     <div class="rpt-section-heading" style="border-bottom: 2px solid #111827;">
       <h2 class="rpt-section-heading-text" style="color: #111827;">
-        17 - Resources and Disclaimers
+        Resources and Disclaimers
       </h2>
     </div>
     <div style="margin-top: 1.25rem; margin-bottom: 2rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 1.5rem;">
@@ -1600,14 +1632,22 @@ export default function InspectionReportPage() {
 
   useEffect(() => {
     if (defects?.length) {
+      // First, sort defects ALPHABETICALLY by section name, then by subsection
       const sortedDefects = [...defects].sort((a, b) => {
-      if (a.section < b.section) return -1;
-      if (a.section > b.section) return 1;
-      // Optional: also sort by subsection if section is the same
-      if (a.subsection < b.subsection) return -1;
-      if (a.subsection > b.subsection) return 1;
-      return 0;
-    });
+        // Primary sort: alphabetically by section name
+        const sectionA = (a.section || '').toLowerCase();
+        const sectionB = (b.section || '').toLowerCase();
+        if (sectionA < sectionB) return -1;
+        if (sectionA > sectionB) return 1;
+        
+        // Secondary sort: alphabetically by subsection name
+        const subsectionA = (a.subsection || '').toLowerCase();
+        const subsectionB = (b.subsection || '').toLowerCase();
+        if (subsectionA < subsectionB) return -1;
+        if (subsectionA > subsectionB) return 1;
+        
+        return 0;
+      });
 
     let currentMain = currentNumber; // start from your state (e.g., 3)
     // Store the starting number before processing (for PDF generation)
@@ -1754,6 +1794,12 @@ export default function InspectionReportPage() {
         // Clean section name (remove leading numbers like "9 - ")
         const cleanBlockSection = blockSection.replace(/^\d+\s*-\s*/, '');
         
+        // EXCLUDE Section 1 (Inspection Details) - it appears after Section 2, not as standalone section
+        if (cleanBlockSection.toLowerCase() === 'inspection details' || 
+            blockSection.toLowerCase().includes('inspection details')) {
+          return; // Skip Section 1
+        }
+        
         // Check if this section already exists in the sections array
         const sectionExists = sections.some((section) => {
           const cleanSectionName = (section.sectionName || '').replace(/^\d+\s*-\s*/, '');
@@ -1766,12 +1812,12 @@ export default function InspectionReportPage() {
             id: `info-only-${block._id}`,
             anchorId: `section-${blockSection.replace(/\s+/g, '-').toLowerCase()}`,
             numbering: '', // No numbering for information-only sections
-            sectionName: blockSection,
+            sectionName: cleanBlockSection, // Use cleaned section name for proper sorting
             subsectionName: '',
-            sectionHeading: blockSection,
+            sectionHeading: cleanBlockSection,
             subsectionHeading: '',
-            heading2: blockSection,
-            heading: blockSection,
+            heading2: cleanBlockSection,
+            heading: cleanBlockSection,
             image: null,
             defect: '',
             defectTitle: '',
@@ -1797,6 +1843,24 @@ export default function InspectionReportPage() {
         }
       });
     }
+    
+    // IMPORTANT: Sort ALL sections alphabetically (including information-only sections)
+    sections = sections.sort((a, b) => {
+      const sectionA = (a.sectionName || '').toLowerCase();
+      const sectionB = (b.sectionName || '').toLowerCase();
+      
+      if (sectionA < sectionB) return -1;
+      if (sectionA > sectionB) return 1;
+      
+      // Within same section, sort by subsection
+      const subsectionA = (a.subsectionName || '').toLowerCase();
+      const subsectionB = (b.subsectionName || '').toLowerCase();
+      
+      if (subsectionA < subsectionB) return -1;
+      if (subsectionA > subsectionB) return 1;
+      
+      return 0;
+    });
     
     return sections;
   }, [reportSections, filterMode, informationBlocks]);
@@ -2215,6 +2279,226 @@ export default function InspectionReportPage() {
                 <div className={styles.sectionHeadingStart}>
                     <h2 className={styles.sectionHeadingTextStart}>Section 2 - Inspection Scope & Limitations</h2>
                   </div>
+                  
+                  {/* INFORMATION BLOCKS - Render "1 - Inspection Details" from database */}
+                  {informationBlocks && informationBlocks.length > 0 && (
+                    <>
+                      {informationBlocks
+                        .filter((block: any) => block.section_id?.name === '1 - Inspection Details')
+                        .map((block: any, blockIdx: number) => {
+                          const allItems = block.selected_checklist_ids || [];
+                          
+                          return (
+                            <div key={blockIdx} style={{ 
+                              margin: '1.5rem 0 2rem',
+                              background: '#f8fafc',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '12px',
+                              padding: '1.5rem',
+                              boxShadow: '0 4px 16px rgba(15,23,42,0.08)'
+                            }}>
+                              {/* INFORMATION Header */}
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                marginBottom: '1rem',
+                                paddingBottom: '0.75rem',
+                                borderBottom: '2px solid #3b82f6'
+                              }}>
+                                <h3 style={{
+                                  fontSize: '0.95rem',
+                                  fontWeight: 700,
+                                  letterSpacing: '0.05em',
+                                  color: '#1e40af',
+                                  margin: 0,
+                                  textTransform: 'uppercase'
+                                }}>
+                                  INFORMATION
+                                </h3>
+                              </div>
+                              
+                              {/* Separate rendering for status vs information items */}
+                              {(() => {
+                                const statusItems = allItems.filter((item: any) => item.type === 'status');
+                                const informationItems = allItems.filter((item: any) => item.type === 'information');
+                                
+                                return (
+                                  <>
+                                    {/* 3-Column Grid for STATUS items only */}
+                                    {statusItems.length > 0 && (
+                                      <div 
+                                        className={styles.informationGrid}
+                                        style={{ 
+                                          marginBottom: (informationItems.length > 0 || block.custom_text) ? '1.5rem' : '0'
+                                        }}>
+                                        {statusItems.map((item: any) => {
+                                          const itemId = item._id || item;
+                                          const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                          
+                                          // Get selected answers for this checklist item
+                                          const selectedAnswersObj = (block.selected_answers || []).find(
+                                            (ans: any) => ans.checklist_id === itemId
+                                          );
+                                          const selectedAnswers = selectedAnswersObj?.selected_answers || [];
+                                          
+                                          // Parse the label from item.text (e.g., "General: Style of Home")
+                                          const parts = item.text?.split(':') || [];
+                                          const label = parts[0]?.trim() || '';
+                                          const fieldName = parts.slice(1).join(':').trim() || '';
+                                          const displayLabel = fieldName || label;
+                                          
+                                          // Join selected answers with comma
+                                          const answerValue = selectedAnswers.join(', ');
+                                          
+                                          return (
+                                            <div key={itemId} className={styles.informationGridItem}>
+                                              <div>
+                                                <span style={{ fontWeight: 700, color: '#000000' }}>{label}:</span>
+                                                <span style={{ 
+                                                  marginLeft: '0.25rem',
+                                                  fontWeight: 400,
+                                                  color: '#374151'
+                                                }}>
+                                                  {displayLabel}
+                                                </span>
+                                              </div>
+                                              {answerValue && (
+                                                <div style={{ 
+                                                  marginTop: '0.25rem',
+                                                  fontSize: '0.875rem',
+                                                  color: '#6b7280',
+                                                  fontWeight: 400
+                                                }}>
+                                                  {answerValue}
+                                                </div>
+                                              )}
+                                              {itemImages.length > 0 && (
+                                                <div className={styles.informationImages}>
+                                                  {itemImages.map((img: any, imgIdx: number) => (
+                                                    <div key={imgIdx} style={{ position: 'relative' }}>
+                                                      <img
+                                                        src={img.url}
+                                                        alt="Item image"
+                                                        onClick={() => openLightbox(img.url)}
+                                                        className={styles.informationImage}
+                                                      />
+                                                      {img.location && (
+                                                        <div style={{ 
+                                                          textAlign: 'center', 
+                                                          fontSize: '0.75rem', 
+                                                          color: '#6b7280', 
+                                                          marginTop: '0.25rem',
+                                                          fontWeight: 500
+                                                        }}>
+                                                          {img.location}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    
+                                    {/* Vertical Stack for INFORMATION items (full-width) */}
+                                    {informationItems.length > 0 && (
+                                      <div style={{ 
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '1.25rem',
+                                        marginBottom: block.custom_text ? '1.5rem' : '0'
+                                      }}>
+                                        {informationItems.map((item: any) => {
+                                          const itemId = item._id || item;
+                                          const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                          
+                                          return (
+                                            <div key={itemId} style={{ 
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              gap: '0.5rem'
+                                            }}>
+                                              <div style={{ 
+                                                fontWeight: 700,
+                                                color: '#000000',
+                                                fontSize: '0.9375rem'
+                                              }}>
+                                                {item.text || item}
+                                              </div>
+                                              {item.comment && (
+                                                <div style={{ 
+                                                  marginLeft: '1rem',
+                                                  fontSize: '0.875rem',
+                                                  color: '#4a5568',
+                                                  lineHeight: '1.6',
+                                                  whiteSpace: 'pre-wrap'
+                                                }}>
+                                                  {item.comment}
+                                                </div>
+                                              )}
+                                              {itemImages.length > 0 && (
+                                                <div className={styles.informationImages} style={{ marginLeft: '1rem' }}>
+                                                  {itemImages.map((img: any, imgIdx: number) => (
+                                                    <div key={imgIdx} style={{ position: 'relative' }}>
+                                                      <img
+                                                        src={img.url}
+                                                        alt="Item image"
+                                                        onClick={() => openLightbox(img.url)}
+                                                        className={styles.informationImage}
+                                                      />
+                                                      {img.location && (
+                                                        <div style={{ 
+                                                          textAlign: 'center', 
+                                                          fontSize: '0.75rem', 
+                                                          color: '#6b7280', 
+                                                          marginTop: '0.25rem',
+                                                          fontWeight: 500
+                                                        }}>
+                                                          {img.location}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                              
+                              {/* Custom Notes */}
+                              {block.custom_text && (
+                                <div style={{ marginTop: 0 }}>
+                                  <div style={{
+                                    fontSize: '0.875rem',
+                                    fontWeight: 600,
+                                    color: '#1f2937',
+                                    marginBottom: '0.5rem'
+                                  }}>
+                                    Additional Notes:
+                                  </div>
+                                  <div style={{
+                                    fontSize: '0.875rem',
+                                    color: '#4a5568',
+                                    lineHeight: '1.5'
+                                  }}>
+                                    {block.custom_text}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </>
+                  )}
+                  
                   <div className={styles.contentGridStart}>
                     <div className={styles.descriptionSectionStart}>
                       {/* Categories */}
@@ -2297,38 +2581,27 @@ export default function InspectionReportPage() {
                         are based on typical labor and material rates in our region, generated from
                         AI image review. They are approximate and not formal quotes.
                       </p>
-                      <ul>
-                        <li>Estimates are not formal quotes.</li>
-                        <li>
-                          They do not account for unique site conditions and may vary depending on
-                          contractor, materials, and methods.
-                        </li>
-                        <li>
-                          Final pricing must always be obtained through qualified, licensed
-                          contractors with on-site evaluation.
-                        </li>
-                        <li>
-                          AGI Property Inspections does not guarantee the accuracy of estimates or
-                          assume responsibility for work performed by outside contractors.
-                        </li>
-                      </ul>
+                      <p>
+                        Estimates are not formal quotes. They do not account for unique site conditions and may vary depending on
+                        contractor, materials, and methods. Final pricing must always be obtained through qualified, licensed
+                        contractors with on-site evaluation. AGI Property Inspections does not guarantee the accuracy of estimates or
+                        assume responsibility for work performed by outside contractors.
+                      </p>
 
                       <hr />
 
                       {/* Recommendations */}
                       <h3>Recommendations</h3>
-                      <ul>
-                        <li>
-                          Contractors / Further Evaluation: Repairs noted should be
-                          performed by licensed professionals. Keep receipts for warranty and
-                          documentation purposes.
-                        </li>
-                        <li>
-                          Causes of Damage / Methods of Repair: Suggested repair
-                          methods are based on inspector experience and opinion. Final determination
-                          should always be made by licensed contractors.
-                        </li>
-                      </ul>
+                      <p>
+                        Contractors / Further Evaluation: Repairs noted should be
+                        performed by licensed professionals. Keep receipts for warranty and
+                        documentation purposes.
+                      </p>
+                      <p>
+                        Causes of Damage / Methods of Repair: Suggested repair
+                        methods are based on inspector experience and opinion. Final determination
+                        should always be made by licensed contractors.
+                      </p>
 
                       <hr />
 
@@ -2383,6 +2656,507 @@ export default function InspectionReportPage() {
 
                   return (
                 <div key={section.id}>
+                  {/* Information-Only Section (no defects) */}
+                  {section.isInformationOnly && filterMode === 'full' && (
+                    <>
+                      <div 
+                        className={styles.sectionHeading}
+                        style={{
+                          '--selected-color': '#111827',
+                          '--text-color': '#111827',
+                        } as React.CSSProperties}
+                      >
+                        <h2 className={styles.sectionHeadingText} style={{ color: '#111827' }}>
+                          {section.sectionHeading}
+                        </h2>
+                      </div>
+                      
+                      {/* Special handling: Render Section 1 (Inspection Details) AFTER Section 2 heading */}
+                      {(() => {
+                        const currentSectionName = section.sectionName || section.sectionHeading || '';
+                        const currentSectionHeading = section.sectionHeading || '';
+                        
+                        // Check if this is Section 2
+                        const isSection2 = currentSectionName.toLowerCase().includes('inspection scope') || 
+                                          currentSectionName.includes('2 -') ||
+                                          currentSectionHeading.toLowerCase().includes('inspection scope') ||
+                                          currentSectionHeading.includes('2 -') ||
+                                          currentSectionHeading === 'Section 2 - Inspection Scope & Limitations' ||
+                                          currentSectionName === 'Inspection Scope & Limitations';
+                        
+                        if (!isSection2) return null;
+                        
+                        // Find Section 1 (Inspection Details) block
+                        const section1Block = informationBlocks.find(b => {
+                          const blockSection = typeof b.section_id === 'object' ? b.section_id?.name : null;
+                          if (!blockSection) return false;
+                          const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
+                          return cleanBlock.toLowerCase() === 'inspection details' || 
+                                 blockSection.toLowerCase().includes('inspection details') ||
+                                 blockSection === '1 - Inspection Details';
+                        });
+                        
+                        if (!section1Block) return null;
+                        
+                        const allItems = section1Block.selected_checklist_ids || [];
+                        const hasContent = allItems.length > 0 || section1Block.custom_text;
+                        
+                        if (!hasContent) return null;
+                        
+                        // Create selectedAnswersMap for answer choices
+                        const selectedAnswersMap = new Map();
+                        if (section1Block.selected_answers && Array.isArray(section1Block.selected_answers)) {
+                          section1Block.selected_answers.forEach((answerEntry: any) => {
+                            if (answerEntry.checklist_id && Array.isArray(answerEntry.selected_answers)) {
+                              selectedAnswersMap.set(answerEntry.checklist_id, answerEntry.selected_answers);
+                            }
+                          });
+                        }
+                        
+                        return (
+                          <div style={{ 
+                            marginTop: '1.25rem', 
+                            marginBottom: '2rem', 
+                            backgroundColor: '#f8fafc', 
+                            border: '1px solid #cbd5e1', 
+                            borderRadius: '0.5rem', 
+                            padding: '1.5rem'
+                          }}>
+                            {/* Header */}
+                            <div style={{ 
+                              display: 'flex',
+                              alignItems: 'center',
+                              marginBottom: '1.25rem',
+                              paddingBottom: '0.75rem',
+                              borderBottom: '2px solid #3b82f6'
+                            }}>
+                              <h3 style={{ 
+                                fontSize: '1rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.05em',
+                                color: '#1e40af',
+                                margin: 0,
+                                textTransform: 'uppercase'
+                              }}>INSPECTION DETAILS</h3>
+                            </div>
+                            
+                            {/* Separate rendering for status vs information items */}
+                            {(() => {
+                              const statusItems = allItems.filter((item: any) => item.type === 'status');
+                              const informationItems = allItems.filter((item: any) => item.type === 'information');
+                              
+                              return (
+                                <>
+                                  {/* 3-Column Grid for STATUS items only */}
+                                  {statusItems.length > 0 && (
+                                    <div 
+                                      className={styles.informationGrid}
+                                      style={{ 
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(3, 1fr)',
+                                        gap: '1.25rem',
+                                        marginBottom: informationItems.length > 0 || section1Block.custom_text ? '1.5rem' : '0'
+                                      }}
+                                    >
+                                      {statusItems.map((item: any) => {
+                                        const itemId = item._id || item;
+                                        const itemImages = (section1Block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                        const selectedAnswers = selectedAnswersMap.get(itemId) || [];
+                                        const itemText = item.text || item;
+                                        const value = item.value || '';
+                                        
+                                        return (
+                                          <div key={itemId} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <div style={{ 
+                                              fontWeight: 700,
+                                              color: '#000000',
+                                              fontSize: '0.9375rem'
+                                            }}>
+                                              {itemText}
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                              {value && (
+                                                <span style={{ 
+                                                  fontSize: '0.875rem', 
+                                                  fontWeight: 600,
+                                                  color: '#1f2937'
+                                                }}>
+                                                  {value}
+                                                </span>
+                                              )}
+                                              {selectedAnswers.length > 0 && (
+                                                <div style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280', fontSize: '0.875rem' }}>
+                                                  {selectedAnswers.join(', ')}
+                                                </div>
+                                              )}
+                                            </div>
+                                            {itemImages.length > 0 && (
+                                              <div className={styles.informationImages}>
+                                                {itemImages.map((img: any, imgIdx: number) => (
+                                                  <div key={imgIdx} style={{ position: 'relative' }}>
+                                                    <img
+                                                      src={img.url}
+                                                      alt="Item image"
+                                                      onClick={() => openLightbox(img.url)}
+                                                      className={styles.informationImage}
+                                                    />
+                                                    {img.location && (
+                                                      <div style={{ 
+                                                        textAlign: 'center', 
+                                                        fontSize: '0.75rem', 
+                                                        color: '#6b7280', 
+                                                        marginTop: '0.25rem',
+                                                        fontWeight: 500
+                                                      }}>
+                                                        {img.location}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Vertical Stack for INFORMATION items (full-width) */}
+                                  {informationItems.length > 0 && (
+                                    <div style={{ 
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '1.75rem',
+                                      marginBottom: section1Block.custom_text ? '1.5rem' : '0'
+                                    }}>
+                                      {informationItems.map((item: any) => {
+                                        const itemId = item._id || item;
+                                        const itemImages = (section1Block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                        const selectedAnswers = selectedAnswersMap.get(itemId) || [];
+                                        const itemText = item.text || item;
+                                        const itemComment = item.comment || '';
+                                        
+                                        return (
+                                          <div key={itemId} style={{ 
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '0.5rem'
+                                          }}>
+                                            <div style={{ 
+                                              fontWeight: 700,
+                                              color: '#000000',
+                                              fontSize: '0.9375rem'
+                                            }}>
+                                              {itemText}
+                                            </div>
+                                            {itemComment && (
+                                              <div style={{ 
+                                                fontSize: '0.875rem',
+                                                color: '#374151',
+                                                lineHeight: '1.6'
+                                              }}>
+                                                {itemComment}
+                                              </div>
+                                            )}
+                                            {selectedAnswers.length > 0 && (
+                                              <div style={{ 
+                                                marginLeft: '0.75rem',
+                                                fontSize: '0.8125rem',
+                                                color: '#6b7280',
+                                                lineHeight: '1.4'
+                                              }}>
+                                                {selectedAnswers.join(', ')}
+                                              </div>
+                                            )}
+                                            {itemImages.length > 0 && (
+                                              <div className={styles.informationImages} style={{ marginLeft: '0.75rem', marginTop: '0.75rem' }}>
+                                                {itemImages.map((img: any, imgIdx: number) => (
+                                                  <div key={imgIdx} style={{ position: 'relative' }}>
+                                                    <img
+                                                      src={img.url}
+                                                      alt="Item image"
+                                                      onClick={() => openLightbox(img.url)}
+                                                      className={styles.informationImage}
+                                                    />
+                                                    {img.location && (
+                                                      <div style={{ 
+                                                        textAlign: 'center', 
+                                                        fontSize: '0.75rem', 
+                                                        color: '#6b7280', 
+                                                        marginTop: '0.25rem',
+                                                        fontWeight: 500
+                                                      }}>
+                                                        {img.location}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                            
+                            {section1Block.custom_text && (
+                              <div style={{ 
+                                borderTop: allItems.length > 0 ? '1px solid #e2e8f0' : 'none',
+                                paddingTop: allItems.length > 0 ? '1rem' : '0'
+                              }}>
+                                <div style={{ 
+                                  fontSize: '0.875rem', 
+                                  fontWeight: 600,
+                                  color: '#475569',
+                                  marginBottom: '0.5rem',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.025em'
+                                }}>Custom Notes</div>
+                                <div style={{ 
+                                  fontSize: '0.875rem', 
+                                  lineHeight: '1.6',
+                                  color: '#1f2937',
+                                  whiteSpace: 'pre-wrap'
+                                }}>
+                                  {section1Block.custom_text}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      
+                      {(() => {
+                        const sectionName = section.sectionName || section.sectionHeading || '';
+                        const block = informationBlocks.find(b => {
+                          const blockSection = typeof b.section_id === 'object' ? b.section_id?.name : null;
+                          if (!blockSection || !sectionName) return false;
+                          const cleanSection = sectionName.replace(/^\d+\s*-\s*/, '');
+                          const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
+                          return cleanBlock === cleanSection;
+                        });
+                        
+                        if (!block) return null;
+                        
+                        const allItems = block.selected_checklist_ids || [];
+                        const hasContent = allItems.length > 0 || block.custom_text;
+                        
+                        if (!hasContent) return null;
+                        
+                        // Create selectedAnswersMap for answer choices
+                        const selectedAnswersMap = new Map();
+                        if (block.selected_answers && Array.isArray(block.selected_answers)) {
+                          block.selected_answers.forEach((answerEntry: any) => {
+                            if (answerEntry.checklist_id && Array.isArray(answerEntry.selected_answers)) {
+                              selectedAnswersMap.set(answerEntry.checklist_id, answerEntry.selected_answers);
+                            }
+                          });
+                        }
+                        
+                        return (
+                          <div style={{ 
+                            marginTop: '1.25rem', 
+                            marginBottom: '2rem', 
+                            backgroundColor: '#f8fafc', 
+                            border: '1px solid #cbd5e1', 
+                            borderRadius: '0.5rem', 
+                            padding: '1.5rem'
+                          }}>
+                            <div style={{ 
+                              display: 'flex',
+                              alignItems: 'center',
+                              marginBottom: '1.25rem',
+                              paddingBottom: '0.75rem',
+                              borderBottom: '2px solid #3b82f6'
+                            }}>
+                              <h3 style={{ 
+                                fontSize: '1rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.05em',
+                                color: '#1e40af',
+                                margin: 0,
+                                textTransform: 'uppercase'
+                              }}>INFORMATION</h3>
+                            </div>
+                            
+                            {(() => {
+                              const statusItems = allItems.filter((item: any) => item.type === 'status');
+                              const informationItems = allItems.filter((item: any) => item.type === 'information');
+                              
+                              return (
+                                <>
+                                  {statusItems.length > 0 && (
+                                    <div 
+                                      className={styles.informationGrid}
+                                      style={{ 
+                                        marginBottom: (informationItems.length > 0 || block.custom_text) ? '1.5rem' : '0'
+                                      }}>
+                                      {statusItems.map((item: any) => {
+                                        const itemId = item._id || item;
+                                        const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                        const selectedAnswers = selectedAnswersMap.get(itemId) || [];
+                                        const parts = item.text?.split(':') || [];
+                                        const label = parts[0]?.trim() || '';
+                                        const value = parts.slice(1).join(':').trim() || '';
+                                        
+                                        return (
+                                          <div key={itemId} className={styles.informationGridItem}>
+                                            <div>
+                                              <span style={{ fontWeight: 700, color: '#000000' }}>{label}:</span>
+                                              {value && (
+                                                <span style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280' }}>
+                                                  {value}
+                                                </span>
+                                              )}
+                                              {selectedAnswers.length > 0 && (
+                                                <div style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280', fontSize: '0.875rem' }}>
+                                                  {selectedAnswers.join(', ')}
+                                                </div>
+                                              )}
+                                            </div>
+                                            {itemImages.length > 0 && (
+                                              <div className={styles.informationImages} style={{ marginLeft: '0.75rem', marginTop: '0.75rem' }}>
+                                                {itemImages.map((img: any, imgIdx: number) => (
+                                                  <div key={imgIdx} style={{ position: 'relative' }}>
+                                                    <img
+                                                      src={img.url}
+                                                      alt="Item image"
+                                                      onClick={() => openLightbox(img.url)}
+                                                      className={styles.informationImage}
+                                                    />
+                                                    {img.location && (
+                                                      <div style={{ 
+                                                        textAlign: 'center', 
+                                                        fontSize: '0.75rem', 
+                                                        color: '#6b7280', 
+                                                        marginTop: '0.25rem',
+                                                        fontWeight: 500
+                                                      }}>
+                                                        {img.location}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  
+                                  {informationItems.length > 0 && (
+                                    <div style={{ 
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '1.25rem',
+                                      marginBottom: block.custom_text ? '1.5rem' : '0'
+                                    }}>
+                                      {informationItems.map((item: any) => {
+                                        const itemId = item._id || item;
+                                        const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                        const selectedAnswers = selectedAnswersMap.get(itemId) || [];
+                                        const itemText = item.text || item;
+                                        const itemComment = item.comment || '';
+                                        
+                                        return (
+                                          <div key={itemId} style={{ 
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '0.5rem'
+                                          }}>
+                                            <div style={{ 
+                                              fontWeight: 700,
+                                              color: '#000000',
+                                              fontSize: '0.9375rem'
+                                            }}>
+                                              {itemText}
+                                            </div>
+                                            {itemComment && (
+                                              <div style={{ 
+                                                fontSize: '0.875rem',
+                                                color: '#374151',
+                                                lineHeight: '1.6'
+                                              }}>
+                                                {itemComment}
+                                              </div>
+                                            )}
+                                            {selectedAnswers.length > 0 && (
+                                              <div style={{ 
+                                                marginLeft: '0.75rem',
+                                                fontSize: '0.8125rem',
+                                                color: '#6b7280',
+                                                lineHeight: '1.4'
+                                              }}>
+                                                {selectedAnswers.join(', ')}
+                                              </div>
+                                            )}
+                                            {itemImages.length > 0 && (
+                                              <div className={styles.informationImages} style={{ marginLeft: '0.75rem', marginTop: '0.75rem' }}>
+                                                {itemImages.map((img: any, imgIdx: number) => (
+                                                  <div key={imgIdx} style={{ position: 'relative' }}>
+                                                    <img
+                                                      src={img.url}
+                                                      alt="Item image"
+                                                      onClick={() => openLightbox(img.url)}
+                                                      className={styles.informationImage}
+                                                    />
+                                                    {img.location && (
+                                                      <div style={{ 
+                                                        textAlign: 'center', 
+                                                        fontSize: '0.75rem', 
+                                                        color: '#6b7280', 
+                                                        marginTop: '0.25rem',
+                                                        fontWeight: 500
+                                                      }}>
+                                                        {img.location}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                            
+                            {block.custom_text && (
+                              <div style={{ 
+                                borderTop: allItems.length > 0 ? '1px solid #e2e8f0' : 'none',
+                                paddingTop: allItems.length > 0 ? '1rem' : '0'
+                              }}>
+                                <div style={{ 
+                                  fontSize: '0.875rem', 
+                                  fontWeight: 600,
+                                  color: '#475569',
+                                  marginBottom: '0.5rem',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.025em'
+                                }}>Custom Notes</div>
+                                <div style={{ 
+                                  fontSize: '0.875rem', 
+                                  lineHeight: '1.6',
+                                  color: '#1f2937',
+                                  whiteSpace: 'pre-wrap'
+                                }}>
+                                  {block.custom_text}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                  
                   {/* Main Section Heading (Black) - Only show when section changes AND section has defects (not information-only) */}
                   {isNewSection && !section.isInformationOnly && (
                     <>
@@ -2427,6 +3201,16 @@ export default function InspectionReportPage() {
                       const hasContent = allItems.length > 0 || block.custom_text;
                       
                       if (!hasContent) return null;
+                      
+                      // Create selectedAnswersMap for answer choices
+                      const selectedAnswersMap = new Map();
+                      if (block.selected_answers && Array.isArray(block.selected_answers)) {
+                        block.selected_answers.forEach((answerEntry: any) => {
+                          if (answerEntry.checklist_id && Array.isArray(answerEntry.selected_answers)) {
+                            selectedAnswersMap.set(answerEntry.checklist_id, answerEntry.selected_answers);
+                          }
+                        });
+                      }
                       
                       return (
                         <>
@@ -2474,6 +3258,7 @@ export default function InspectionReportPage() {
                                       {statusItems.map((item: any) => {
                                         const itemId = item._id || item;
                                         const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                        const selectedAnswers = selectedAnswersMap.get(itemId) || [];
                                         const parts = item.text?.split(':') || [];
                                         const label = parts[0]?.trim() || '';
                                         const value = parts.slice(1).join(':').trim() || '';
@@ -2490,6 +3275,11 @@ export default function InspectionReportPage() {
                                                 }}>
                                                   {value}
                                                 </span>
+                                              )}
+                                              {selectedAnswers.length > 0 && (
+                                                <div style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280', fontSize: '0.875rem' }}>
+                                                  {selectedAnswers.join(', ')}
+                                                </div>
                                               )}
                                             </div>
                                             {itemImages.length > 0 && (
@@ -2534,6 +3324,7 @@ export default function InspectionReportPage() {
                                       {informationItems.map((item: any) => {
                                         const itemId = item._id || item;
                                         const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
+                                        const selectedAnswers = selectedAnswersMap.get(itemId) || [];
                                         const itemText = item.text || item;
                                         const itemComment = item.comment || '';
                                         
@@ -2849,6 +3640,18 @@ export default function InspectionReportPage() {
                                               </div>
                                             )}
                                             
+                                            {/* Answer Choices */}
+                                            {selectedAnswers.length > 0 && (
+                                              <div style={{ 
+                                                marginLeft: '0.75rem',
+                                                fontSize: '0.8125rem',
+                                                color: '#6b7280',
+                                                lineHeight: '1.4'
+                                              }}>
+                                                {selectedAnswers.join(', ')}
+                                              </div>
+                                            )}
+                                            
                                             {/* Images */}
                                             {itemImages.length > 0 && (
                                               <div className={styles.informationImages} style={{ marginTop: '0.75rem' }}>
@@ -3085,7 +3888,7 @@ export default function InspectionReportPage() {
                   } as React.CSSProperties}
                 >
                   <h2 className={styles.sectionHeadingText} style={{ color: '#111827' }}>
-                    17 - Resources and Disclaimers
+                    Resources and Disclaimers
                   </h2>
                 </div>
 
