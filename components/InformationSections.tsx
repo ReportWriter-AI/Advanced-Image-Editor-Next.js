@@ -1679,14 +1679,21 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               backgroundColor: cl.type === 'status' ? '#dbeafe' : '#d1fae5',
                               color: cl.type === 'status' ? '#1e40af' : '#065f46',
                               fontWeight: 600,
-                              textTransform: 'uppercase'
+                              textTransform: 'uppercase' as const
                             }}>
                               {cl.type || 'info'}
                             </span>
                             <span style={{ fontWeight: 'bold' }}>{cl.text || cl}</span>
                           </div>
-                          {cl.comment && (
-                            <div style={{ marginLeft: '1rem', color: '#6b7280' }}>{cl.comment}</div>
+                          {cl.comment && cl.comment.trim() !== '' && (
+                            <div style={{ 
+                              marginLeft: '1rem', 
+                              color: '#6b7280',
+                              fontSize: '0.875rem',
+                              paddingTop: '0.125rem'
+                            }}>
+                              {cl.comment}
+                            </div>
                           )}
                         </div>
                       ))}
