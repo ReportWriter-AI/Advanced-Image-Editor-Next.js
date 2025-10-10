@@ -1611,78 +1611,101 @@ export default function InspectionReportPage() {
         return 0;
       });
 
-    let currentMain = currentNumber; // start from your state (e.g., 3)
-    // Store the starting number before processing (for PDF generation)
-    setStartingNumber(currentNumber);
-    let lastSection = null;
-    let subCounter = 0;
+      // Calculate defect numbering using the same logic as PDF template
+      // Track section numbering with three levels: Section.Subsection.Defect
+      const sectionNumbers = new Map<string, number>();
+      const subsectionNumbers = new Map<string, Map<string, number>>();
+      const defectCounters = new Map<string, number>();
+      
+      let currentSectionNum = currentNumber - 1; // Will increment on first section (e.g., starts at 3-1=2, first section becomes 3)
+      // Store the starting number before processing (for PDF generation)
+      setStartingNumber(currentNumber);
 
-  const mapped = sortedDefects.map((defect) => {
-      // If we hit a new section, increment main number and reset subCounter
-      if (defect.section !== lastSection!) {
-        currentMain++;
-        subCounter = 1;
-        lastSection = defect.section;
-      } else {
-        subCounter++;
-      }
-      console.log('DEFECTS', defect);
+      const mapped = sortedDefects.map((defect) => {
+        const sectionKey = defect.section;
+        const subsectionKey = defect.subsection;
+        const fullKey = `${sectionKey}|||${subsectionKey}`;
+        
+        // Assign section number if new section
+        if (!sectionNumbers.has(sectionKey)) {
+          currentSectionNum++;
+          sectionNumbers.set(sectionKey, currentSectionNum);
+          subsectionNumbers.set(sectionKey, new Map());
+        }
+        
+        const sectionNum = sectionNumbers.get(sectionKey)!;
+        const subsectionMap = subsectionNumbers.get(sectionKey)!;
+        
+        // Assign subsection number if new subsection within this section
+        if (!subsectionMap.has(subsectionKey)) {
+          subsectionMap.set(subsectionKey, subsectionMap.size + 1);
+        }
+        
+        const subsectionNum = subsectionMap.get(subsectionKey)!;
+        
+        // Increment defect counter for this subsection
+        const currentCount = defectCounters.get(fullKey) || 0;
+        const defectNum = currentCount + 1;
+        defectCounters.set(fullKey, defectNum);
+        
+        // Create display number: Section.Subsection.Defect (e.g., "4.1.2")
+        const numbering = `${sectionNum}.${subsectionNum}.${defectNum}`;
+        
+        console.log('DEFECTS', defect);
 
-      const rawDescription = defect.defect_description || "";
-      const defectParts = splitDefectText(rawDescription);
-      const summaryTitle = (defect.defect && String(defect.defect).trim())
-        || defectParts.title
-        || rawDescription.split(/\n|\./)[0]?.trim()
-        || "";
-      const bodyParagraphs = defectParts.paragraphs.length
-        ? defectParts.paragraphs
-        : defectParts.body && defectParts.body !== summaryTitle
-          ? [defectParts.body]
-          : [];
+        const rawDescription = defect.defect_description || "";
+        const defectParts = splitDefectText(rawDescription);
+        const summaryTitle = (defect.defect && String(defect.defect).trim())
+          || defectParts.title
+          || rawDescription.split(/\n|\./)[0]?.trim()
+          || "";
+        const bodyParagraphs = defectParts.paragraphs.length
+          ? defectParts.paragraphs
+          : defectParts.body && defectParts.body !== summaryTitle
+            ? [defectParts.body]
+            : [];
 
+        const anchorId = `defect-${defect._id || numbering.replace(/\./g, '-')}`;
 
-  const numbering = `${currentMain}.${subCounter}`;
-  const anchorId = `defect-${defect._id || numbering.replace(/\./g, '-')}`;
+        const totalEstimatedCost =
+          defect.material_total_cost +
+          defect.labor_rate * defect.hours_required;
 
-      const totalEstimatedCost =
-        defect.material_total_cost +
-        defect.labor_rate * defect.hours_required;
+        return {
+          id: defect._id,
+          anchorId,
+          numbering,
+          sectionName: defect.section,
+          subsectionName: defect.subsection,
+          sectionHeading: `Section ${sectionNum} - ${defect.section}`,
+          subsectionHeading: `${sectionNum}.${subsectionNum} - ${defect.subsection}`,
+          heading2: `${defect.section} - ${defect.subsection}`,
+          heading: `${numbering} ${defect.subsection}`,
+          image: defect.image,
+          defect: summaryTitle,
+          defectTitle: summaryTitle,
+          defectParagraphs: bodyParagraphs,
+          defectBody: defectParts.body,
+          defect_description: rawDescription,
+          location: defect.location,
+          color: defect.color || defect.selectedArrowColor || '#d63636', // Add individual color for each section
+          video: defect.video,
+          type: defect.type,
+          thumbnail: defect.thumbnail,
+          estimatedCosts: {
+            materials: "General materials",
+            materialsCost: defect.material_total_cost,
+            labor: defect.labor_type,
+            laborRate: defect.labor_rate,
+            hoursRequired: defect.hours_required,
+            recommendation: defect.recommendation,
+            totalEstimatedCost,
+          },
+        };
+      });
 
-      return {
-        id: defect._id,
-        anchorId,
-        numbering,
-        sectionName: defect.section,
-        subsectionName: defect.subsection,
-        sectionHeading: `Section ${currentMain} - ${defect.section}`,
-        subsectionHeading: `${numbering} - ${defect.subsection}`,
-        heading2: `${defect.section} - ${defect.subsection}`,
-        heading: `${numbering} ${defect.subsection}`,
-        image: defect.image,
-  defect: summaryTitle,
-  defectTitle: summaryTitle,
-  defectParagraphs: bodyParagraphs,
-  defectBody: defectParts.body,
-  defect_description: rawDescription,
-        location: defect.location,
-        color: defect.color || defect.selectedArrowColor || '#d63636', // Add individual color for each section
-        video: defect.video,
-        type: defect.type,
-        thumbnail: defect.thumbnail,
-        estimatedCosts: {
-          materials: "General materials",
-          materialsCost: defect.material_total_cost,
-          labor: defect.labor_type,
-          laborRate: defect.labor_rate,
-          hoursRequired: defect.hours_required,
-          recommendation: defect.recommendation,
-          totalEstimatedCost,
-        },
-      };
-    });
-
-    setReportSections(mapped);
-    setCurrentNumber(currentMain);
+      setReportSections(mapped);
+      setCurrentNumber(currentSectionNum);
     }
   }, [defects]);
 
@@ -1773,7 +1796,7 @@ export default function InspectionReportPage() {
           sections.push({
             id: `info-only-${block._id}`,
             anchorId: `section-${blockSection.replace(/\s+/g, '-').toLowerCase()}`,
-            numbering: '', // No numbering for information-only sections
+            numbering: '', // Will be assigned after sorting
             sectionName: cleanBlockSection, // Use cleaned section name for proper sorting
             subsectionName: '',
             sectionHeading: cleanBlockSection,
@@ -1806,26 +1829,92 @@ export default function InspectionReportPage() {
       });
     }
     
-    // IMPORTANT: Sort ALL sections alphabetically (including information-only sections)
+    // Assign section numbers to information-only sections BEFORE sorting
+    // First, collect section numbers from defect sections
+    const sectionNumberMap = new Map<string, number>();
+    
+    // Pass 1: Extract existing section numbers from defects
+    sections.forEach((section) => {
+      if (!section.isInformationOnly && section.numbering) {
+        const sectionName = section.sectionName;
+        // Extract section number from numbering like "4.1.1" -> 4
+        const sectionNum = parseInt(section.numbering.split('.')[0]);
+        if (!sectionNumberMap.has(sectionName)) {
+          sectionNumberMap.set(sectionName, sectionNum);
+        }
+      }
+    });
+    
+    // Pass 2: Assign numbers to information-only sections
+    let nextSectionNum = currentNumber; // Start from base number (e.g., 3)
+    
+    sections.forEach((section) => {
+      const sectionName = section.sectionName;
+      
+      if (section.isInformationOnly) {
+        // Check if a defect section already has this section name
+        if (!sectionNumberMap.has(sectionName)) {
+          // Find the next available section number
+          nextSectionNum++;
+          while (Array.from(sectionNumberMap.values()).includes(nextSectionNum)) {
+            nextSectionNum++;
+          }
+          sectionNumberMap.set(sectionName, nextSectionNum);
+        }
+        
+        const sectionNum = sectionNumberMap.get(sectionName)!;
+        section.sectionHeading = `Section ${sectionNum} - ${sectionName}`;
+        section.heading = `Section ${sectionNum} - ${sectionName}`;
+        section.heading2 = sectionName;
+      }
+    });
+    
+    // IMPORTANT: Sort ALL sections by section number (numerically, not alphabetically)
     sections = sections.sort((a, b) => {
-      const sectionA = (a.sectionName || '').toLowerCase();
-      const sectionB = (b.sectionName || '').toLowerCase();
+      // Extract section numbers for comparison
+      let sectionNumA = 0;
+      let sectionNumB = 0;
       
-      if (sectionA < sectionB) return -1;
-      if (sectionA > sectionB) return 1;
+      if (a.numbering) {
+        // For defect sections, extract from numbering like "4.1.1" -> 4
+        sectionNumA = parseInt(a.numbering.split('.')[0]);
+      } else if (a.isInformationOnly) {
+        // For information-only sections, get from map
+        sectionNumA = sectionNumberMap.get(a.sectionName) || 999;
+      }
       
-      // Within same section, sort by subsection
-      const subsectionA = (a.subsectionName || '').toLowerCase();
-      const subsectionB = (b.subsectionName || '').toLowerCase();
+      if (b.numbering) {
+        sectionNumB = parseInt(b.numbering.split('.')[0]);
+      } else if (b.isInformationOnly) {
+        sectionNumB = sectionNumberMap.get(b.sectionName) || 999;
+      }
       
-      if (subsectionA < subsectionB) return -1;
-      if (subsectionA > subsectionB) return 1;
+      // Primary sort: by section number
+      if (sectionNumA !== sectionNumB) {
+        return sectionNumA - sectionNumB;
+      }
+      
+      // Secondary sort: within same section, sort by subsection number
+      if (a.numbering && b.numbering) {
+        const subsectionNumA = parseInt(a.numbering.split('.')[1] || '0');
+        const subsectionNumB = parseInt(b.numbering.split('.')[1] || '0');
+        
+        if (subsectionNumA !== subsectionNumB) {
+          return subsectionNumA - subsectionNumB;
+        }
+        
+        // Tertiary sort: within same subsection, sort by defect number
+        const defectNumA = parseInt(a.numbering.split('.')[2] || '0');
+        const defectNumB = parseInt(b.numbering.split('.')[2] || '0');
+        
+        return defectNumA - defectNumB;
+      }
       
       return 0;
     });
     
     return sections;
-  }, [reportSections, filterMode, informationBlocks]);
+  }, [reportSections, filterMode, informationBlocks, currentNumber]);
 
   // Group by section for sidebar
   const groupedBySection = useMemo(() => {
@@ -3699,7 +3788,7 @@ export default function InspectionReportPage() {
                     } as React.CSSProperties}
                   >
                     <h2 className={styles.sectionHeadingText}>
-                      {section.subsectionHeading}
+                      {section.numbering} - {section.subsectionName}
                       <span className={styles.importanceBadge} style={{ background: getSelectedColor(section) }}>
                         {colorToImportance(section.color)}
                       </span>

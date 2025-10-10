@@ -1548,6 +1548,19 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const sectionBlocks = (sectionId: string) =>
     blocks.filter(b => (typeof b.section_id === 'string' ? b.section_id === sectionId : (b.section_id as ISection)._id === sectionId));
 
+  // Helper function to check if a section is complete
+  // A section is complete when it has at least one block with selected checklist items
+  const isSectionComplete = useCallback((sectionId: string): boolean => {
+    const sectionBlocksList = sectionBlocks(sectionId);
+    if (sectionBlocksList.length === 0) return false;
+    
+    // Check if at least one block has selected items
+    return sectionBlocksList.some(block => {
+      const checklists = getBlockChecklists(block);
+      return checklists.length > 0;
+    });
+  }, [blocks, inspectionChecklists]);
+
   return (
     <div style={{ padding: '1rem' }}>
       <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}>Information Sections</h2>
@@ -1578,10 +1591,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {sections.filter(section => section.order_index !== 17).map(section => (
+        {sections.filter(section => section.order_index !== 17).map(section => {
+          const isComplete = isSectionComplete(section._id);
+          
+          return (
           <div key={section._id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.375rem', padding: '1rem', backgroundColor: 'white', boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <h3 style={{ fontWeight: 500, fontSize: '1rem' }}>
+              <h3 style={{ fontWeight: 500, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {isComplete && <span style={{ fontSize: '1.25rem', color: '#22c55e' }}>✅</span>}
                 {section.name}
                 {section.order_index === 1 && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#6b7280', fontWeight: 400 }}></span>}
               </h3>
@@ -1678,7 +1695,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               )}
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* Modal */}

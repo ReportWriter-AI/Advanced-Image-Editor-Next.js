@@ -10,6 +10,7 @@ export type DefectItem = {
   hours_required?: number;
   recommendation?: string;
   color?: string;
+  display_number?: string; // Dynamic numbering like "3.1.2"
 };
 
 export type InformationBlockImage = {
@@ -312,6 +313,67 @@ function generateInformationSectionHTML(block: InformationBlock): string {
   </div>`;
 }
 
+/**
+ * Calculate display numbers for defects in the format [Section].[Subsection].[Defect]
+ * Groups defects by section and subsection, assigns sequential numbers within each subsection
+ * @param defects - Array of defect items
+ * @param startNumber - Starting section number (default: 1)
+ * @returns Array of defects with display_number field added
+ */
+function calculateDefectNumbers(defects: DefectItem[], startNumber: number = 1): DefectItem[] {
+  // Sort by section then subsection for stable ordering
+  const sorted = [...defects].sort((a, b) => {
+    if (a.section < b.section) return -1;
+    if (a.section > b.section) return 1;
+    if (a.subsection < b.subsection) return -1;
+    if (a.subsection > b.subsection) return 1;
+    return 0;
+  });
+
+  // Track section numbering
+  const sectionNumbers = new Map<string, number>();
+  const subsectionNumbers = new Map<string, Map<string, number>>();
+  const defectCounters = new Map<string, number>();
+  
+  let currentSectionNum = startNumber - 1; // Will increment on first section
+  
+  return sorted.map((defect) => {
+    const sectionKey = defect.section;
+    const subsectionKey = defect.subsection;
+    const fullKey = `${sectionKey}|||${subsectionKey}`;
+    
+    // Assign section number if new section
+    if (!sectionNumbers.has(sectionKey)) {
+      currentSectionNum++;
+      sectionNumbers.set(sectionKey, currentSectionNum);
+      subsectionNumbers.set(sectionKey, new Map());
+    }
+    
+    const sectionNum = sectionNumbers.get(sectionKey)!;
+    const subsectionMap = subsectionNumbers.get(sectionKey)!;
+    
+    // Assign subsection number if new subsection within this section
+    if (!subsectionMap.has(subsectionKey)) {
+      subsectionMap.set(subsectionKey, subsectionMap.size + 1);
+    }
+    
+    const subsectionNum = subsectionMap.get(subsectionKey)!;
+    
+    // Increment defect counter for this subsection
+    const currentCount = defectCounters.get(fullKey) || 0;
+    const defectNum = currentCount + 1;
+    defectCounters.set(fullKey, defectNum);
+    
+    // Create display number: Section.Subsection.Defect (e.g., "3.1.2")
+    const display_number = `${sectionNum}.${subsectionNum}.${defectNum}`;
+    
+    return {
+      ...defect,
+      display_number
+    };
+  });
+}
+
 export function generateInspectionReportHTML(defects: DefectItem[], meta: ReportMeta = {}): string {
   const {
     title = "Inspection Report",
@@ -324,8 +386,11 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     informationBlocks = [],
   } = meta;
 
+  // Calculate display numbers for all defects
+  const numberedDefects = calculateDefectNumbers(defects, startNumber);
+  
   // Sort by section then subsection for stable ordering
-  const sorted = [...defects].sort((a, b) => {
+  const sorted = [...numberedDefects].sort((a, b) => {
     if (a.section < b.section) return -1;
     if (a.section > b.section) return 1;
     if (a.subsection < b.subsection) return -1;
@@ -359,15 +424,18 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     .map((d, index) => {
       const isNewSection = d.section !== lastSection;
       
+      // Use the pre-calculated display_number
+      const displayNum = d.display_number || `${currentMain}.${subCounter}`;
+      const [sectionNum, subsectionNum] = displayNum.split('.').map(n => parseInt(n, 10));
+      
       if (isNewSection) {
-        currentMain += 1;
-        subCounter = 1;
+        currentMain = sectionNum;
+        subCounter = subsectionNum;
         lastSection = d.section;
       } else {
-        subCounter += 1;
+        subCounter = subsectionNum;
       }
 
-      const number = `${currentMain}.${subCounter}`;
       const totalCost = (d.material_total_cost || 0) + (d.labor_rate || 0) * (d.hours_required || 0);
       const selectedColor = d.color || "#d63636";
       const defectParts = splitDefectText(d.defect_description || "");
@@ -388,8 +456,8 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
       const pageBreak = (index + 1) % 2 === 0 && index < sorted.length - 1 ? '<div class="page-break"></div>' : '';
 
       // Two-tier heading structure: Section in black (only when section changes), then subsection with color
-      const sectionHeading = `Section ${currentMain} - ${escapeHtml(d.section)}`;
-      const subsectionHeading = `${number} - ${escapeHtml(d.subsection)}`;
+      const sectionHeading = `Section ${sectionNum} - ${escapeHtml(d.section)}`;
+      const subsectionHeading = `${displayNum} - ${escapeHtml(d.subsection)}`;
       
       // Find matching information block for this section (only when section changes and ONLY for full reports)
       let informationHtml = '';
@@ -497,53 +565,26 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
   }).join("\n");
 
   // Build cost summary rows with numbering matching detail sections
-  const costSummaryRows = sorted.reduce<{
-    html: string;
-    current: number;
-    last: string | null;
-    sub: number;
-  }>((acc, d) => {
-    if (d.section !== acc.last) {
-      acc.current += 1;
-      acc.sub = 1;
-      acc.last = d.section;
-    } else {
-      acc.sub += 1;
-    }
-    const numbering = `${acc.current}.${acc.sub}`;
-  const parts = splitDefectText(d.defect_description || "");
-  const defFirstSentence = parts.title || (d.defect_description || "").split(".")[0];
+  const costSummaryRows = sorted.map((d) => {
+    const numbering = d.display_number || ''; // Use pre-calculated display number
+    const parts = splitDefectText(d.defect_description || "");
+    const defFirstSentence = parts.title || (d.defect_description || "").split(".")[0];
     const costValue = (d.material_total_cost || 0) + (d.labor_rate || 0) * (d.hours_required || 0);
-    acc.html += `
+    
+    return `
       <tr>
         <td>${escapeHtml(numbering)}</td>
         <td>${escapeHtml(defFirstSentence)}</td>
         <td style="text-align:right;">${currency(costValue)}</td>
       </tr>
     `;
-    return acc;
-  }, { html: "", current: startNumber, last: null, sub: 0 }).html; // match web logic
+  }).join('');
 
   const totalAll = sorted.reduce((sum, d) => sum + (d.material_total_cost || 0) + (d.labor_rate || 0) * (d.hours_required || 0), 0);
 
   // Build non-priced summary rows (No., Section, Defect) to place after Section 2
-  // Reset counters to match the logic used in sectionsHtml
-  let summaryCurrentMain = startNumber; // match web logic - will increment on first section
-  let summaryLastSection: string | null = null;
-  let summarySubCounter = 0;
-  
   const summaryRowsSimple = sorted.map((d) => {
-    const isNewSection = d.section !== summaryLastSection;
-    
-    if (isNewSection) {
-      summaryCurrentMain += 1;
-      summarySubCounter = 1;
-      summaryLastSection = d.section;
-    } else {
-      summarySubCounter += 1;
-    }
-    
-    const numbering = `${summaryCurrentMain}.${summarySubCounter}`;
+    const numbering = d.display_number || ''; // Use pre-calculated display number
     const parts = splitDefectText(d.defect_description || "");
     const defFirstSentence = parts.title || (d.defect_description || "").split(".")[0];
     

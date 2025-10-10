@@ -436,6 +436,36 @@ const totalCost =
 - Data injection: `generateInspectionReportHTML(defects, meta)` in `lib/pdfTemplate.ts`
 - Rendering: Puppeteer headless Chrome converts HTML → PDF with page breaks
 
+**Defect Numbering System:**
+
+Defects are automatically numbered in the format `[Section].[Subsection].[Defect]`:
+
+- Example: `3.1.2` = Section 3, Subsection 1, 2nd defect in that subsection
+- Calculated dynamically by `calculateDefectNumbers()` function in `lib/pdfTemplate.ts`
+- Groups defects by section → subsection → sequential number
+- Numbers are NOT stored in database — generated at report time
+- Display numbers appear in summary tables and next to each defect heading
+
+**Implementation:**
+
+```ts
+// In lib/pdfTemplate.ts
+function calculateDefectNumbers(
+  defects: DefectItem[],
+  startNumber: number = 1
+): DefectItem[] {
+  // 1. Sorts defects by section → subsection
+  // 2. Assigns section numbers sequentially (4, 5, 6...)
+  // 3. Assigns subsection numbers within each section (1, 2, 3...)
+  // 4. Assigns defect numbers within each subsection (1, 2, 3...)
+  // 5. Returns defects with display_number field added (e.g., "4.2.3")
+}
+
+// Used in generateInspectionReportHTML:
+const numberedDefects = calculateDefectNumbers(defects, startNumber);
+// Each defect now has defect.display_number = "3.1.2"
+```
+
 **Request Payload:**
 
 ```ts
