@@ -1400,6 +1400,27 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           // Refresh sections from database to get the updated data
           await fetchSections();
           
+          // Wait a bit for state to update, then refresh activeSection
+          setTimeout(async () => {
+            // Refetch to get the latest sections
+            const sectionsRes = await fetch('/api/information-sections/sections');
+            if (sectionsRes.ok) {
+              const sectionsData = await sectionsRes.json();
+              if (sectionsData.success && sectionsData.data) {
+                const freshSections = sectionsData.data;
+                const updatedSection = freshSections.find((s: ISection) => s._id === activeSection._id);
+                if (updatedSection) {
+                  const inspectionSpecificChecklists = inspectionChecklists.get(activeSection._id) || [];
+                  const mergedSection: ISection = {
+                    ...updatedSection,
+                    checklists: [...updatedSection.checklists, ...inspectionSpecificChecklists]
+                  };
+                  setActiveSection(mergedSection);
+                }
+              }
+            }
+          }, 100);
+          
           // Update custom_answers in formState
           const newCustomAnswers = new Map(formState?.custom_answers || new Map());
           if (customAnswers.size > 0) {
@@ -1411,20 +1432,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             ...formState!,
             custom_answers: newCustomAnswers
           });
-          
-          // Update activeSection immediately to show changes
-          if (activeSection) {
-            // After fetching sections, we need to get the updated section with merged inspection checklists
-            const updatedSection = sections.find(s => s._id === activeSection._id);
-            if (updatedSection) {
-              const inspectionSpecificChecklists = inspectionChecklists.get(activeSection._id) || [];
-              const mergedSection: ISection = {
-                ...updatedSection,
-                checklists: [...updatedSection.checklists, ...inspectionSpecificChecklists]
-              };
-              setActiveSection(mergedSection);
-            }
-          }
         }
       } else {
         // CREATING NEW CHECKLIST
@@ -1751,27 +1758,39 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             }}>
               {/* Status Fields Section */}
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                  <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #3b82f6', paddingBottom: '0.5rem', flex: 1 }}>Status Fields</h5>
-                  <button
-                    onClick={() => openChecklistForm('status')}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.75rem',
-                      borderRadius: '0.25rem',
-                      backgroundColor: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      cursor: 'pointer',
-                      marginLeft: '0.5rem',
-                      whiteSpace: 'nowrap'
-                    }}
-                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
-                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
-                  >
-                    + Add New
-                  </button>
-                </div>
+                {(() => {
+                  // Check if any status field checklist item is selected
+                  const statusChecklists = activeSection.checklists.filter(cl => cl.type === 'status');
+                  const hasStatusSelected = statusChecklists.some(cl => formState.selected_checklist_ids.has(cl._id));
+                  
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                      <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #3b82f6', paddingBottom: '0.5rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {hasStatusSelected && <span style={{ fontSize: '1.125rem', color: '#22c55e' }}>✅</span>}
+                        Status Fields
+                      </h5>
+                      <button
+                        onClick={() => openChecklistForm('status')}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.75rem',
+                          borderRadius: '0.25rem',
+                          backgroundColor: '#10b981',
+                          color: 'white',
+                          border: 'none',
+                          cursor: 'pointer',
+                          marginLeft: '0.5rem',
+                          whiteSpace: 'nowrap'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                      >
+                        + Add New
+                      </button>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {activeSection.checklists
                     .filter(cl => cl.type === 'status')
@@ -2129,27 +2148,39 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
               {/* Limitations/Information Section */}
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                  <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #10b981', paddingBottom: '0.5rem', flex: 1 }}>Limitations / Information</h5>
-                  <button
-                    onClick={() => openChecklistForm('information', undefined, 'limitations')}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.75rem',
-                      borderRadius: '0.25rem',
-                      backgroundColor: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      cursor: 'pointer',
-                      marginLeft: '0.5rem',
-                      whiteSpace: 'nowrap'
-                    }}
-                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
-                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
-                  >
-                    + Add New
-                  </button>
-                </div>
+                {(() => {
+                  // Check if any limitations/information checklist item is selected
+                  const limitationsChecklists = activeSection.checklists.filter(cl => cl.tab === 'limitations');
+                  const hasLimitationsSelected = limitationsChecklists.some(cl => formState.selected_checklist_ids.has(cl._id));
+                  
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                      <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #10b981', paddingBottom: '0.5rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {hasLimitationsSelected && <span style={{ fontSize: '1.125rem', color: '#22c55e' }}>✅</span>}
+                        Limitations / Information
+                      </h5>
+                      <button
+                        onClick={() => openChecklistForm('information', undefined, 'limitations')}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.75rem',
+                          borderRadius: '0.25rem',
+                          backgroundColor: '#10b981',
+                          color: 'white',
+                          border: 'none',
+                          cursor: 'pointer',
+                          marginLeft: '0.5rem',
+                          whiteSpace: 'nowrap'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                      >
+                        + Add New
+                      </button>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {activeSection.checklists
                     .filter(cl => cl.tab === 'limitations')
