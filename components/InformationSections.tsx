@@ -25,6 +25,7 @@ interface IBlockImage {
   annotations?: string;
   checklist_id?: string; // Associate image with specific checklist item
   location?: string; // Location tag for the image (e.g., "Garage", "Left Side of House")
+  isThreeSixty?: boolean; // 360° photo flag
 }
 
 interface IInformationBlock {
@@ -81,6 +82,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
   // Location dropdown management
   const [locationDropdownOpen, setLocationDropdownOpen] = useState<Record<string, boolean>>({});
+
+  // 360° photo checkbox state (key: checklist_id, value: boolean)
+  const [isThreeSixtyMap, setIsThreeSixtyMap] = useState<Record<string, boolean>>({});
 
   // Predefined location options (same as defect upload page)
   const LOCATION_OPTIONS = [
@@ -1147,7 +1151,66 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const handleImageSelect = async (checklistId: string, file: File) => {
     if (!formState) return;
 
-    console.log('📸 Image selected for checklist:', checklistId);
+    console.log('📸 File selected for checklist:', checklistId, 'type:', file.type);
+
+    // Check file size and warn for large files (360° photos)
+    const fileSizeMB = file.size / (1024 * 1024);
+    if (fileSizeMB > 100) {
+      alert(`File size (${fileSizeMB.toFixed(1)}MB) exceeds the 100MB limit. Please compress the image or choose a smaller file.`);
+      return;
+    }
+
+    // For 360° photos, check image dimensions to prevent uploading massive files
+    if (isThreeSixtyMap[checklistId] && file.type.startsWith('image/')) {
+      try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = reject;
+          image.src = URL.createObjectURL(file);
+        });
+        
+        const megapixels = (img.width * img.height) / 1000000;
+        console.log('📐 360° Image dimensions:', img.width, 'x', img.height, '(' + megapixels.toFixed(1), 'MP)');
+        
+        // Warn if image is too large
+        if (megapixels > 50) {
+          const proceed = confirm(
+            `⚠️ This 360° image is VERY LARGE (${megapixels.toFixed(1)} megapixels).\n\n` +
+            `Size: ${img.width}×${img.height}\n` +
+            `This will likely FAIL to load in the browser.\n\n` +
+            `Recommended maximum: 8192×4096 (33 MP)\n` +
+            `Suggested tools: TinyPNG, Squoosh, or IrfanView\n\n` +
+            `Upload anyway? (Not recommended)`
+          );
+          if (!proceed) {
+            URL.revokeObjectURL(img.src);
+            return;
+          }
+        } else if (megapixels > 33) {
+          const proceed = confirm(
+            `⚠️ This 360° image is quite large (${megapixels.toFixed(1)} megapixels).\n\n` +
+            `Size: ${img.width}×${img.height}\n` +
+            `Recommended: 8192×4096 (33 MP) for best performance\n\n` +
+            `Continue uploading?`
+          );
+          if (!proceed) {
+            URL.revokeObjectURL(img.src);
+            return;
+          }
+        }
+        
+        URL.revokeObjectURL(img.src);
+      } catch (err) {
+        console.error('Failed to check image dimensions:', err);
+        // Continue with upload if dimension check fails
+      }
+    }
+
+    // Show progress indicator for large files
+    if (fileSizeMB > 10) {
+      console.log(`⏳ Uploading large file (${fileSizeMB.toFixed(1)}MB), this may take a minute...`);
+    }
 
     try {
       // Upload image to R2
@@ -1159,20 +1222,30 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         body: formData,
       });
 
-      if (!uploadRes.ok) throw new Error('Failed to upload image');
+      if (!uploadRes.ok) {
+        const errorData = await uploadRes.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Upload failed with status ${uploadRes.status}`);
+      }
 
       const uploadData = await uploadRes.json();
 
-      console.log('✅ Image uploaded to R2:', uploadData.url);
+      console.log('✅ File uploaded to R2:', uploadData.url, 'kind:', uploadData.type);
+
+      // Check if this should be a 360° photo
+      const isThreeSixty = isThreeSixtyMap[checklistId] || false;
+      console.log('🔍 360° checkbox state for checklist', checklistId, ':', isThreeSixty);
 
       // Add image to formState
       const newImage: IBlockImage = {
         url: uploadData.url,
         annotations: undefined,
         checklist_id: checklistId,
+        isThreeSixty: isThreeSixty, // Include 360° flag
+        // We'll reuse the existing image structure; location/annotations remain compatible for video
       };
 
       console.log('💾 Adding image to formState:', newImage);
+      console.log('📸 isThreeSixty field value:', newImage.isThreeSixty);
 
       const updatedFormState = {
         ...formState,
@@ -1181,15 +1254,28 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       
       setFormState(updatedFormState);
 
+      // DON'T reset the 360° checkbox - keep it checked for multiple uploads
+      // User can manually uncheck if they want to upload regular images
+      // setIsThreeSixtyMap(prev => ({ ...prev, [checklistId]: false }));
+
       console.log('✅ FormState updated, total images:', formState.images.length + 1);
       console.log('📌 Image uploaded successfully. Auto-saving now...');
 
       // Save immediately with the updated state
       await performAutoSaveWithState(updatedFormState);
 
-    } catch (error) {
-      console.error('❌ Error uploading image:', error);
-      alert('Failed to upload image. Please try again.');
+    } catch (error: any) {
+      console.error('❌ Error uploading file:', error);
+      
+      // Show user-friendly error message
+      const errorMessage = error.message || 'Unknown error occurred';
+      if (errorMessage.includes('100MB')) {
+        alert('File is too large. 360° photos should be compressed to under 100MB.');
+      } else if (errorMessage.includes('File size exceeds')) {
+        alert('File size exceeds the limit. Please compress the image or choose a smaller file.');
+      } else {
+        alert(`Failed to upload image/video: ${errorMessage}\n\nFor large 360° photos, please ensure they are under 100MB.`);
+      }
     }
   };
 
@@ -2046,6 +2132,72 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                           {/* Image upload section - show only when item is selected */}
                           {isSelected && (
                             <div style={{ marginTop: '0.75rem', marginLeft: '1.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                              {/* 360° Photo Checkbox */}
+                              <div style={{
+                                background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                                padding: '10px 16px',
+                                borderRadius: '8px',
+                                marginBottom: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                boxShadow: '0 2px 8px rgba(124, 58, 237, 0.2)'
+                              }}>
+                                <input
+                                  type="checkbox"
+                                  id={`isThreeSixty-info-${cl._id}`}
+                                  checked={isThreeSixtyMap[cl._id] || false}
+                                  onChange={(e) => setIsThreeSixtyMap(prev => ({
+                                    ...prev,
+                                    [cl._id]: e.target.checked
+                                  }))}
+                                  style={{
+                                    width: '18px',
+                                    height: '18px',
+                                    cursor: 'pointer',
+                                    accentColor: '#ffffff'
+                                  }}
+                                />
+                                <label 
+                                  htmlFor={`isThreeSixty-info-${cl._id}`} 
+                                  style={{
+                                    color: 'white',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                  }}
+                                >
+                                  <i className="fas fa-sync" style={{ fontSize: '16px' }}></i>
+                                  This is a 360° photo
+                                </label>
+                              </div>
+
+                              {/* Help text for 360° photos */}
+                              {isThreeSixtyMap[cl._id] && (
+                                <div style={{
+                                  backgroundColor: '#fef3c7',
+                                  border: '1px solid #fbbf24',
+                                  borderRadius: '6px',
+                                  padding: '8px 12px',
+                                  marginBottom: '12px',
+                                  fontSize: '12px',
+                                  color: '#92400e'
+                                }}>
+                                  <strong>📸 360° Photo Tips:</strong>
+                                  <ul style={{ margin: '4px 0 0 20px', paddingLeft: 0 }}>
+                                    <li>File size limit: <strong>100 MB</strong></li>
+                                    <li><strong>⚠️ Recommended dimensions: 8192×4096 (33 MP max)</strong></li>
+                                    <li>Optimal: <strong>4096×2048</strong> at <strong>85% quality</strong> (~5-10 MB)</li>
+                                    <li>Images larger than 50 MP may fail to load in browser</li>
+                                    <li>Compress large files using: TinyPNG, Squoosh, or IrfanView</li>
+                                  </ul>
+                                </div>
+                              )}
+                              
                               <div style={{ marginBottom: '0.5rem' }}>
                                 <FileUpload
                                   onFileSelect={(file) => handleImageSelect(cl._id, file)}
@@ -2059,11 +2211,19 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   {checklistImages.map((img, idx) => (
                                     <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '180px' }}>
                                       <div style={{ position: 'relative', width: '180px', height: '180px', borderRadius: '0.375rem', overflow: 'hidden', border: '2px solid #3b82f6' }}>
-                                        <img
-                                          src={img.url}
-                                          alt={`Image ${idx + 1}`}
-                                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                        />
+                                        {/\.(mp4|mov|webm|3gp|3gpp|m4v)(\?.*)?$/i.test(img.url) ? (
+                                          <video
+                                            src={img.url}
+                                            controls
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#000' }}
+                                          />
+                                        ) : (
+                                          <img
+                                            src={img.url}
+                                            alt={`Image ${idx + 1}`}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                          />
+                                        )}
                                         <button
                                           onClick={() => handleImageDelete(cl._id, idx)}
                                           style={{
@@ -2436,6 +2596,72 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                           {/* Image upload section - show only when item is selected */}
                           {isSelected && (
                             <div style={{ marginTop: '0.75rem', marginLeft: '1.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                              {/* 360° Photo Checkbox */}
+                              <div style={{
+                                background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                                padding: '10px 16px',
+                                borderRadius: '8px',
+                                marginBottom: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                boxShadow: '0 2px 8px rgba(124, 58, 237, 0.2)'
+                              }}>
+                                <input
+                                  type="checkbox"
+                                  id={`isThreeSixty-limit-${cl._id}`}
+                                  checked={isThreeSixtyMap[cl._id] || false}
+                                  onChange={(e) => setIsThreeSixtyMap(prev => ({
+                                    ...prev,
+                                    [cl._id]: e.target.checked
+                                  }))}
+                                  style={{
+                                    width: '18px',
+                                    height: '18px',
+                                    cursor: 'pointer',
+                                    accentColor: '#ffffff'
+                                  }}
+                                />
+                                <label 
+                                  htmlFor={`isThreeSixty-limit-${cl._id}`} 
+                                  style={{
+                                    color: 'white',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                  }}
+                                >
+                                  <i className="fas fa-sync" style={{ fontSize: '16px' }}></i>
+                                  This is a 360° photo
+                                </label>
+                              </div>
+
+                              {/* Help text for 360° photos */}
+                              {isThreeSixtyMap[cl._id] && (
+                                <div style={{
+                                  backgroundColor: '#fef3c7',
+                                  border: '1px solid #fbbf24',
+                                  borderRadius: '6px',
+                                  padding: '8px 12px',
+                                  marginBottom: '12px',
+                                  fontSize: '12px',
+                                  color: '#92400e'
+                                }}>
+                                  <strong>📸 360° Photo Tips:</strong>
+                                  <ul style={{ margin: '4px 0 0 20px', paddingLeft: 0 }}>
+                                    <li>File size limit: <strong>100 MB</strong></li>
+                                    <li><strong>⚠️ Recommended dimensions: 8192×4096 (33 MP max)</strong></li>
+                                    <li>Optimal: <strong>4096×2048</strong> at <strong>85% quality</strong> (~5-10 MB)</li>
+                                    <li>Images larger than 50 MP may fail to load in browser</li>
+                                    <li>Compress large files using: TinyPNG, Squoosh, or IrfanView</li>
+                                  </ul>
+                                </div>
+                              )}
+                              
                               <div style={{ marginBottom: '0.5rem' }}>
                                 <FileUpload
                                   onFileSelect={(file) => handleImageSelect(cl._id, file)}

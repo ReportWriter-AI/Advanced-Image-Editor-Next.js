@@ -194,10 +194,14 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
         const canvas = canvasRef.current;
         if (canvas) {
-          const context = canvas.getContext('2d');
+          const context = canvas.getContext('2d', { alpha: false });
           if (context) {
             canvas.width = img.width;
             canvas.height = img.height;
+
+            // Enable high-quality image rendering
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
 
             context.clearRect(0, 0, canvas.width, canvas.height);
             context.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -589,6 +593,10 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         console.error('❌ Could not get canvas context');
         return null;
       }
+
+      // Enable high-quality image rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       
       // Clear the canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -658,7 +666,7 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
       });
     
       // Use JPEG for better mobile compatibility and smaller file size
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.98);
       const byteString = atob(dataUrl.split(",")[1]);
       const mimeString = dataUrl.split(",")[0].split(":")[1].split(";")[0];
     
@@ -953,11 +961,15 @@ const captureImage = () => {
   if (videoRef?.current && cameraCanvasRef.current) {
     const video = videoRef.current;
     const canvas = cameraCanvasRef.current;
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d", { alpha: false });
 
     if (context && video.videoWidth > 0 && video.videoHeight > 0) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+
+      // Enable high-quality image rendering
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
 
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
@@ -982,11 +994,11 @@ const captureImage = () => {
             setEditedFile(file);
             if (onEditedFile) onEditedFile(file);
           }
-        }, "image/jpeg", 0.9);
+        }, "image/jpeg", 0.98);
 
         stopCamera();
       };
-      img.src = canvas.toDataURL("image/jpeg", 0.9);
+      img.src = canvas.toDataURL("image/jpeg", 0.98);
     }
   }
 };

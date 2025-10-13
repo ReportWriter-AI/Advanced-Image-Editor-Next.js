@@ -116,11 +116,13 @@ export async function POST(
             annotations: typeof img?.annotations === 'string' ? img.annotations : undefined,
             checklist_id: typeof img?.checklist_id === 'string' ? img.checklist_id : undefined,
             location: typeof img?.location === 'string' ? img.location : undefined,
+            isThreeSixty: typeof img?.isThreeSixty === 'boolean' ? img.isThreeSixty : false, // Include 360° flag
           }))
           .filter(i => i.url)
       : [];
 
     console.log('✅ POST - Clean images after validation:', cleanImages);
+    console.log('🔍 POST - Images with 360° flag:', cleanImages.filter((img: any) => img.isThreeSixty));
 
     // Create information block
     const doc = await InspectionInformationBlock.create({
@@ -228,11 +230,13 @@ export async function PUT(
             annotations: typeof img?.annotations === 'string' ? img.annotations : undefined,
             checklist_id: typeof img?.checklist_id === 'string' ? img.checklist_id : undefined,
             location: typeof img?.location === 'string' ? img.location : undefined,
+            isThreeSixty: typeof img?.isThreeSixty === 'boolean' ? img.isThreeSixty : false, // Include 360° flag
           }))
           .filter(i => i.url)
       : [];
 
     console.log('✅ PUT - Clean images after validation:', cleanImages);
+    console.log('🔍 PUT - Images with 360° flag:', cleanImages.filter((img: any) => img.isThreeSixty));
 
     // Update information block
     const updated = await InspectionInformationBlock.findOneAndUpdate(

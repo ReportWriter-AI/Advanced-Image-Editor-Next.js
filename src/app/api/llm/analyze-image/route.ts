@@ -44,6 +44,7 @@ export async function POST(request: Request) {
     let thumbnail: string | null = null;
     let type: string | undefined;
     let videoSrc: string | null = null;
+    let isThreeSixty = false;
   
     const contentType = request.headers.get("content-type") || "";
   
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
       section = body.section;
       subSection = body.subSection;
       selectedColor = body.selectedColor;
+      isThreeSixty = body.isThreeSixty || false;
     }
     else if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
@@ -71,6 +73,8 @@ export async function POST(request: Request) {
       thumbnail = form.get("thumbnail") as string | null;
       type = form.get("type") as string | undefined;
       videoSrc = form.get("videoSrc") as string | null;
+      const isThreeSixtyStr = form.get("isThreeSixty") as string | null;
+      isThreeSixty = isThreeSixtyStr === 'true';
     }
     else {
       return NextResponse.json(
@@ -121,7 +125,8 @@ export async function POST(request: Request) {
       analysisId,
       finalVideoUrl,
       thumbnail,
-      type
+      type,
+      isThreeSixty
     },
   });
 

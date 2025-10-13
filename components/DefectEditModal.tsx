@@ -5,6 +5,22 @@ import HeaderImageUploader from './HeaderImageUploader';
 import dynamic from 'next/dynamic';
 
 const InformationSections = dynamic(() => import('./InformationSections'), { ssr: false });
+const ThreeSixtyViewer = dynamic(() => import('./ThreeSixtyViewer'), { 
+  ssr: false,
+  loading: () => (
+    <div style={{ 
+      width: '100%', 
+      height: '400px', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      background: '#000',
+      borderRadius: '8px'
+    }}>
+      <i className="fas fa-spinner fa-spin" style={{ fontSize: '24px', color: 'white' }}></i>
+    </div>
+  )
+});
 
 interface Defect {
   _id: string;
@@ -25,6 +41,7 @@ interface Defect {
   type: string;
   thumbnail: string;
   video: string;
+  isThreeSixty?: boolean; // 360° photo flag
 }
 
 interface DefectEditModalProps {
@@ -559,7 +576,13 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
 
                         <div className="defect-content">
                           <div className="defect-image">
-                            {displayDefect.type === "video" && displayDefect.video ? (
+                            {displayDefect.isThreeSixty && displayDefect.image ? (
+                              <ThreeSixtyViewer
+                                imageUrl={displayDefect.image}
+                                alt={`360° view - ${displayDefect.defect_short_description || 'defect'}`}
+                                height="400px"
+                              />
+                            ) : displayDefect.type === "video" && displayDefect.video ? (
                               <>
                                 {playingVideoId !== displayDefect._id ? (
                                   <img

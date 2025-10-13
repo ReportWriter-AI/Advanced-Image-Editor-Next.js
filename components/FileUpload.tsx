@@ -13,10 +13,19 @@ const FileUpload: React.FC<FileUploadProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Light client-side validation to avoid round-trip on completely unsupported types
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      if (!isImage && !isVideo) {
+        alert('Unsupported file type. Please select an image or video.');
+        e.target.value = '';
+        return;
+      }
       onFileSelect(file);
       // Reset the input so the same file can be selected again if needed
       e.target.value = '';
@@ -24,14 +33,14 @@ const FileUpload: React.FC<FileUploadProps> = ({
   };
 
   return (
-    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50">
-      {/* Hidden file inputs */}
+    <div>
+      {/* Hidden file inputs - ensure they are completely hidden */}
       <input 
         type="file" 
         ref={fileInputRef}
         onChange={handleFileChange} 
         id={id} 
-        className="hidden" 
+        style={{ display: 'none' }}
         accept="image/*,.heic,.heif"
       />
       <input 
@@ -39,32 +48,97 @@ const FileUpload: React.FC<FileUploadProps> = ({
         ref={cameraInputRef}
         onChange={handleFileChange} 
         id={`${id}-camera`} 
-        className="hidden" 
+        style={{ display: 'none' }}
         accept="image/*,.heic,.heif"
-        capture="environment"
+        /* No capture attribute: lets users switch between cameras in OS UI */
+      />
+      <input 
+        type="file" 
+        ref={videoInputRef}
+        onChange={handleFileChange} 
+        id={`${id}-video`} 
+        style={{ display: 'none' }}
+        accept="video/*"
+        /* No capture attribute: lets users switch between cameras in OS UI */
       />
       
-      {/* Upload icon */}
-      <div className="mb-3">
-        <i className="fas fa-cloud-upload-alt text-3xl text-gray-400"></i>
-      </div>
-      
-      {/* Upload buttons */}
-      <div className="flex gap-2 justify-center">
+      {/* Upload buttons in a clean grid layout */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+        gap: '0.5rem',
+        maxWidth: '500px'
+      }}>
         <label 
-          htmlFor={id} 
-          className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition-colors text-sm font-medium"
+          htmlFor={id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            padding: '0.625rem 0.75rem',
+            backgroundColor: '#3b82f6',
+            color: 'white',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            border: 'none',
+            transition: 'background-color 0.2s',
+            whiteSpace: 'nowrap'
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2563eb')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#3b82f6')}
         >
-          <i className="fas fa-folder-open"></i>
-          Choose Image
+          📷 Upload Image
         </label>
         
         <label
           htmlFor={`${id}-camera`}
-          className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg cursor-pointer hover:bg-green-600 transition-colors text-sm font-medium"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            padding: '0.625rem 0.75rem',
+            backgroundColor: '#10b981',
+            color: 'white',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            border: 'none',
+            transition: 'background-color 0.2s',
+            whiteSpace: 'nowrap'
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#059669')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
         >
-          <i className="fas fa-camera"></i>
-          Take Photo
+          📸 Take Photo
+        </label>
+        
+        <label
+          htmlFor={`${id}-video`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            padding: '0.625rem 0.75rem',
+            backgroundColor: '#8b5cf6',
+            color: 'white',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            border: 'none',
+            transition: 'background-color 0.2s',
+            whiteSpace: 'nowrap'
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#7c3aed')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#8b5cf6')}
+        >
+          🎥 Take Video
         </label>
       </div>
     </div>

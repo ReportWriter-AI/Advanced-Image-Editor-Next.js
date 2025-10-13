@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { generateInspectionReportHTML, type DefectItem, type ReportMeta } from "../../../../../lib/pdfTemplate";
+import { uploadReportToR2 } from "../../../../../lib/r2";
+import { updateInspection } from "../../../../../lib/inspection";
 
 export const runtime = "nodejs"; // ensure Node runtime for puppeteer
 export const dynamic = "force-dynamic"; // avoid caching
@@ -8,11 +10,13 @@ export const maxDuration = 60; // allow enough time on Vercel
 type Payload = {
   defects: DefectItem[];
   meta?: ReportMeta;
+  inspectionId?: string; // Add inspection ID to payload
+  reportMode?: 'full' | 'summary'; // Add report mode
 };
 
 export async function POST(req: NextRequest) {
   try {
-    const { defects, meta } = (await req.json()) as Payload;
+    const { defects, meta, inspectionId, reportMode = 'full' } = (await req.json()) as Payload;
 
     if (!Array.isArray(defects) || defects.length === 0) {
       return new Response(JSON.stringify({ error: "defects array is required" }), {
@@ -131,12 +135,33 @@ export async function POST(req: NextRequest) {
 
     const filename = (meta?.title || "inspection-report").toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".pdf";
 
+    // If inspectionId is provided, upload to R2 and save permanent URL
+    let permanentUrl: string | null = null;
+    if (inspectionId) {
+      try {
+        console.log(`📤 Uploading PDF to R2 for inspection ${inspectionId}...`);
+        permanentUrl = await uploadReportToR2(Buffer.from(pdfBuffer), inspectionId, 'pdf', reportMode);
+        
+        // Save the permanent URL to MongoDB
+        await updateInspection(inspectionId, {
+          pdfReportUrl: permanentUrl,
+          pdfReportGeneratedAt: new Date()
+        });
+        
+        console.log(`✅ PDF permanent URL saved: ${permanentUrl}`);
+      } catch (uploadError) {
+        console.error('⚠️ Failed to upload PDF to R2:', uploadError);
+        // Continue with download even if upload fails
+      }
+    }
+
     return new Response(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         "content-type": "application/pdf",
         "content-disposition": `attachment; filename=${filename}`,
         "cache-control": "no-store",
+        ...(permanentUrl && { "x-permanent-url": permanentUrl }), // Include permanent URL in response header
       },
     });
   } catch (err: any) {

@@ -479,7 +479,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
       
       // Only show section heading when section changes
       const sectionHeadingHtml = isNewSection ? `
-          <div class="section-heading" style="--selected-color: #111827;">
+          <div class="section-heading" style="--selected-color: #111827; border-bottom: none;">
             <h2 class="section-heading-text" style="color: #111827;">
               ${sectionHeading}
             </h2>
@@ -489,7 +489,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
         ${sectionHeadingHtml}
         ${informationHtml}
         <section class="report-section" style="--selected-color: ${selectedColor};">
-          <div class="section-heading" style="--selected-color: ${selectedColor}; margin-top: ${isNewSection && !informationHtml ? '0.75rem' : (isNewSection ? '0.5rem' : '0.5rem')};">
+          <div class="section-heading" style="--selected-color: ${selectedColor}; margin-top: ${isNewSection && !informationHtml ? '0.75rem' : (isNewSection ? '0.5rem' : '0.5rem')}; border-bottom: 2px solid ${selectedColor};">
             <h2 class="section-heading-text">
               ${subsectionHeading}
               <span class="importance-badge" style="background-color: ${selectedColor};">${importanceLabel}</span>
@@ -555,7 +555,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     const cleanSectionName = sectionName.replace(/^\d+\s*-\s*/, '');
     
     return `
-      <div class="section-heading" style="--selected-color: #111827;">
+      <div class="section-heading" style="--selected-color: #111827; border-bottom: none;">
         <h2 class="section-heading-text" style="color: #111827;">
           Section ${currentMain} - ${escapeHtml(cleanSectionName)}
         </h2>
@@ -851,7 +851,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     
     .info-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 1rem;
       /* Allow grid to break across pages if needed */
       page-break-inside: auto;
@@ -882,11 +882,11 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     .info-image {
       width: 100%;
       max-width: 200px;
-      max-height: 250px;
+      max-height: 200px;
       height: auto;
-      border-radius: 4px;
-      border: 1px solid #e5e7eb;
+      border-radius: 6px;
       object-fit: cover;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       /* Keep images together */
       page-break-inside: avoid;
       break-inside: avoid;
@@ -1176,7 +1176,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
 
   ${reportType === 'full' ? `
   <!-- Hardcoded Section - Resources and Disclaimers -->
-  <div class="section-heading" style="--selected-color: #111827; border-bottom: 2px solid #111827; margin-top: 2rem;">
+  <div class="section-heading" style="--selected-color: #111827; border-bottom: none; margin-top: 2rem;">
     <h2 class="section-heading-text" style="color: #111827;">
       Resources and Disclaimers
     </h2>

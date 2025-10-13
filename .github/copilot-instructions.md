@@ -1,10 +1,34 @@
 # AI Coding Agent Instructions
 
+## Quick Start Guide for AI Agents
+
+**First-time setup**: Run `npm install` then `npm run dev`. Requires Node.js 22.x.
+
+**Common Tasks**:
+
+- **Add new defect field**: Update `types/mongo.ts` interface → Update `/api/defects` routes → Update `DefectEditModal.tsx` UI
+- **Modify AI prompt**: Edit `src/app/api/llm/analyze-image/route.ts` system prompt (~line 80)
+- **Change PDF layout**: Modify `public/report-template/index.html` + `lib/pdfTemplate.ts` data injection
+- **Add canvas tool**: Reference arrow/circle implementations in `components/ImageEditor.tsx`
+- **Debug localStorage flow**: Check `pendingAnnotation` lifecycle in `DefectEditModal.tsx` (lines 81-122) and `InformationSections.tsx` (~line 252)
+
+**Key File Locations**:
+
+- API routes: `src/app/api/[resource]/route.ts`
+- Components: `components/*.tsx` (no src prefix)
+- MongoDB models: `types/mongo.ts` (TypeScript interfaces, not Mongoose schemas)
+- State management: `lib/store.ts` (Zustand)
+- Utilities: `lib/*.ts` (defect, inspection, mongodb, pdfTemplate, r2)
+
+---
+
 ## Project Overview
 
-This is a **Next.js 13 App Router** property inspection application for professional home inspectors. Users annotate images with defects, organize inspection data into structured sections, and generate professional PDF reports with cost estimates. The app combines canvas-based image editing, AI-powered defect analysis (OpenAI Vision), and server-side PDF generation.
+This is a **Next.js 13 App Router** property inspection application for professional home inspectors. Users annotate images with defects, organize inspection data into structured sections, and generate professional PDF/DOCX reports with cost estimates. The app combines canvas-based image editing, AI-powered defect analysis (OpenAI Vision), and server-side PDF generation.
 
-**Tech Stack**: Next.js 13.4.19, TypeScript, React 18, MongoDB, Cloudflare R2 (object storage), OpenAI API, Puppeteer + Chromium, Zustand (state), Node.js 22
+**Tech Stack**: Next.js 13.4.19, TypeScript, React 18, MongoDB (Mongoose), Cloudflare R2 (object storage), OpenAI API, Puppeteer + Chromium, Zustand (state), Node.js 22
+
+**Key Capabilities**: Image annotation with canvas tools (arrows, circles, crop), voice-to-text descriptions, AI cost estimation, template-based information sections with checklists, automated defect numbering, multi-format report export (PDF/DOCX)
 
 ## Architecture & Data Flow
 
@@ -430,11 +454,32 @@ const totalCost =
 
 ### Architecture (`/api/reports/generate/route.ts`)
 
-**Template System:**
+### Template System (`public/report-template/`)
 
-- Standalone HTML template: `public/report-template/index.html` (includes inline CSS/JS)
-- Data injection: `generateInspectionReportHTML(defects, meta)` in `lib/pdfTemplate.ts`
-- Rendering: Puppeteer headless Chrome converts HTML → PDF with page breaks
+**Standalone HTML template**: `public/report-template/index.html` (includes inline CSS/JS)
+
+**Template Structure**:
+
+- **Header Section**: Company logo, report title, property address (injected from meta)
+- **Summary Table**: Overview of all defects with display numbers and total costs
+- **Defect Details**: Full-page sections for each defect with images, descriptions, cost breakdowns
+- **Information Sections**: Checklist items grouped by category (Exterior, Electrical, etc.)
+- **Page Breaks**: CSS `page-break-after: always` for proper PDF pagination
+
+**Data Injection**:
+
+- Function: `generateInspectionReportHTML(defects, meta)` in `lib/pdfTemplate.ts`
+- Process: Loads HTML template → replaces placeholders → injects dynamic content → returns HTML string
+- Template placeholders: `{{COMPANY_NAME}}`, `{{REPORT_TITLE}}`, `{{DEFECTS_HTML}}`, `{{INFORMATION_SECTIONS_HTML}}`
+
+**Styling**: All CSS must be inline or in `<style>` tag — external stylesheets don't work in Puppeteer PDF generation
+
+**Custom Template Modifications**:
+
+1. Edit `public/report-template/index.html` for layout changes
+2. Update `lib/pdfTemplate.ts` functions for data injection logic
+3. Test with `POST /api/reports/generate` endpoint
+4. Verify page breaks and image sizing in generated PDF
 
 **Defect Numbering System:**
 
@@ -579,7 +624,17 @@ OPENAI_API_KEY=sk-xxx
 QSTASH_TOKEN=xxx  # For async job processing
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 PUPPETEER_EXECUTABLE_PATH=/path/to/chrome  # For local PDF generation
+CHROMIUM_PACK_URL=https://github.com/Sparticuz/chromium/releases/download/v138.0.0/chromium-v138.0.0-pack.tar  # For serverless
 ```
+
+### Voice Input Feature
+
+**Speech-to-Text**: Defect descriptions can be filled via microphone using Web Speech API (WebKit)
+
+- Browser compatibility: Chrome/Edge (full support), Firefox/Safari (limited)
+- Location: Microphone button between location selector and submit button in `/image-editor`
+- Implementation: `src/app/image-editor/page.tsx` uses `webkitSpeechRecognition` API
+- Auto-fills description field, shows transcript, handles errors gracefully
 
 ### Testing Workflows
 
@@ -609,8 +664,17 @@ PUPPETEER_EXECUTABLE_PATH=/path/to/chrome  # For local PDF generation
 **Image won't upload**: Check R2 env vars, verify bucket CORS settings allow `PUT` from localhost  
 **AI analysis fails**: Check `OPENAI_API_KEY`, review OpenAI API quota/errors in route logs  
 **PDF generation fails locally**: Install Google Chrome, set `PUPPETEER_EXECUTABLE_PATH` env var  
+**PDF generation fails serverless**: Set `CHROMIUM_PACK_URL` env var, verify `@sparticuz/chromium-min` is installed  
 **MongoDB connection errors**: Verify IP whitelist in MongoDB Atlas, check connection string format  
-**`pendingAnnotation` not detected**: Check browser console for localStorage errors, verify polling interval in `DefectEditModal`
+**`pendingAnnotation` not detected**: Check browser console for localStorage errors, verify polling interval in `DefectEditModal`  
+**HEIC images won't load**: Check `heic-convert` or `heic2any` library, verify webpack config suppresses warnings  
+**Voice input not working**: Check browser permissions, verify WebKit Speech API support (Chrome/Edge only)
+
+### PowerShell Development Tips
+
+**Running scripts**: Use `;` to chain commands: `cd .\Advanced-Image-Editor-Next.js\; npm run dev`  
+**Environment variables**: Set with `$env:VARIABLE_NAME="value"` before running commands  
+**File paths**: Use backslashes or forward slashes: `c:\path\to\file` or `c:/path/to/file`
 
 ## Common Gotchas & Solutions
 
@@ -670,6 +734,25 @@ useEffect(() => {
 **Problem**: Large images (>4MB) fail to upload  
 **Solution**: Increase Next.js body size limit in API route or convert to multipart/form-data streaming (already implemented in `/api/llm/analyze-image`)
 
+### 9. Next.js 13 App Router Route Configuration
+
+**Issue**: API routes need specific runtime/caching configuration
+**Pattern**: Export route segment config at top of file:
+
+```ts
+export const runtime = "nodejs"; // Required for Puppeteer (not Edge)
+export const dynamic = "force-dynamic"; // Prevent caching
+export const maxDuration = 60; // Extend timeout for long operations
+```
+
+**Used in**: `/api/reports/generate`, `/api/information-sections/[inspectionId]`
+
+### 10. Windows PowerShell Path Issues
+
+**Problem**: Scripts fail with path-related errors on Windows
+**Solution**: Use `path.resolve()` or `path.join()` for cross-platform paths, not string concatenation
+**Example**: `path.join(process.cwd(), 'public', 'report-template', 'index.html')` instead of `'./public/report-template/index.html'`
+
 ## Code Style & Conventions
 
 ### TypeScript Patterns
@@ -677,6 +760,21 @@ useEffect(() => {
 - **Strict mode enabled**: All types must be explicit, no implicit `any`
 - **Interface naming**: Prefix with `I` for data models (`ISection`, `IInformationBlock`)
 - **Null safety**: Use optional chaining (`defect?.image`) and nullish coalescing (`value ?? default`)
+- **Type imports**: Import types separately when needed: `import type { NextRequest } from 'next/server'`
+
+### Component Organization
+
+- **Large components OK**: Files >2000 lines are acceptable if logically cohesive (e.g., `InformationSections.tsx`, `ImageEditor.tsx`)
+- **Section comments**: Use `// ===== SECTION NAME =====` dividers for long files
+- **Client components**: Always mark with `"use client"` directive at top if using hooks/browser APIs
+- **Dynamic imports**: Use for heavy components to reduce bundle size: `dynamic(() => import(...), { ssr: false })`
+
+### State Management
+
+- **Zustand for global state**: `lib/store.ts` uses Zustand with persist middleware for analysis data
+- **localStorage for cross-route messaging**: `pendingAnnotation`, `returnToSection`, `inspection-checklists-${id}`
+- **Component state**: Use `useState` for local UI state, lift up only when needed
+- **No Redux/Context API**: Zustand handles all global state needs
 
 ### Component Organization
 
@@ -818,6 +916,30 @@ const defectData = {
 // 3. Old defects still work (priority will be undefined)
 ```
 
+### Database Management Scripts (scripts_yedek/scripts/)
+
+**Purpose**: Node.js scripts for MongoDB maintenance and data migration between environments
+
+**Key Scripts**:
+
+- **`export-local-database.js`**: Exports entire local MongoDB to JSON files
+- **`seed-production.js` / `seed-vercel-production.js`**: Seeds production database with template data
+- **`copy-local-to-production.js`**: Syncs local data to production (use with caution)
+- **`smart-copy-to-production.js`**: Intelligent sync that preserves production-only data
+- **`fix-section-ids.js`**: Repairs malformed section IDs in database
+- **`clean-production-comments.js`**: Removes debug comments from production data
+- **`verify-production-fix.js`**: Validates data integrity after migrations
+
+**Usage Pattern**:
+
+```bash
+cd scripts_yedek/scripts
+node export-local-database.js  # Creates local-database-export.json
+node seed-production.js  # Populates production with templates
+```
+
+**⚠️ CAUTION**: Scripts modify production databases directly. Always backup first and test queries in `test-production-api.js` before destructive operations.
+
 ## Quick Reference
 
 ### Key Files for Common Tasks
@@ -847,6 +969,9 @@ const defectData = {
 - [ ] Generate PDF → verify Puppeteer finds Chrome executable
 - [ ] Test auto-save → edit defect field, wait 1s, reload page (should persist)
 - [ ] Test HEIC upload → upload iPhone photo, verify conversion to JPEG
+- [ ] Test voice input → click microphone, speak, verify transcript appears
+- [ ] Test DOCX export → generate report, verify Word document downloads
+- [ ] Test defect numbering → create multiple defects in different sections, verify sequential numbering (e.g., 3.1.2)
 
 ### External Dependencies
 
@@ -856,6 +981,16 @@ const defectData = {
 **Vercel**: Hosting (free tier covers most use cases)  
 **Upstash QStash** (optional): Async job queue for slow AI requests
 
+### Key Libraries & Their Purposes
+
+- **Puppeteer + Chromium**: Headless browser for PDF generation from HTML templates
+- **heic-convert/heic2any**: Convert iOS HEIC images to JPEG for browser compatibility
+- **Zustand**: Lightweight state management with localStorage persistence
+- **@aws-sdk/client-s3**: S3-compatible SDK for Cloudflare R2 uploads
+- **exifr**: Extract EXIF metadata from images (orientation, GPS, etc.)
+- **html2canvas**: Fallback for client-side canvas-to-image conversion
+- **docx/docxtemplater**: Generate Word documents from templates (experimental)
+
 ---
 
-**Last Updated**: 2025-10-09 | **Project Version**: 0.1.0 | **Next.js**: 13.4.19
+**Last Updated**: 2025-10-10 | **Project Version**: 0.1.0 | **Next.js**: 13.4.19

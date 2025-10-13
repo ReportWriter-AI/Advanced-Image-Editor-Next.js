@@ -7,6 +7,7 @@ export interface IInspectionInformationBlockImage {
   annotations?: string;
   checklist_id?: string; // Associate image with specific checklist item
   location?: string; // Location tag for the image (e.g., "Garage", "Left Side of House")
+  isThreeSixty?: boolean; // 360° photo flag
 }
 
 // Structure to store selected answers for each checklist item
@@ -32,6 +33,7 @@ const ImageSchema = new Schema<IInspectionInformationBlockImage>(
     annotations: { type: String, trim: true },
     checklist_id: { type: String, trim: true }, // ID of the checklist item this image belongs to
     location: { type: String, trim: true }, // Location tag for the image
+    isThreeSixty: { type: Boolean, default: false }, // 360° photo flag
   },
   { _id: false }
 );

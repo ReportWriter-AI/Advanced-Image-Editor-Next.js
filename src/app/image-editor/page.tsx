@@ -44,6 +44,7 @@ export default function ImageEditorPage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
+  const [isThreeSixty, setIsThreeSixty] = useState(false); // 360° photo flag
 
 
 
@@ -488,6 +489,7 @@ export default function ImageEditorPage() {
       formData.append('inspectionId', selectedInspectionId);
       formData.append('selectedColor', selectedColor);
       formData.append('imageUrl', imageDataUrl);
+      formData.append('isThreeSixty', isThreeSixty.toString()); // Add 360° flag
       if (videoFile) {
         formData.append('videoFile', videoFile);
         formData.append('thumbnail', thumbnail!);
@@ -851,6 +853,47 @@ export default function ImageEditorPage() {
              value={description}
              onChange={(e) => setDescription(e.target.value)}
            />
+           
+           {/* 360° Photo Checkbox */}
+           <div style={{
+             display: 'flex',
+             alignItems: 'center',
+             gap: '10px',
+             marginTop: '12px',
+             padding: '12px',
+             background: 'linear-gradient(135deg, rgba(75, 108, 183, 0.1) 0%, rgba(106, 17, 203, 0.1) 100%)',
+             borderRadius: '8px',
+             border: '1px solid rgba(75, 108, 183, 0.2)'
+           }}>
+             <input
+               type="checkbox"
+               id="threeSixtyCheckbox"
+               checked={isThreeSixty}
+               onChange={(e) => setIsThreeSixty(e.target.checked)}
+               style={{
+                 width: '18px',
+                 height: '18px',
+                 cursor: 'pointer',
+                 accentColor: '#4b6cb7'
+               }}
+             />
+             <label
+               htmlFor="threeSixtyCheckbox"
+               style={{
+                 fontSize: '15px',
+                 fontWeight: '500',
+                 color: '#2d3748',
+                 cursor: 'pointer',
+                 userSelect: 'none',
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '6px'
+               }}
+             >
+               <i className="fas fa-sync-alt" style={{ color: '#4b6cb7' }}></i>
+               This is a 360° photo
+             </label>
+           </div>
          </div>
        )}
 

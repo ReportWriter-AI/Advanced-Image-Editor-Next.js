@@ -43,7 +43,8 @@ async function handler(request: Request) {
       finalVideoUrl,
       thumbnail,
       type,
-      videoSrc
+      videoSrc,
+      isThreeSixty
     } = body;
 
     console.log("🔄 Processing job", analysisId);
@@ -167,7 +168,8 @@ async function handler(request: Request) {
       color: selectedColor || undefined,
       type: type,
       thumbnail: finalImageUrl,
-      video: finalVideoUrl
+      video: finalVideoUrl,
+      isThreeSixty: isThreeSixty || false
     };
 
     await createDefect(defectData);

@@ -1,0 +1,319 @@
+/* 
+ * Shared Report Styles
+ * Used by both main inspection report page and HTML export template
+ * This ensures consistent styling across all report formats
+ */
+
+/* ===== CORE REPORT SECTION STYLES ===== */
+.report-section {
+  background: white;
+  border-radius: 1.0rem;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e5e7eb;
+  /* PDF generation optimizations */
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.section-heading {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  /* NO border-bottom on main section headings - only subsection headings have underlines */
+}
+
+.section-heading-text {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--selected-color, #d63636);
+  margin: 0;
+  letter-spacing: -0.025em;
+  /* TEST: This comment verifies shared styles are working */
+}
+
+/* Small pill badge used to display importance next to headings */
+.importance-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #fff;
+  background: var(--selected-color, #d63636);
+  border: 1px solid rgba(255,255,255,0.3);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  margin-left: 8px;
+}
+
+/* ===== CONTENT GRID LAYOUT ===== */
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 3fr;
+  gap: 2rem;
+  margin-bottom: 0;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0;
+}
+
+/* ===== IMAGE SECTION ===== */
+.image-section {
+  background: #f8fafc;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+  position: relative;
+  overflow: hidden;
+}
+
+.image-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, var(--selected-color, #d63636), var(--light-color, #f87171), var(--selected-color, #d63636));
+}
+
+.image-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  letter-spacing: -0.025em;
+}
+
+.image-title i {
+  color: var(--selected-color, #d63636);
+  margin-right: 0.75rem;
+  font-size: 1.25rem;
+}
+
+.image-container {
+  position: relative;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  background: white;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.property-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  transition: all 0.3s ease;
+  border-radius: 0.75rem;
+  object-fit: cover;
+}
+
+.property-image:hover {
+  transform: scale(1.02);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+
+.image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  background: white;
+  border: 2px dashed #cbd5e1;
+  border-radius: 1rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.image-placeholder i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.6;
+}
+
+.location-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 0.5rem;
+  border-left: 3px solid var(--selected-color, #d63636);
+  transition: all 0.3s ease;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.location-section:hover {
+  background: #f8fafc;
+  transform: translateX(2px);
+  box-shadow: 0 4px 4px var(--shadow-color, rgba(214, 54, 54, 0.15));
+}
+
+/* ===== DESCRIPTION SECTION ===== */
+.description-section {
+  background: #f8fafc;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+  position: relative;
+  overflow: hidden;
+}
+
+.description-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  letter-spacing: -0.025em;
+}
+
+.description-title i {
+  color: var(--selected-color, #d63636);
+  margin-right: 0.75rem;
+  font-size: 1.25rem;
+}
+
+.section {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 0.5rem;
+  border-left: 3px solid var(--selected-color, #d63636);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.section:hover {
+  background: #f8fafc;
+  transform: translateX(2px);
+  box-shadow: 0 4px 4px var(--shadow-color, rgba(214, 54, 54, 0.15));
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  letter-spacing: -0.025em;
+}
+
+.section-title i {
+  color: var(--selected-color, #d63636);
+  margin-right: 0.5rem;
+  font-size: 0.9rem;
+  background: rgba(214, 54, 54, 0.1);
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-content {
+  color: #374151;
+  line-height: 1.5;
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.defect-headline {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--selected-color, #d63636);
+  margin: 0 0 0.5rem 0;
+  letter-spacing: -0.01em;
+}
+
+.defect-body {
+  color: #374151;
+  line-height: 1.55;
+  font-size: 0.9rem;
+  margin: 0 0 0.6rem 0;
+}
+
+.defect-body:last-child {
+  margin-bottom: 0;
+}
+
+.cost-highlight {
+  background: #f8fafc;
+  border: 2px solid var(--selected-color, #d63636);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-top: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.total-cost {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--selected-color, #d63636);
+  text-align: center;
+  padding: 0.75rem;
+  letter-spacing: -0.025em;
+}
+
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 992px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .image-title, .description-title {
+    text-align: center;
+    justify-content: center;
+  }
+  
+  .report-section {
+    padding: 1.5rem;
+  }
+  
+  .section-heading-text {
+    font-size: 1.5rem;
+  }
+}
+
+/* ===== PRINT OPTIMIZATIONS ===== */
+@media print {
+  .report-section {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 1.5rem;
+    box-shadow: none;
+  }
+  
+  .content-grid,
+  .image-section,
+  .description-section,
+  .section,
+  .location-section,
+  .image-container,
+  .property-image {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

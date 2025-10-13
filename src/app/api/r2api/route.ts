@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { uploadToR2 } from "@/lib/r2";
 
+// Configure route to accept large file uploads (360° photos can be 30-50MB)
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Allow up to 60 seconds for large file uploads
+
 // Dynamic import for heic-convert (ESM module)
 let heicConvert: any = null;
 
@@ -80,16 +85,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Validate file size (limit to 10MB to accommodate HEIC files which are larger)
-    if (file.size > 10 * 1024 * 1024) {
+    // Validate file size: different limits for images vs videos
+    // Note: 360° photos are typically larger (30-50MB), so we allow up to 100MB for images
+    const fileExt = file.name.toLowerCase().split('.').pop() || '';
+    const isVideo = file.type.startsWith('video/') || ['mp4','mov','webm','3gp','3gpp','m4v'].includes(fileExt);
+    const maxSizeBytes = isVideo ? 100 * 1024 * 1024 : 100 * 1024 * 1024; // 100MB for both videos and images (supports 360° photos)
+    if (file.size > maxSizeBytes) {
       return NextResponse.json(
-        { error: "File size exceeds the 10MB limit" },
+        { error: `File size exceeds the 100MB limit` },
         { status: 400 }
       );
     }
 
-    // Validate file type - now includes HEIC/HEIF formats
-    const allowedTypes = [
+    // Validate file type - include images (with HEIC/HEIF) and common videos
+    const allowedImageTypes = [
       "image/jpeg", 
       "image/png", 
       "image/gif", 
@@ -99,16 +108,25 @@ export async function POST(req: Request) {
       "image/heic-sequence",
       "image/heif-sequence"
     ];
-    
+    const allowedVideoTypes = [
+      "video/mp4",
+      "video/quicktime", // .mov
+      "video/webm",
+      "video/3gpp",
+      "video/x-m4v",
+    ];
+
     // Also check file extension for HEIC files (some browsers don't set correct MIME type)
-    const fileExtension = file.name.toLowerCase().split('.').pop();
-    const isHeicFile = fileExtension === 'heic' || fileExtension === 'heif' || 
+    const isHeicFile = fileExt === 'heic' || fileExt === 'heif' || 
                        file.type.toLowerCase().includes('heic') || 
                        file.type.toLowerCase().includes('heif');
+
+    const isAllowedImage = allowedImageTypes.includes(file.type) || isHeicFile;
+    const isAllowedVideo = allowedVideoTypes.includes(file.type) || (isVideo && ['mp4','mov','webm','3gp','3gpp','m4v'].includes(fileExt));
     
-    if (!allowedTypes.includes(file.type) && !isHeicFile) {
+    if (!isAllowedImage && !isAllowedVideo) {
       return NextResponse.json(
-        { error: "Only JPG, PNG, GIF, WebP, and HEIC/HEIF images are supported" },
+        { error: "Only images (JPG, PNG, GIF, WebP, HEIC/HEIF) and videos (MP4, MOV, WebM, 3GP, M4V) are supported" },
         { status: 400 }
       );
     }
@@ -116,11 +134,11 @@ export async function POST(req: Request) {
     // Convert to Buffer for processing
     let arrayBuffer = await file.arrayBuffer();
     let buffer = Buffer.from(arrayBuffer);
-    let finalContentType = file.type;
-    let finalFileName = file.name;
+  let finalContentType = file.type;
+  let finalFileName = file.name;
 
     // Convert HEIC/HEIF to JPEG
-    if (isHeicFile) {
+  if (!isVideo && isHeicFile) {
       try {
         console.log("📸 Converting HEIC/HEIF image to JPEG...");
         const convert = await getHeicConvert();
@@ -146,14 +164,15 @@ export async function POST(req: Request) {
     }
 
     // Create unique filename with sanitized name
-    const sanitizedName = finalFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const key = `uploads/${Date.now()}-${sanitizedName}`;
+  const sanitizedName = finalFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const folder = isVideo ? 'uploads/videos' : 'uploads';
+  const key = `${folder}/${Date.now()}-${sanitizedName}`;
 
     console.log("Starting R2 upload process...");
     const result = await uploadToR2(buffer, key, finalContentType);
 
     return NextResponse.json(
-      { success: true, url: result },
+      { success: true, url: result, type: isVideo ? 'video' : 'image' },
       { status: 200 }
     );
   } catch (error: any) {

@@ -56,3 +56,28 @@ export async function uploadToR2(file: Buffer, key: string, contentType: string)
     throw error; // Re-throw to handle in the API route
   }
 }
+
+// Upload PDF or HTML report to R2 and return permanent URL
+export async function uploadReportToR2(
+  fileBuffer: Buffer,
+  inspectionId: string,
+  reportType: 'pdf' | 'html',
+  reportMode: 'full' | 'summary' = 'full'
+) {
+  try {
+    const timestamp = Date.now();
+    const extension = reportType === 'pdf' ? 'pdf' : 'html';
+    const contentType = reportType === 'pdf' ? 'application/pdf' : 'text/html';
+    
+    // Create a structured path: reports/inspection-{id}/inspection-{id}-{mode}-{timestamp}.{ext}
+    const key = `reports/inspection-${inspectionId}/inspection-${inspectionId}-${reportMode}-${timestamp}.${extension}`;
+    
+    const url = await uploadToR2(fileBuffer, key, contentType);
+    
+    console.log(`✅ Report uploaded: ${reportType.toUpperCase()} - ${url}`);
+    return url;
+  } catch (error) {
+    console.error(`❌ Failed to upload ${reportType} report:`, error);
+    throw error;
+  }
+}
