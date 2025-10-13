@@ -1527,11 +1527,14 @@
   
   .modal-header {
     padding: 12px 16px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    position: static;
     background: #f8fafc;
     border-bottom: 2px solid #e5e7eb;
+  }
+  
+  .modal-tabs-container {
+    position: static !important;
+    background: #ffffff;
   }
   
   .modal-header h2 {

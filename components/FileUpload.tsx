@@ -8,137 +8,139 @@ interface FileUploadProps {
 
 const FileUpload: React.FC<FileUploadProps> = ({ 
   onFileSelect, 
-  accept = "image/*", 
+  accept = "image/*,.heic,.heif", 
   id = "file-upload" 
 }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Light client-side validation to avoid round-trip on completely unsupported types
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      if (!isImage && !isVideo) {
+        alert('Unsupported file type. Please select an image or video.');
+        e.target.value = '';
+        return;
+      }
       onFileSelect(file);
-    }
-  };
-
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment', // Use back camera if available
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        } 
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-      }
-    } catch (error) {
-      console.error('Error accessing camera:', error);
-      alert('Unable to access camera. Please make sure you have granted camera permissions.');
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  };
-
-  const captureImage = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      
-      if (context) {
-        // Set canvas dimensions to match video
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        
-        // Draw the current video frame to canvas
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Convert canvas to blob
-        canvas.toBlob((blob) => {
-          if (blob) {
-            // Create a File object from the blob
-            const file = new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' });
-            onFileSelect(file);
-            
-            // Stop camera after capturing
-            stopCamera();
-          }
-        }, 'image/jpeg', 0.9);
-      }
+      // Reset the input so the same file can be selected again if needed
+      e.target.value = '';
     }
   };
 
   return (
-    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-      <i className="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
-      <p className="text-gray-600 mb-4">Drag & drop your image here or click to browse</p>
+    <div>
+      {/* Hidden file inputs - ensure they are completely hidden */}
+      <input 
+        type="file" 
+        ref={fileInputRef}
+        onChange={handleFileChange} 
+        id={id} 
+        style={{ display: 'none' }}
+        accept="image/*,.heic,.heif"
+      />
+      <input 
+        type="file" 
+        ref={cameraInputRef}
+        onChange={handleFileChange} 
+        id={`${id}-camera`} 
+        style={{ display: 'none' }}
+        accept="image/*,.heic,.heif"
+        /* No capture attribute: lets users switch between cameras in OS UI */
+      />
+      <input 
+        type="file" 
+        ref={videoInputRef}
+        onChange={handleFileChange} 
+        id={`${id}-video`} 
+        style={{ display: 'none' }}
+        accept="video/*"
+        /* No capture attribute: lets users switch between cameras in OS UI */
+      />
       
-      {/* Camera Section */}
-      <div className="mb-4">
-        <button
-          onClick={startCamera}
-          className="px-4 py-2 bg-green-500 text-white rounded-lg cursor-pointer hover:bg-green-600 transition-colors inline-block mr-2"
+      {/* Upload buttons in a clean grid layout */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+        gap: '0.5rem',
+        maxWidth: '500px'
+      }}>
+        <label 
+          htmlFor={id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            padding: '0.625rem 0.75rem',
+            backgroundColor: '#3b82f6',
+            color: 'white',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            border: 'none',
+            transition: 'background-color 0.2s',
+            whiteSpace: 'nowrap'
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2563eb')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#3b82f6')}
         >
-          <i className="fas fa-camera mr-2"></i>
-          Take a Picture
-        </button>
+          📷 Upload Image
+        </label>
         
-        <input 
-          type="file" 
-          onChange={handleFileChange} 
-          id={id} 
-          className="hidden" 
-          accept={accept}
-        />
-        <label htmlFor={id} className="px-4 py-2 bg-blue-500 text-white rounded-lg cursor-pointer hover:bg-blue-600 transition-colors inline-block">
-          Choose Image
+        <label
+          htmlFor={`${id}-camera`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            padding: '0.625rem 0.75rem',
+            backgroundColor: '#10b981',
+            color: 'white',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            border: 'none',
+            transition: 'background-color 0.2s',
+            whiteSpace: 'nowrap'
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#059669')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
+        >
+          📸 Take Photo
+        </label>
+        
+        <label
+          htmlFor={`${id}-video`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            padding: '0.625rem 0.75rem',
+            backgroundColor: '#8b5cf6',
+            color: 'white',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            border: 'none',
+            transition: 'background-color 0.2s',
+            whiteSpace: 'nowrap'
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#7c3aed')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#8b5cf6')}
+        >
+          🎥 Take Video
         </label>
       </div>
-
-      {/* Camera Preview */}
-      {streamRef.current && (
-        <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full max-w-md mx-auto rounded-lg mb-2"
-          />
-          <div className="flex gap-2 justify-center">
-            <button
-              onClick={captureImage}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg cursor-pointer hover:bg-red-600 transition-colors"
-            >
-              <i className="fas fa-camera-retro mr-2"></i>
-              Capture
-            </button>
-            <button
-              onClick={stopCamera}
-              className="px-4 py-2 bg-gray-500 text-white rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
-            >
-              <i className="fas fa-times mr-2"></i>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Hidden canvas for image capture */}
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 };

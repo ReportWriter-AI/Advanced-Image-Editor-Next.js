@@ -115,9 +115,13 @@ function buildSections(sections, { filterSeverity = null } = {}) {
   const summaryBody = document.getElementById('summaryBody');
   summaryBody.innerHTML = '';
 
-  let main = 0;
-  let lastTitle = null;
-  let sub = 0;
+  // Numbering: [Section].[Subsection].[Defect] - matches main page logic exactly
+  // Use the same numbering logic as the main page 
+  const sectionNumbers = new Map();
+  const subsectionNumbers = new Map();
+  const defectCounters = new Map();
+  
+  let currentSectionNum = 2; // Start from 3 (after info sections 1&2)
 
   sections.forEach((sec, sidx) => {
     // Section wrapper
@@ -145,19 +149,39 @@ function buildSections(sections, { filterSeverity = null } = {}) {
     const grid = document.createElement('div');
     grid.className = 'cards-grid';
 
-    // Numbering logic like 6.3.1 style per section
-    if (visibleDefects.length > 0) {
-      main += 1;
-      sub = 0;
-    }
-
     visibleDefects.forEach((d, didx) => {
-      sub += 1;
-      const number = `${main}.${sub}`;
+      const sectionKey = sec.title;
+      const subsectionKey = d.title; // Each defect is its own subsection in this template
+      const fullKey = `${sectionKey}|||${subsectionKey}`;
+      
+      // Assign section number if new section
+      if (!sectionNumbers.has(sectionKey)) {
+        currentSectionNum++;
+        sectionNumbers.set(sectionKey, currentSectionNum);
+        subsectionNumbers.set(sectionKey, new Map());
+      }
+      
+      const sectionNum = sectionNumbers.get(sectionKey);
+      const subsectionMap = subsectionNumbers.get(sectionKey);
+      
+      // Assign subsection number if new subsection within this section
+      if (!subsectionMap.has(subsectionKey)) {
+        subsectionMap.set(subsectionKey, subsectionMap.size + 1);
+      }
+      
+      const subsectionNum = subsectionMap.get(subsectionKey);
+      
+      // Increment defect counter for this subsection
+      const currentCount = defectCounters.get(fullKey) || 0;
+      const defectNum = currentCount + 1;
+      defectCounters.set(fullKey, defectNum);
+      
+      // Create display number: Section.Subsection.Defect (e.g., "4.1.2")
+      const display = `${sectionNum}.${subsectionNum}.${defectNum}`;
 
       // Summary row
       const row = document.createElement('tr');
-      row.innerHTML = `<td>${number}</td><td>${sec.title}</td><td>${d.title}</td>`;
+  row.innerHTML = `<td>${display}</td><td>${sec.title}</td><td>${d.title}</td>`;
       summaryBody.appendChild(row);
 
       // Defect section
@@ -171,7 +195,7 @@ function buildSections(sections, { filterSeverity = null } = {}) {
       sectionHeading.className = 'section-heading';
       const headingText = document.createElement('h2');
       headingText.className = 'section-heading-text';
-      headingText.textContent = `${number} ${sec.title} - ${d.title}`;
+  headingText.textContent = `${display} ${sec.title} - ${d.title}`;
       
       // Add badge with importance label
       let importanceLabel = 'Maintenance Items'; // default blue

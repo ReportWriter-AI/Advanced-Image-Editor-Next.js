@@ -5,6 +5,7 @@
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
 @import url('../../table-styles.css');
 @import url('../../styles/header-image.css');
+@import '@photo-sphere-viewer/core/index.css';
 
 :root {
   --primary-color: #3498db;
@@ -21,10 +22,13 @@
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* iOS-specific fixes for pull-to-refresh and modal scrolling */
 html {
   height: 100%;
   background: #f0f0f0 !important;
   background-attachment: fixed !important;
+  overscroll-behavior: contain; /* Prevent pull-to-refresh */
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 body {
@@ -34,6 +38,8 @@ body {
   padding: 20px;
   color: black;
   margin: 0;
+  overscroll-behavior: contain; /* Prevent pull-to-refresh */
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .app-container {

@@ -21,6 +21,7 @@ export default function RootLayout({
           crossOrigin="anonymous"
           referrerPolicy="no-referrer"
         />
+        <link rel="stylesheet" href="/shared-report-styles.css" />
       </head>
       <body>{children}</body>
     </html>

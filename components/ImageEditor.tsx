@@ -63,6 +63,8 @@ interface ImageEditorProps {
   setVideoFile: (file: File | null) => void;
   setVideoSrc: (src: string | null) => void;
   setThumbnail: (thumb: string | null) => void;
+  preloadedImage?: HTMLImageElement | null; // New prop for preloaded images
+  preloadedFile?: File | null; // New prop for preloaded file
 }
 
 const ImageEditor: React.FC<ImageEditorProps> = ({ 
@@ -77,7 +79,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   isCameraOpen,
   setVideoFile,
   setVideoSrc,
-  setThumbnail
+  setThumbnail,
+  preloadedImage,
+  preloadedFile
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -148,6 +152,29 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const [videoFile, setVideoFile2] = useState<File | null>(null);
   const [thumbnail, setThumbnail2] = useState<string | null>(null);
 
+  // Load preloaded image if provided
+  useEffect(() => {
+    console.log('🔍 preloadedImage useEffect triggered');
+    console.log('  - preloadedImage exists:', !!preloadedImage);
+    console.log('  - preloadedFile exists:', !!preloadedFile);
+    console.log('  - current image state exists:', !!image);
+    
+    if (preloadedImage && preloadedFile) {
+      console.log('📥 Setting preloaded image in ImageEditor');
+      setImage(preloadedImage);
+      setEditedFile(preloadedFile);
+      if (onImageChange) {
+        onImageChange(preloadedImage);
+      }
+      if (onEditedFile) {
+        onEditedFile(preloadedFile);
+      }
+    } else if (!preloadedImage && image) {
+      console.log('⚠️ preloadedImage became null/undefined but image state still exists - NOT clearing');
+      // DON'T clear the image if preloadedImage becomes null
+    }
+  }, [preloadedImage, preloadedFile, onImageChange, onEditedFile]);
+
 
 
 
@@ -167,10 +194,14 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
         const canvas = canvasRef.current;
         if (canvas) {
-          const context = canvas.getContext('2d');
+          const context = canvas.getContext('2d', { alpha: false });
           if (context) {
             canvas.width = img.width;
             canvas.height = img.height;
+
+            // Enable high-quality image rendering
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
 
             context.clearRect(0, 0, canvas.width, canvas.height);
             context.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -262,39 +293,6 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
   // Reset so same file can be chosen again
   e.target.value = "";
 };
-
-
-
-const canvas = document.createElement("canvas");
-canvas.toBlob(async (blob) => {
-  if (!blob) return;
-  // you can safely use blob here
-}, "image/png");
-
-async function uploadToR2(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const res = await fetch("/api/r2api", {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!res.ok) throw new Error("Failed to upload thumbnail");
-  const data = await res.json();
-  return data.url; // <- your backend should return the public R2 URL
-}
-
-canvas.toBlob(async (blob) => {
-  if (blob) {
-    const thumbnailFile = new File([blob], "thumbnail.png", { type: "image/png" });
-
-    // ⬆️ Upload this `thumbnailFile` to R2 (same as you do for videoFile)
-      const uploadedThumbnailUrl = await uploadToR2(thumbnailFile);
-
-    setThumbnail(uploadedThumbnailUrl);  // ✅ Now it’s a proper HTTPS URL
-  }
-}, "image/png");
 
 
 
@@ -566,104 +564,147 @@ canvas.toBlob(async (blob) => {
   };
 
   const exportEditedFile = (): File | null => {
-    if (!image) return null;
-    
-    // Create a new canvas with the same dimensions as the display canvas
-    const canvas = document.createElement('canvas');
-    const displayCanvas = canvasRef.current;
-    
-    if (!displayCanvas) return null;
-    
-    canvas.width = displayCanvas.width;
-    canvas.height = displayCanvas.height;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    
-    // Clear the canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw the background
-    ctx.fillStyle = '#f0f0f0';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw the image with the same scaling as the display canvas
-    if (image) {
-      // Apply rotation if needed
-      if (imageRotation !== 0) {
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate((imageRotation * Math.PI) / 180);
-        ctx.translate(-canvas.width / 2, -canvas.height / 2);
-        
-        // For rotated images, fill the entire canvas
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        
-        ctx.restore();
-      } else {
-        // For non-rotated images, use aspect ratio fitting
-        const imgAspect = image.width / image.height;
-        const canvasAspect = canvas.width / canvas.height;
-        
-        let drawWidth, drawHeight, offsetX, offsetY;
-        
-        if (imgAspect > canvasAspect) {
-          drawWidth = canvas.width;
-          drawHeight = canvas.width / imgAspect;
-          offsetX = 0;
-          offsetY = (canvas.height - drawHeight) / 2;
-        } else {
-          drawHeight = canvas.height;
-          drawWidth = canvas.height * imgAspect;
-          offsetX = (canvas.width - drawWidth) / 2;
-          offsetY = 0;
-        }
-        
-        ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
-      }
+    if (!image) {
+      console.warn('⚠️ exportEditedFile called but no image available');
+      return null;
     }
     
-    // Draw all lines with their current positions
-    lines.forEach(line => {
-      ctx.strokeStyle = line.color;
-      ctx.lineWidth = line.size;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.fillStyle = line.color;
+    console.log('🎨 Exporting edited file with', lines.length, 'annotations');
+    
+    try {
+      // Create a new canvas with the same dimensions as the display canvas
+      const canvas = document.createElement('canvas');
+      const displayCanvas = canvasRef.current;
       
-      if (line.type === 'draw') {
-        ctx.beginPath();
-        line.points.forEach((pt, i) => {
-          if (i === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        });
-        ctx.stroke();
-      } else if (line.type === 'arrow' && line.points.length >= 2) {
-        drawTransformedArrow(ctx, line);
-      } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
-        drawCircle(ctx, line.center.x, line.center.y, line.width, line.height, line.color);
-      } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
-        drawSquare(ctx, line.center.x, line.center.y, line.width, line.height, line.color);
+      if (!displayCanvas) {
+        console.error('❌ Display canvas not available');
+        return null;
       }
-    });
-  
-    const dataUrl = canvas.toDataURL("image/png");
-    const byteString = atob(dataUrl.split(",")[1]);
-    const mimeString = dataUrl.split(",")[0].split(":")[1].split(";")[0];
-  
-    const ab = new ArrayBuffer(byteString.length);
-    const ia = new Uint8Array(ab);
-    for (let i = 0; i < byteString.length; i++) {
-      ia[i] = byteString.charCodeAt(i);
+      
+      canvas.width = displayCanvas.width;
+      canvas.height = displayCanvas.height;
+      
+      const ctx = canvas.getContext('2d', { 
+        willReadFrequently: false,
+        alpha: false // Better performance on mobile
+      });
+      
+      if (!ctx) {
+        console.error('❌ Could not get canvas context');
+        return null;
+      }
+
+      // Enable high-quality image rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Clear the canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw the background
+      ctx.fillStyle = '#f0f0f0';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw the image with the same scaling as the display canvas
+      if (image) {
+        // Apply rotation if needed
+        if (imageRotation !== 0) {
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate((imageRotation * Math.PI) / 180);
+          ctx.translate(-canvas.width / 2, -canvas.height / 2);
+          
+          // For rotated images, fill the entire canvas
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+          
+          ctx.restore();
+        } else {
+          // For non-rotated images, use aspect ratio fitting
+          const imgAspect = image.width / image.height;
+          const canvasAspect = canvas.width / canvas.height;
+          
+          let drawWidth, drawHeight, offsetX, offsetY;
+          
+          if (imgAspect > canvasAspect) {
+            drawWidth = canvas.width;
+            drawHeight = canvas.width / imgAspect;
+            offsetX = 0;
+            offsetY = (canvas.height - drawHeight) / 2;
+          } else {
+            drawHeight = canvas.height;
+            drawWidth = canvas.height * imgAspect;
+            offsetX = (canvas.width - drawWidth) / 2;
+            offsetY = 0;
+          }
+          
+          ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+        }
+      }
+      
+      // Draw all lines with their current positions
+      lines.forEach(line => {
+        ctx.strokeStyle = line.color;
+        ctx.lineWidth = line.size;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.fillStyle = line.color;
+        
+        if (line.type === 'draw') {
+          ctx.beginPath();
+          line.points.forEach((pt, i) => {
+            if (i === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+          });
+          ctx.stroke();
+        } else if (line.type === 'arrow' && line.points.length >= 2) {
+          drawTransformedArrow(ctx, line);
+        } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
+          drawCircle(ctx, line.center.x, line.center.y, line.width, line.height, line.color);
+        } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
+          drawSquare(ctx, line.center.x, line.center.y, line.width, line.height, line.color);
+        }
+      });
+    
+      // Use JPEG for better mobile compatibility and smaller file size
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.98);
+      const byteString = atob(dataUrl.split(",")[1]);
+      const mimeString = dataUrl.split(",")[0].split(":")[1].split(";")[0];
+    
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+    
+      const file = new File([ab], "edited.jpg", { type: mimeString });
+      console.log('✅ Exported edited file:', file.size, 'bytes');
+      return file;
+    } catch (error) {
+      console.error('❌ Error exporting edited file:', error);
+      alert('Error creating edited image. Please try again.');
+      return null;
     }
-  
-    return new File([ab], "edited.png", { type: mimeString });
   };
 
   useEffect(() => {
-    const file = exportEditedFile();
-    onEditedFile?.(file);
-  }, [image, imageRotation, lines]);
+    console.log('🎯 exportEditedFile useEffect triggered!');
+    console.log('  - imageRotation:', imageRotation, '°');
+    console.log('  - lines.length:', lines.length);
+    console.log('  - has image:', !!image);
+    console.log('  - has onEditedFile:', !!onEditedFile);
+    
+    try {
+      const file = exportEditedFile();
+      if (file && onEditedFile) {
+        console.log('🔄 Updating edited file in parent component:', file.size, 'bytes');
+        onEditedFile(file);
+      } else {
+        console.log('⚠️ exportEditedFile returned null or no onEditedFile callback');
+      }
+    } catch (error) {
+      console.error('❌ Error in useEffect for exportEditedFile:', error);
+    }
+  }, [image, imageRotation, lines, onEditedFile]);
 
   const saveAction = (action: Action) => {
     setActionHistory(prev => [...prev, action]);
@@ -682,9 +723,8 @@ canvas.toBlob(async (blob) => {
       setActionHistory(lastAction.previousActionHistory);
       onCropStateChange(false);
       if (onImageChange) onImageChange(lastAction.previousImage);
-    } else if (lastAction.type === 'rotate') {
-      setImageRotation(lastAction.previousRotation);
     } else {
+      // Handle undo for drawing actions (arrow, circle, square)
       setLines(prev => prev.filter(line => line.id !== lastAction.id));
     }
     
@@ -751,10 +791,10 @@ canvas.toBlob(async (blob) => {
         };
         croppedImage.src = canvas.toDataURL();
       }
-    } else if (lastRedoAction.type === 'rotate') {
-      setImageRotation(lastRedoAction.newRotation);
-    } else {
-      setLines(prev => [...prev, lastRedoAction]);
+    } else if (lastRedoAction.type !== 'rotate') {
+      // Handle redo for drawing actions (arrow, circle, square) only
+      // Skip rotation actions (they should never be in redoHistory anymore)
+      setLines(prev => [...prev, lastRedoAction as Line]);
     }
     
     setActionHistory(prev => [...prev, lastRedoAction]);
@@ -837,27 +877,21 @@ canvas.toBlob(async (blob) => {
     croppedImage.src = canvas.toDataURL();
   };
 
-  const rotateImage = () => {
+  const rotateImage = useCallback(() => {
     if (!image) {
-      console.log('No image to rotate');
+      console.log('❌ rotateImage: No image to rotate');
       return;
     }
     
     const newRotation = (imageRotation + 90) % 360;
-    console.log('Rotating image from', imageRotation, 'to', newRotation);
+    console.log('🔄 rotateImage: Rotating from', imageRotation, '° to', newRotation, '°');
+    console.log('🔄 rotateImage: Current lines count:', lines.length);
     
-    // Add to action history for undo/redo
-    const rotateAction: RotateAction = {
-      type: 'rotate',
-      previousRotation: imageRotation,
-      newRotation: newRotation,
-      id: Date.now()
-    };
-    
-    setActionHistory(prev => [...prev, rotateAction]);
-    setRedoHistory([]); // Clear redo history when new action is performed
+    // Rotation is now independent - NOT added to action history
+    // This allows unlimited rotations without affecting undo/redo of annotations
     setImageRotation(newRotation);
-  };
+    console.log('✅ rotateImage: setImageRotation called with', newRotation, '°');
+  }, [image, imageRotation, lines.length]);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -927,11 +961,15 @@ const captureImage = () => {
   if (videoRef?.current && cameraCanvasRef.current) {
     const video = videoRef.current;
     const canvas = cameraCanvasRef.current;
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d", { alpha: false });
 
     if (context && video.videoWidth > 0 && video.videoHeight > 0) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+
+      // Enable high-quality image rendering
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
 
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
@@ -956,11 +994,11 @@ const captureImage = () => {
             setEditedFile(file);
             if (onEditedFile) onEditedFile(file);
           }
-        }, "image/jpeg", 0.9);
+        }, "image/jpeg", 0.98);
 
         stopCamera();
       };
-      img.src = canvas.toDataURL("image/jpeg", 0.9);
+      img.src = canvas.toDataURL("image/jpeg", 0.98);
     }
   }
 };
@@ -1006,7 +1044,7 @@ const captureImage = () => {
       window.removeEventListener('applyCrop', handleApplyCrop);
       window.removeEventListener('rotateImage', handleRotateImage);
     };
-  }, [actionHistory, redoHistory, cropFrame]);
+  }, [actionHistory, redoHistory, cropFrame, rotateImage]);
 
   const handleColorChange = (newColor: string) => {
     setDrawingColor(newColor);
@@ -1151,8 +1189,8 @@ const captureImage = () => {
         
         // Check if clicking on a resize handle
         const center = clickedShape.center || clickedShape.points[0];
-        const handleSize = 8; // Increased for better visibility
-        const tolerance = 15; // Increased tolerance for easier handle detection
+        const handleSize = 4; // Smaller for less intrusive mobile experience
+        const tolerance = 20; // Wider tolerance for easier clicking on smaller handles
         
         if (clickedShape.type === 'circle' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
           const handles = [
@@ -2108,6 +2146,10 @@ const drawSquare = (
 
   // Draw everything on canvas
   useEffect(() => {
+    console.log('🎨 Canvas render useEffect triggered!');
+    console.log('  - imageRotation:', imageRotation, '°');
+    console.log('  - lines.length:', lines.length);
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -2121,6 +2163,7 @@ const drawSquare = (
       
       // Apply rotation if needed
       if (imageRotation !== 0) {
+        console.log('✅ Drawing rotated image at', imageRotation, '°');
         ctx.save();
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.rotate((imageRotation * Math.PI) / 180);
@@ -2259,12 +2302,12 @@ const drawSquare = (
           // Draw professional resize handles
           handles.forEach((h, index) => {
             // All handles are edge handles now
-            const handleSize = 8; // Consistent size for all handles
+            const handleSize = 4; // Smaller, less intrusive handles
             
             // Outer ring
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.beginPath();
-            ctx.arc(h.x, h.y, handleSize + 3, 0, 2 * Math.PI);
+            ctx.arc(h.x, h.y, handleSize + 2, 0, 2 * Math.PI);
             ctx.fill();
             
             // Inner handle
@@ -2275,7 +2318,7 @@ const drawSquare = (
             
             // Border for better visibility
             ctx.strokeStyle = 'rgba(0, 123, 255, 1)';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(h.x, h.y, handleSize, 0, 2 * Math.PI);
             ctx.stroke();
@@ -2321,12 +2364,12 @@ const drawSquare = (
           handles.forEach((h, index) => {
             // Different styling for corner vs edge handles
             const isCorner = ['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(h.name);
-            const handleSize = isCorner ? 10 : 8; // Increased size for better visibility
+            const handleSize = isCorner ? 5 : 4; // Smaller, less intrusive handles
             
             // Outer ring
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             ctx.beginPath();
-            ctx.arc(h.x, h.y, handleSize + 3, 0, 2 * Math.PI);
+            ctx.arc(h.x, h.y, handleSize + 2, 0, 2 * Math.PI);
             ctx.fill();
             
             // Inner handle
@@ -2337,7 +2380,7 @@ const drawSquare = (
             
             // Border for better visibility
             ctx.strokeStyle = 'rgba(0, 123, 255, 1)';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.arc(h.x, h.y, handleSize, 0, 2 * Math.PI);
             ctx.stroke();

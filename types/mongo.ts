@@ -23,4 +23,5 @@ export interface Defect {
   labor_rate: number;
   hours_required: number;
   recommendation: string;
+  isThreeSixty?: boolean; // 360° photo flag
 }

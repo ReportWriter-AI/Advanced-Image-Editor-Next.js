@@ -10,6 +10,16 @@ const nextConfig = {
       config.externals = config.externals || [];
       config.externals.push("puppeteer-core", "@sparticuz/chromium", "@sparticuz/chromium-min");
     }
+
+    // Suppress the critical dependency warning from libheif-js (HEIC image conversion library)
+    // This is a known issue with libheif-js using dynamic require() that Next.js can't statically analyze
+    config.ignoreWarnings = [
+      {
+        module: /libheif-bundle\.js/,
+        message: /Critical dependency: require function is used in a way in which dependencies cannot be statically extracted/,
+      },
+    ];
+
     return config;
   },
 };

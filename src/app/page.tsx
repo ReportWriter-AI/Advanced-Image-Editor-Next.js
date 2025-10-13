@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import InspectionsTable from '../../components/InspectionsTable';
 import DefectEditModal from '../../components/DefectEditModal';
@@ -34,6 +34,43 @@ export default function Home() {
     setSelectedInspectionId('');
     setSelectedInspectionName('');
   };
+
+  // Check for pending annotations when page loads or receives focus
+  useEffect(() => {
+    const checkPendingAnnotation = () => {
+      const pending = localStorage.getItem('pendingAnnotation');
+      if (pending) {
+        try {
+          const annotation = JSON.parse(pending);
+          console.log('🔍 Main page detected pending annotation:', annotation);
+          
+          // If we have an inspectionId, auto-open the modal
+          if (annotation.inspectionId) {
+            console.log('🚀 Auto-opening modal for inspection:', annotation.inspectionId);
+            setSelectedInspectionId(annotation.inspectionId);
+            setSelectedInspectionName(`Inspection ${annotation.inspectionId.slice(-4)}`);
+            setDefectModalOpen(true);
+            // Note: Don't clear localStorage here - let InformationSections handle it
+          }
+        } catch (e) {
+          console.error('Error parsing pending annotation:', e);
+        }
+      }
+    };
+
+    // Check immediately on mount
+    checkPendingAnnotation();
+
+    // Also check when window regains focus
+    const handleFocus = () => {
+      checkPendingAnnotation();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
 
   // Handle delete click to delete inspection
   const handleDeleteClick = async (inspectionId: string) => {

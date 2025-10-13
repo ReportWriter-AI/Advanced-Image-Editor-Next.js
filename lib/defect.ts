@@ -19,6 +19,7 @@ export async function createDefect(data: {
   hours_required: number;
   recommendation: string;
   color?: string; // Add selected arrow color field
+  isThreeSixty?: boolean; // Mark as 360° photo
 }) {
   const client = await clientPromise;
   const db = client.db(DB_NAME);
@@ -64,6 +65,7 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   labor_rate?: number;
   hours_required?: number;
   recommendation?: string;
+  isThreeSixty?: boolean;
 }) {
   const client = await clientPromise;
   const db = client.db(DB_NAME);

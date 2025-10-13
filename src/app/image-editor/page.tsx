@@ -9,6 +9,9 @@ export default function ImageEditorPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedInspectionId = searchParams.get('inspectionId') || '';
+  const preloadImageUrl = searchParams.get('imageUrl'); // Get existing image URL
+  const returnTo = searchParams.get('returnTo'); // Where to return after editing
+  const checklistId = searchParams.get('checklistId'); // For information block images
   
   const [description, setDescription] = useState('');
   const [activeMode, setActiveMode] = useState<'none' | 'crop' | 'arrow' | 'circle' | 'square'>('none');
@@ -41,6 +44,7 @@ export default function ImageEditorPage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
+  const [isThreeSixty, setIsThreeSixty] = useState(false); // 360° photo flag
 
 
 
@@ -69,6 +73,7 @@ export default function ImageEditorPage() {
     'Built-In Appliances',
     'Electrical',
     'Exterior',
+    'Fireplace / Chimney',
     'Foundation & Structure',
     'Furnace / Heater',
     'Grounds',
@@ -96,7 +101,8 @@ export default function ImageEditorPage() {
       'Coverings',
       'Flashing & Seals',
       'Roof Penetrations',
-      'Roof Structure & Attic'
+      'Roof Structure & Attic',
+      'Gutters'
     ],
     'Exterior': [
       'Exterior Doors',
@@ -110,6 +116,11 @@ export default function ImageEditorPage() {
       'Exterior Support Columns',
       'Steps, Stairways, & Railings'
     ],
+    'Fireplace / Chimney': [
+      'Fireplace',
+      'Chimney',
+      'Flue'
+    ],
     'Interior': [
       'Doors',
       'Windows',
@@ -117,7 +128,8 @@ export default function ImageEditorPage() {
       'Walls',
       'Ceilings',
       'Countertops & Cabinets',
-      'Trim'
+      'Trim',
+      'Steps, Staircase, & Railings'
     ],
     'Insulation & Ventilation': [
       'Attic Access',
@@ -228,6 +240,53 @@ export default function ImageEditorPage() {
     };
   }, []);
 
+  // Load existing image from URL if provided
+  useEffect(() => {
+    if (preloadImageUrl) {
+      console.log('🖼️ Loading existing image from URL:', preloadImageUrl);
+      
+      // Use Next.js API route to proxy the image to avoid CORS
+      const proxyUrl = `/api/r2api?imageUrl=${encodeURIComponent(preloadImageUrl)}`;
+      
+      fetch(proxyUrl)
+        .then(res => {
+          console.log('Fetch response status:', res.status);
+          if (!res.ok) {
+            throw new Error(`Failed to fetch image: ${res.status} ${res.statusText}`);
+          }
+          return res.blob();
+        })
+        .then(blob => {
+          console.log('✅ Image fetched as blob, size:', blob.size, 'type:', blob.type);
+          
+          // Create object URL from blob
+          const objectUrl = URL.createObjectURL(blob);
+          console.log('Created object URL:', objectUrl);
+          
+          // Create image element
+          const img = new Image();
+          img.onload = () => {
+            console.log('✅ Image loaded successfully, dimensions:', img.width, 'x', img.height);
+            setCurrentImage(img);
+            
+            // Convert blob to File object for the editor
+            const file = new File([blob], 'image.jpg', { type: blob.type || 'image/jpeg' });
+            setEditedFile(file);
+            console.log('✅ Image converted to File object');
+          };
+          img.onerror = (err) => {
+            console.error('❌ Error loading image from object URL:', err);
+            alert('Failed to load image from object URL. Please try again.');
+          };
+          img.src = objectUrl;
+        })
+        .catch(err => {
+          console.error('❌ Error fetching image:', err);
+          alert(`Failed to load image: ${err.message}. Please try again.`);
+        });
+    }
+  }, [preloadImageUrl]);
+
 
 
   const handleActionClick = (mode: 'none' | 'crop' | 'arrow' | 'circle' | 'square') => {
@@ -286,6 +345,102 @@ export default function ImageEditorPage() {
   };
 
   const handleSubmit = async () => {
+    // Special handling for information block annotation
+    if (returnTo && checklistId) {
+      console.log('📤 Returning annotated image to information block');
+      console.log('📋 Current editedFile state:', editedFile ? `${editedFile.name} (${editedFile.size} bytes)` : 'NULL');
+      
+      if (!editedFile) {
+        console.error('❌ No edited file available! User must make changes before clicking Done.');
+        alert('Please make some changes to the image before saving (draw arrows, circles, etc.).');
+        return;
+      }
+
+      setIsSubmitting(true);
+      setSubmitStatus('Saving annotated image...');
+
+      try {
+        // Upload the annotated image to R2
+        const formData = new FormData();
+        formData.append('file', editedFile);
+
+        console.log('📤 Uploading annotated image:', editedFile.name, editedFile.size, 'bytes');
+
+        const uploadRes = await fetch('/api/r2api', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!uploadRes.ok) {
+          const errorText = await uploadRes.text();
+          console.error('❌ Upload failed:', uploadRes.status, errorText);
+          throw new Error(`Failed to upload annotated image: ${uploadRes.status}`);
+        }
+
+        const uploadData = await uploadRes.json();
+        console.log('✅ Annotated image uploaded:', uploadData.url);
+
+        // Store the annotated image URL in localStorage for the modal to pick up
+        // Include inspectionId so main page can reopen the correct modal
+        const urlParams = new URLSearchParams(window.location.search);
+        const inspectionIdFromUrl = urlParams.get('inspectionId');
+        
+        const annotationData = {
+          checklistId,
+          imageUrl: uploadData.url,
+          annotations: 'annotated', // Mark as annotated
+          inspectionId: inspectionIdFromUrl, // Store inspection ID for modal reopening
+          timestamp: Date.now()
+        };
+        
+        try {
+          localStorage.setItem('pendingAnnotation', JSON.stringify(annotationData));
+          console.log('✅ Saved annotation data to localStorage');
+        } catch (storageError) {
+          console.error('❌ Failed to save to localStorage:', storageError);
+          // Continue anyway - the image was uploaded successfully
+        }
+
+        setSubmitStatus('Done! Returning...');
+        
+        // Navigate back to the inspection page
+        // Use a full page reload to ensure the annotation detection works properly
+        setTimeout(() => {
+          try {
+            // First try to close the window if it was opened as a popup
+            window.close();
+            
+            // If window.close() doesn't work, do a full page reload
+            // This ensures the window focus event fires and polling detects the annotation
+            setTimeout(() => {
+              if (!window.closed) {
+                console.log('🔙 Reloading page to trigger annotation detection');
+                // Use location.href for full page reload which guarantees:
+                // 1. Window focus event fires
+                // 2. Polling mechanism starts fresh
+                // 3. returnToSection is detected and modal reopens
+                window.location.href = returnTo || window.location.origin + '/';
+              }
+            }, 100);
+          } catch (error) {
+            console.error('❌ Navigation error:', error);
+            // Fallback: reload the page
+            window.location.href = returnTo || window.location.origin + '/';
+          }
+        }, 500);
+
+      } catch (error) {
+        console.error('❌ Error saving annotated image:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        alert(`Failed to save annotated image: ${errorMessage}\n\nPlease try again or check your internet connection.`);
+        setIsSubmitting(false);
+        setSubmitStatus('');
+      }
+      
+      return; // Exit early for information block flow
+    }
+
+    // Original defect analysis flow below
     // if ((!currentImage || !editedFile) && !videoFile) {
     //   alert('Please upload and edit an image before submitting.');
     //   return;
@@ -334,6 +489,7 @@ export default function ImageEditorPage() {
       formData.append('inspectionId', selectedInspectionId);
       formData.append('selectedColor', selectedColor);
       formData.append('imageUrl', imageDataUrl);
+      formData.append('isThreeSixty', isThreeSixty.toString()); // Add 360° flag
       if (videoFile) {
         formData.append('videoFile', videoFile);
         formData.append('thumbnail', thumbnail!);
@@ -382,7 +538,7 @@ export default function ImageEditorPage() {
   
 
   // Color options for all tools (arrow, circle, square)
-  const toolColors = ['#d63636', '#FF8C00', '#0066CC', '#800080']; // red, orange, blue, purple
+  const toolColors = ['#d63636', '#FF8C00', '#0066CC', '#10b981', '#800080']; // red, orange, blue, green, purple
 
   // Function to handle color selection for all tools
   const handleColorSelection = (color: string) => {
@@ -494,6 +650,36 @@ export default function ImageEditorPage() {
         <button className="action-btn back-btn" onClick={handleBackToTable}>
           <i className="fas fa-arrow-left"></i>
         </button>
+
+        {/* Done button for annotation mode */}
+        {returnTo && checklistId && (
+          <button 
+            className="action-btn done-btn"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            style={{
+              backgroundColor: '#10b981',
+              color: 'white',
+              padding: '8px 20px',
+              fontWeight: '600',
+              fontSize: '14px',
+              marginLeft: 'auto',
+              marginRight: '10px'
+            }}
+          >
+            {isSubmitting ? (
+              <>
+                <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                Saving...
+              </>
+            ) : (
+              <>
+                <i className="fas fa-check" style={{ marginRight: '8px' }}></i>
+                Done
+              </>
+            )}
+          </button>
+        )}
 
         <button className="action-btn undo-btn" onClick={handleUndo}>
           <i className="fas fa-undo"></i>
@@ -645,6 +831,8 @@ export default function ImageEditorPage() {
           setVideoFile={setVideoFile}
           setThumbnail={setThumbnail}
           setVideoSrc={setVideoSrc}
+          preloadedImage={currentImage}
+          preloadedFile={editedFile}
         />
       </div>
 
@@ -657,19 +845,62 @@ export default function ImageEditorPage() {
         </div>
       </div> */}
 
-       {/* Description Box */}
-       <div className="description-box">
-         <textarea
-           placeholder="Describe your edited image here..."
-           value={description}
-           onChange={(e) => setDescription(e.target.value)}
-         />
-         
-       </div>
+       {/* Description Box - Only show for defect workflow */}
+       {!returnTo && !checklistId && (
+         <div className="description-box">
+           <textarea
+             placeholder="Describe your edited image here..."
+             value={description}
+             onChange={(e) => setDescription(e.target.value)}
+           />
+           
+           {/* 360° Photo Checkbox */}
+           <div style={{
+             display: 'flex',
+             alignItems: 'center',
+             gap: '10px',
+             marginTop: '12px',
+             padding: '12px',
+             background: 'linear-gradient(135deg, rgba(75, 108, 183, 0.1) 0%, rgba(106, 17, 203, 0.1) 100%)',
+             borderRadius: '8px',
+             border: '1px solid rgba(75, 108, 183, 0.2)'
+           }}>
+             <input
+               type="checkbox"
+               id="threeSixtyCheckbox"
+               checked={isThreeSixty}
+               onChange={(e) => setIsThreeSixty(e.target.checked)}
+               style={{
+                 width: '18px',
+                 height: '18px',
+                 cursor: 'pointer',
+                 accentColor: '#4b6cb7'
+               }}
+             />
+             <label
+               htmlFor="threeSixtyCheckbox"
+               style={{
+                 fontSize: '15px',
+                 fontWeight: '500',
+                 color: '#2d3748',
+                 cursor: 'pointer',
+                 userSelect: 'none',
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '6px'
+               }}
+             >
+               <i className="fas fa-sync-alt" style={{ color: '#4b6cb7' }}></i>
+               This is a 360° photo
+             </label>
+           </div>
+         </div>
+       )}
 
-      {/* Submit Section */}
-      <div className="submit-section">
-        <div className="submit-controls">
+      {/* Submit Section - Only show for defect workflow */}
+      {!returnTo && !checklistId && (
+        <div className="submit-section">
+          <div className="submit-controls">
 
           {/* Location Button with Dropdown */}
           <div className="location-button-container">
@@ -880,6 +1111,7 @@ export default function ImageEditorPage() {
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }
