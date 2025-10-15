@@ -193,6 +193,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
 }
 
 .propertyImage {
@@ -220,6 +221,26 @@
   border-radius: 1rem;
   color: #64748b;
   font-weight: 500;
+}
+
+.panoramaWrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  min-height: 300px;
+  border-radius: inherit;
+  overflow: hidden;
+  background: #000;
+}
+
+.panoramaWrapper :global(.threesixty-viewer-container) {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  border-radius: inherit !important;
+  box-shadow: none !important;
 }
 
 .imagePlaceholder i {

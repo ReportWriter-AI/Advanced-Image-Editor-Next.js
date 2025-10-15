@@ -1784,6 +1784,7 @@ export default function InspectionReportPage() {
           heading2: `${defect.section} - ${defect.subsection}`,
           heading: `${numbering} ${defect.subsection}`,
           image: defect.image,
+          isThreeSixty: Boolean(defect.isThreeSixty),
           defect: summaryTitle,
           defectTitle: summaryTitle,
           defectParagraphs: bodyParagraphs,
@@ -3988,11 +3989,7 @@ export default function InspectionReportPage() {
                       <h3 className={styles.imageTitle}>Visual Evidence</h3>
                     <div className={styles.imageContainer}>
 {section.isThreeSixty && section.image ? (
-  <div style={{ 
-    width: '100%', 
-    maxWidth: '100%',
-    overflow: 'hidden'
-  }}>
+  <div className={styles.panoramaWrapper}>
     <ThreeSixtyViewer
       imageUrl={
         typeof section.image === "string"
@@ -4001,7 +3998,7 @@ export default function InspectionReportPage() {
       }
       alt={`360° view for ${section.subsectionName || "defect"}`}
       width="100%"
-      height={isMobile ? "400px" : "600px"}
+      height="100%"
     />
   </div>
 ) : section.type === "video" && section.video ? (
