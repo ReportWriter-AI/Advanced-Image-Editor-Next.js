@@ -1391,8 +1391,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
     // Check file size and warn for large files (360° photos)
         const fileSizeMB = file.size / (1024 * 1024);
+        // Vercel has a 100MB body size limit on Pro plan, 4.5MB on Hobby
+        // Cloudflare has similar limits. Warn at 50MB to avoid upload failures.
+        if (fileSizeMB > 50) {
+          const proceed = confirm(
+            `⚠️ Large file detected (${fileSizeMB.toFixed(1)}MB)\n\n` +
+            `Files over 50MB may fail to upload due to server limits.\n` +
+            `Recommended: Compress the image before uploading.\n\n` +
+            `Tools: TinyPNG, Squoosh, IrfanView, or ImageOptim\n\n` +
+            `Continue upload anyway?`
+          );
+          if (!proceed) return;
+        }
         if (fileSizeMB > 200) {
-  alert(`File size (${fileSizeMB.toFixed(1)}MB) exceeds the 200MB limit. Please compress the image or choose a smaller file.`);
+          alert(`File size (${fileSizeMB.toFixed(1)}MB) exceeds the absolute 200MB limit. Please compress the image.`);
       return;
     }
 
@@ -1547,11 +1559,22 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       // Show user-friendly error message
       const errorMessage = error.message || 'Unknown error occurred';
       if (errorMessage.includes('100MB') || errorMessage.includes('200MB')) {
-        alert('File is too large. 360° photos should be compressed to under 200MB.');
+        alert('File is too large. 360° photos should be compressed to under 50MB for reliable uploads.');
       } else if (errorMessage.includes('File size exceeds')) {
-        alert('File size exceeds the 200MB limit. Please compress the image or choose a smaller file.');
+        alert('File size exceeds the limit. Please compress the image or choose a smaller file.');
+      } else if (errorMessage.includes('413') || errorMessage.toLowerCase().includes('payload') || errorMessage.toLowerCase().includes('too large')) {
+        alert(
+          `Upload failed: Server rejected the file (too large).\n\n` +
+          `This usually happens with files over 50MB.\n` +
+          `Please compress the image using:\n` +
+          `• TinyPNG (online)\n` +
+          `• Squoosh (online)\n` +
+          `• ImageOptim (Mac)\n` +
+          `• IrfanView (Windows)\n\n` +
+          `Target: Under 10MB for best performance.`
+        );
       } else {
-        alert(`Failed to upload image/video: ${errorMessage}\n\nFor large 360° photos, please ensure they are under 200MB.`);
+        alert(`Failed to upload image/video: ${errorMessage}\n\nFor large files, please compress them to under 50MB.`);
       }
     }
   };

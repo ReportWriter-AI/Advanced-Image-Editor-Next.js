@@ -488,7 +488,8 @@ export default function ImageEditorPage() {
       formData.append('subSection', selectedSubsection);
       formData.append('inspectionId', selectedInspectionId);
       formData.append('selectedColor', selectedColor);
-      formData.append('imageUrl', imageDataUrl);
+      // ⚠️ DON'T send imageDataUrl (base64) - it's huge and causes "Request Entity Too Large"
+      // formData.append('imageUrl', imageDataUrl);
       formData.append('isThreeSixty', isThreeSixty.toString()); // Add 360° flag
       if (videoFile) {
         formData.append('videoFile', videoFile);
