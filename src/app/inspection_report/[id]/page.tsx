@@ -154,6 +154,21 @@ export default function InspectionReportPage() {
     if (url.startsWith('/api/proxy-image?') || url.startsWith('data:')) return url;
     return `/api/proxy-image?url=${encodeURIComponent(url)}`;
   }, []);
+
+  // Fallback handler: if direct URL fails, retry via proxy, else use placeholder
+  const handleImgError = useCallback((e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const img = e.currentTarget;
+    const current = img.getAttribute('src') || '';
+    console.log('🔴 Image load failed:', current);
+    if (current && !current.startsWith('/api/proxy-image?') && !current.startsWith('data:')) {
+      console.log('🔄 Retrying via proxy...');
+      img.src = `/api/proxy-image?url=${encodeURIComponent(current)}`;
+    } else {
+      console.log('⚠️ Using placeholder...');
+      img.src = '/placeholder-image.jpg';
+    }
+  }, []);
+
   // Toolbar dropdown menu (Report Viewing Options)
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -2561,7 +2576,7 @@ export default function InspectionReportPage() {
                                                     <div key={imgIdx} style={{ position: 'relative' }}>
                                                       {img.isThreeSixty ? (
                                                         <ThreeSixtyViewer
-                                                          imageUrl={img.url}
+                                                          imageUrl={getProxiedSrc(img.url)}
                                                           alt={`360° view for information item`}
                                                           height="400px"
                                                         />
@@ -2579,6 +2594,8 @@ export default function InspectionReportPage() {
                                                           alt="Item image"
                                                           onClick={() => openLightbox(img.url)}
                                                           className={styles.informationImage}
+                                                          onError={handleImgError}
+                                                          loading="eager"
                                                         />
                                                       )}
                                                       {img.location && (
@@ -2649,7 +2666,7 @@ export default function InspectionReportPage() {
                                                           marginBottom: '1rem' 
                                                         }}>
                                                           <ThreeSixtyViewer
-                                                            imageUrl={img.url}
+                                                            imageUrl={getProxiedSrc(img.url)}
                                                             alt={`360° view for information item`}
                                                             width="100%"
                                                             height={isMobile ? "300px" : "400px"}
@@ -2669,6 +2686,8 @@ export default function InspectionReportPage() {
                                                           alt="Item image"
                                                           onClick={() => openLightbox(img.url)}
                                                           className={styles.informationImage}
+                                                          onError={handleImgError}
+                                                          loading="eager"
                                                         />
                                                       )}
                                                       {img.location && (
@@ -3020,6 +3039,8 @@ export default function InspectionReportPage() {
                                                       alt="Item image"
                                                       onClick={() => openLightbox(img.url)}
                                                       className={styles.informationImage}
+                                                      onError={handleImgError}
+                                                      loading="eager"
                                                     />
                                                     {img.location && (
                                                       <div style={{ 
@@ -3098,6 +3119,8 @@ export default function InspectionReportPage() {
                                                       alt="Item image"
                                                       onClick={() => openLightbox(img.url)}
                                                       className={styles.informationImage}
+                                                      onError={handleImgError}
+                                                      loading="eager"
                                                     />
                                                     {img.location && (
                                                       <div style={{ 
@@ -3157,6 +3180,10 @@ export default function InspectionReportPage() {
                           if (!blockSection || !sectionName) return false;
                           const cleanSection = sectionName.replace(/^\d+\s*-\s*/, '');
                           const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
+                          // EXCLUDE Section 1 (Inspection Details) - it only appears after Section 2
+                          if (cleanBlock.toLowerCase() === 'inspection details' || blockSection.toLowerCase().includes('inspection details')) {
+                            return false;
+                          }
                           return cleanBlock === cleanSection;
                         });
                         
@@ -3249,7 +3276,7 @@ export default function InspectionReportPage() {
                                                         marginBottom: '1rem' 
                                                       }}>
                                                         <ThreeSixtyViewer
-                                                          imageUrl={img.url}
+                                                          imageUrl={getProxiedSrc(img.url)}
                                                           alt={`360° view for information item`}
                                                           width="100%"
                                                           height={isMobile ? "300px" : "400px"}
@@ -3257,10 +3284,12 @@ export default function InspectionReportPage() {
                                                       </div>
                                                     ) : (
                                                       <img
-                                                        src={img.url}
+                                                        src={getProxiedSrc(img.url)}
                                                         alt="Item image"
-                                                        onClick={() => openLightbox(img.url)}
+                                                        onClick={() => openLightbox(getProxiedSrc(img.url))}
                                                         className={styles.informationImage}
+                                                        onError={handleImgError}
+                                                        loading="eager"
                                                       />
                                                     )}
                                                     {img.location && (
@@ -3335,10 +3364,12 @@ export default function InspectionReportPage() {
                                                 {itemImages.map((img: any, imgIdx: number) => (
                                                   <div key={imgIdx} style={{ position: 'relative' }}>
                                                     <img
-                                                      src={img.url}
+                                                      src={getProxiedSrc(img.url)}
                                                       alt="Item image"
-                                                      onClick={() => openLightbox(img.url)}
+                                                      onClick={() => openLightbox(getProxiedSrc(img.url))}
                                                       className={styles.informationImage}
+                                                      onError={handleImgError}
+                                                      loading="eager"
                                                     />
                                                     {img.location && (
                                                       <div style={{ 
@@ -3541,6 +3572,8 @@ export default function InspectionReportPage() {
                                                         alt="Item image"
                                                         onClick={() => openLightbox(getProxiedSrc(img.url))}
                                                         className={styles.informationImage}
+                                                        onError={handleImgError}
+                                                        loading="eager"
                                                       />
                                                     )}
                                                     {img.location && (
@@ -3913,6 +3946,8 @@ export default function InspectionReportPage() {
                                                       alt="Item image"
                                                       onClick={() => openLightbox(getProxiedSrc(img.url))}
                                                       className={styles.informationImage}
+                                                      onError={handleImgError}
+                                                      loading="eager"
                                                     />
                                                     {img.location && (
                                                       <div style={{ 
