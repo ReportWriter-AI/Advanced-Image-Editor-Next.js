@@ -71,6 +71,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const [reorderMode, setReorderMode] = useState<{ status: boolean; limitations: boolean }>({ status: false, limitations: false });
   const [reorderIds, setReorderIds] = useState<{ status: string[]; limitations: string[] }>({ status: [], limitations: [] });
   const dragStateRef = useRef<{ kind: 'status' | 'limitations' | null; draggingId: string | null }>({ kind: null, draggingId: null });
+  const reorderDirtyRef = useRef<{ status: boolean; limitations: boolean }>({ status: false, limitations: false });
   // Drag visuals: track dragging item and current target + insert position for subtle UI
   const [dragVisual, setDragVisual] = useState<{ kind: 'status' | 'limitations' | null; draggingId: string | null; overId: string | null; position: 'before' | 'after' | null }>({ kind: null, draggingId: null, overId: null, position: null });
   
@@ -200,6 +201,19 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }
   }, [inspectionId]);
 
+  // Persist inspection-specific checklists to localStorage whenever they change
+  useEffect(() => {
+    if (!inspectionId) return;
+    try {
+      const storageKey = `inspection_checklists_${inspectionId}`;
+      const obj: Record<string, ISectionChecklist[]> = {};
+      inspectionChecklists.forEach((arr, secId) => { obj[secId] = arr; });
+      localStorage.setItem(storageKey, JSON.stringify(obj));
+    } catch (error) {
+      console.error('Error saving inspection-specific checklists to localStorage:', error);
+    }
+  }, [inspectionId, inspectionChecklists]);
+
   // Persist hidden template checklist ids per inspection
   useEffect(() => {
     if (!inspectionId) return;
@@ -259,12 +273,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       : section.checklists.filter(cl => cl.tab === 'limitations');
     const ordered = [...base].sort((a, b) => a.order_index - b.order_index).map(cl => cl._id);
     setReorderIds(prev => ({ ...prev, [kind]: ordered }));
+    reorderDirtyRef.current[kind] = false;
     setReorderMode(prev => ({ ...prev, [kind]: true }));
   };
 
   const cancelReorder = (kind: 'status' | 'limitations') => {
     setReorderMode(prev => ({ ...prev, [kind]: false }));
     setReorderIds(prev => ({ ...prev, [kind]: [] }));
+    reorderDirtyRef.current[kind] = false;
     dragStateRef.current = { kind: null, draggingId: null };
     // Clear auto-scroll interval
     if (scrollIntervalRef.current) {
@@ -324,8 +340,17 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      // For swap behavior, only track which item we're over (no before/after)
-      setDragVisual(prev => ({ ...prev, kind, overId: targetId, position: null }));
+      
+      // Calculate position (before/after) based on mouse position
+      const targetElement = e.currentTarget;
+      const rect = targetElement.getBoundingClientRect();
+      const mouseY = e.clientY;
+      const elementMiddle = rect.top + rect.height / 2;
+      
+      // If mouse is above middle, insert before; if below, insert after
+      const position = mouseY < elementMiddle ? 'before' : 'after';
+      
+      setDragVisual(prev => ({ ...prev, kind, overId: targetId, position }));
       // Trigger auto-scroll check
       handleDragMove(e);
     }
@@ -337,15 +362,49 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       const draggingId = dragStateRef.current.draggingId;
       if (!draggingId || dragStateRef.current.kind !== kind) return;
       if (draggingId === targetId) return;
+      
+      // Get the position from dragVisual state
+      const insertPosition = dragVisual.position || 'after';
+      
       setReorderIds(prev => {
         const list = [...prev[kind]];
-        const from = list.indexOf(draggingId);
-        const to = list.indexOf(targetId);
-        if (from === -1 || to === -1 || from === to) return prev;
-        // Swap positions of dragging and target
-        [list[from], list[to]] = [list[to], list[from]];
+        const fromIndex = list.indexOf(draggingId);
+        const toIndex = list.indexOf(targetId);
+        if (fromIndex === -1 || toIndex === -1) return prev;
+        
+        // INSERT LOGIC (araya ekleme) - Trello/Spotify tarzı
+        // 1. Sürüklenen elemanı listeden çıkar
+        const [draggedItem] = list.splice(fromIndex, 1);
+        
+        // 2. Hedef konuma ekle
+        // 'before' ise hedefin önüne, 'after' ise hedefin arkasına
+        let insertIndex = list.indexOf(targetId);
+        if (insertIndex === -1) return prev; // Güvenlik kontrolü
+        
+        if (insertPosition === 'after') {
+          insertIndex += 1; // Hedefin arkasına ekle
+        }
+        // 'before' ise insertIndex olduğu gibi kalır (hedefin önüne)
+        
+        list.splice(insertIndex, 0, draggedItem);
+        
+        // AUTO-SAVE: Immediately persist the new order after drag and drop
+        setTimeout(async () => {
+          if (activeSection) {
+            try {
+              console.log(`🔄 Auto-saving ${kind} order after drag and drop...`);
+              await persistChecklistOrder(kind, activeSection._id, list);
+              console.log(`✅ ${kind} order auto-saved successfully!`);
+            } catch (error) {
+              console.error(`❌ Failed to auto-save ${kind} order:`, error);
+            }
+          }
+        }, 100); // Small delay to ensure state is updated
+        
         return { ...prev, [kind]: list };
       });
+      reorderDirtyRef.current[kind] = true;
+      
       // Clear visual state
       dragStateRef.current = { kind: null, draggingId: null };
       setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
@@ -369,18 +428,92 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }
   );
 
+  const persistChecklistOrder = useCallback(
+    async (kind: 'status' | 'limitations', sectionId: string, orderedIds: string[]) => {
+      const seen = new Set<string>();
+      const sanitized: string[] = [];
+      for (const rawId of orderedIds) {
+        if (typeof rawId !== 'string') continue;
+        const trimmed = rawId.trim();
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        sanitized.push(trimmed);
+      }
+
+      if (!sanitized.length) {
+        reorderDirtyRef.current[kind] = false;
+        return { templateUpdated: false };
+      }
+
+      const orderMap = new Map<string, number>();
+      sanitized.forEach((id, index) => orderMap.set(id, index));
+
+      const templateIds = sanitized.filter(id => !id.startsWith('temp_'));
+      let templateUpdated = false;
+
+      if (templateIds.length) {
+        const res = await fetch('/api/information-sections/sections/reorder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sectionId, kind, orderedIds: templateIds }),
+        });
+        const json = await res.json();
+        if (!json.success) {
+          throw new Error(json.error || 'Failed to save order');
+        }
+        templateUpdated = true;
+      }
+
+      const inspectionOnlyIds = sanitized.filter(id => id.startsWith('temp_'));
+      if (inspectionOnlyIds.length) {
+        setInspectionChecklists(prev => {
+          const existing = prev.get(sectionId);
+          if (!existing || !existing.length) return prev;
+          const next = new Map(prev);
+          const orderedInspection = inspectionOnlyIds
+            .map(id => {
+              const match = existing.find(item => item._id === id);
+              if (!match) return null;
+              return { ...match, order_index: orderMap.get(id)! };
+            })
+            .filter((item): item is ISectionChecklist => !!item);
+          const remainingInspection = existing.filter(item => !inspectionOnlyIds.includes(item._id));
+          next.set(sectionId, [...orderedInspection, ...remainingInspection]);
+          return next;
+        });
+      }
+
+      setActiveSection(prev => {
+        if (!prev || prev._id !== sectionId) return prev;
+        const source = prev.checklists || [];
+        const checklistMap = new Map(source.map(item => [item._id, item]));
+        const ordered = sanitized
+          .map(id => checklistMap.get(id))
+          .filter((item): item is ISectionChecklist => !!item)
+          .map(item => ({ ...item, order_index: orderMap.get(item._id)! }));
+        const remaining = source.filter(item => !orderMap.has(item._id));
+        return {
+          ...prev,
+          checklists: [...ordered, ...remaining],
+        };
+      });
+
+      setReorderIds(prev => ({ ...prev, [kind]: sanitized }));
+      reorderDirtyRef.current[kind] = false;
+
+      return { templateUpdated };
+    },
+    [setActiveSection, setInspectionChecklists, setReorderIds]
+  );
+
   const saveReorder = async (kind: 'status' | 'limitations', section: ISection) => {
     try {
-      const orderedIds = reorderIds[kind];
-      if (!orderedIds.length) return cancelReorder(kind);
-      const res = await fetch('/api/information-sections/sections/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sectionId: (section as any)._id, kind, orderedIds }),
-      });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Failed to save order');
-      await fetchSections();
+      const sectionId = section._id;
+      const currentIds = reorderIds[kind] || [];
+      const { templateUpdated } = await persistChecklistOrder(kind, sectionId, currentIds);
+      if (templateUpdated) {
+        await fetchSections();
+      }
       cancelReorder(kind);
     } catch (err: any) {
       alert(err.message || 'Failed to save order');
@@ -725,6 +858,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         .sort((a, b) => a.order_index - b.order_index)
         .map(cl => cl._id);
       setReorderIds({ status: statusOrdered, limitations: limitationsOrdered });
+      reorderDirtyRef.current = { status: false, limitations: false };
     } catch (e) {
       // Fallback silently if anything goes wrong
     }
@@ -850,17 +984,56 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     if (!formState) return;
     const setIds = new Set(formState.selected_checklist_ids);
     if (setIds.has(id)) {
-      // Unchecking - clear answers for this checklist
+      // Unchecking - backup current answers to localStorage before clearing
       setIds.delete(id);
+      
+      // Backup selected answers for this checklist in localStorage
+      const currentAnswers = formState.selected_answers.get(id);
+      if (currentAnswers && currentAnswers.size > 0) {
+        const backupKey = `checklist_backup_${inspectionId}_${id}`;
+        localStorage.setItem(backupKey, JSON.stringify(Array.from(currentAnswers)));
+        console.log('💾 Backed up answers to localStorage:', Array.from(currentAnswers));
+      }
+      
+      // Clear from selected_answers
       const newAnswers = new Map(formState.selected_answers);
       newAnswers.delete(id);
-      const updatedFormState = { ...formState, selected_checklist_ids: setIds, selected_answers: newAnswers };
+      
+      const updatedFormState = { 
+        ...formState, 
+        selected_checklist_ids: setIds, 
+        selected_answers: newAnswers
+      };
       setFormState(updatedFormState);
       setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
     } else {
-      // Checking - just add to selected
+      // Checking - restore from localStorage backup if exists
       setIds.add(id);
-      const updatedFormState = { ...formState, selected_checklist_ids: setIds };
+      
+      // Try to restore answers from localStorage backup
+      const backupKey = `checklist_backup_${inspectionId}_${id}`;
+      const backupData = localStorage.getItem(backupKey);
+      let updatedFormState = { ...formState, selected_checklist_ids: setIds };
+      
+      if (backupData) {
+        try {
+          const backedUpAnswers = JSON.parse(backupData);
+          if (Array.isArray(backedUpAnswers) && backedUpAnswers.length > 0) {
+            // Restore backed-up answers (includes both template AND custom answers)
+            const newAnswers = new Map(formState.selected_answers);
+            newAnswers.set(id, new Set(backedUpAnswers)); // Restore from localStorage
+            updatedFormState = { 
+              ...formState, 
+              selected_checklist_ids: setIds, 
+              selected_answers: newAnswers 
+            };
+            console.log('♻️ Restored answers from localStorage backup:', backedUpAnswers);
+          }
+        } catch (e) {
+          console.error('Error parsing localStorage backup:', e);
+        }
+      }
+      
       setFormState(updatedFormState);
       setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
     }
@@ -1153,28 +1326,19 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }));
 
     try {
-      // Persist current ordering for Status and Limitations before saving content
+      let templateOrderUpdated = false;
       if (activeSection) {
-        const sectionId = (activeSection as any)._id;
-        const payloads: Array<{ kind: 'status' | 'limitations'; orderedIds: string[] }> = [];
-        if (reorderIds.status && reorderIds.status.length) {
-          payloads.push({ kind: 'status', orderedIds: reorderIds.status });
+        const sectionId = activeSection._id;
+        if (reorderIds.status && reorderIds.status.length && reorderDirtyRef.current.status) {
+          const result = await persistChecklistOrder('status', sectionId, reorderIds.status);
+          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
         }
-        if (reorderIds.limitations && reorderIds.limitations.length) {
-          payloads.push({ kind: 'limitations', orderedIds: reorderIds.limitations });
+        if (reorderIds.limitations && reorderIds.limitations.length && reorderDirtyRef.current.limitations) {
+          const result = await persistChecklistOrder('limitations', sectionId, reorderIds.limitations);
+          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
         }
-        for (const p of payloads) {
-          try {
-            const resOrder = await fetch('/api/information-sections/sections/reorder', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sectionId, kind: p.kind, orderedIds: p.orderedIds }),
-            });
-            const jsonOrder = await resOrder.json();
-            if (!jsonOrder.success) console.warn('Order save failed:', jsonOrder.error);
-          } catch (e) {
-            console.warn('Order save error:', e);
-          }
+        if (templateOrderUpdated) {
+          await fetchSections();
         }
       }
 
@@ -1278,6 +1442,22 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }));
 
     try {
+      let templateOrderUpdated = false;
+      if (activeSection) {
+        const sectionId = activeSection._id;
+        if (reorderIds.status && reorderIds.status.length && reorderDirtyRef.current.status) {
+          const result = await persistChecklistOrder('status', sectionId, reorderIds.status);
+          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
+        }
+        if (reorderIds.limitations && reorderIds.limitations.length && reorderDirtyRef.current.limitations) {
+          const result = await persistChecklistOrder('limitations', sectionId, reorderIds.limitations);
+          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
+        }
+        if (templateOrderUpdated) {
+          await fetchSections();
+        }
+      }
+
       // Check if the block is now empty (no template items and no custom text)
       const hasSelectedItems = templateIds.length > 0;
       const hasCustomText = stateToSave.custom_text && stateToSave.custom_text.trim().length > 0;
@@ -1894,6 +2074,37 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             checklists: [...activeSection.checklists, newChecklist]
           });
           
+          // IMPORTANT: Add to formState.selected_checklist_ids so it appears immediately
+          if (formState) {
+            const newSelectedIds = new Set(formState.selected_checklist_ids);
+            newSelectedIds.add(tempId);
+            setFormState({
+              ...formState,
+              selected_checklist_ids: newSelectedIds
+            });
+          }
+
+          // Also push into reorderIds for the correct list so it renders in current view immediately
+          setReorderIds(prev => {
+            const isStatus = newChecklist.type === 'status';
+            const isLimitation = newChecklist.tab === 'limitations';
+            if (isStatus) {
+              const current = prev.status && prev.status.length ? [...prev.status] : activeSection.checklists.filter(c => c.type === 'status').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
+              return { ...prev, status: [...current, tempId] };
+            }
+            if (isLimitation) {
+              const current = prev.limitations && prev.limitations.length ? [...prev.limitations] : activeSection.checklists.filter(c => c.tab === 'limitations').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
+              return { ...prev, limitations: [...current, tempId] };
+            }
+            return prev;
+          });
+          if (newChecklist.type === 'status') {
+            reorderDirtyRef.current.status = true;
+          }
+          if (newChecklist.tab === 'limitations') {
+            reorderDirtyRef.current.limitations = true;
+          }
+          
           console.log('✅ Added inspection-only checklist:', tempId);
           console.log('💾 Will be saved to localStorage for this inspection only');
         }
@@ -2226,10 +2437,38 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                             position: 'relative'
                           }}
                         >
-                          {/* Target highlight for swap */}
-                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && (
-                            <div style={{ position: 'absolute', inset: 0, borderRadius: '0.25rem', border: '2px dashed #93c5fd', opacity: 0.8, pointerEvents: 'none' }} />
+                          {/* Insertion line indicator - BEFORE */}
+                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'before' && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              top: '-2px', 
+                              left: '0', 
+                              right: '0', 
+                              height: '3px', 
+                              backgroundColor: '#3b82f6',
+                              borderRadius: '2px',
+                              boxShadow: '0 0 4px rgba(59,130,246,0.5)',
+                              zIndex: 10,
+                              pointerEvents: 'none'
+                            }} />
                           )}
+                          
+                          {/* Insertion line indicator - AFTER */}
+                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'after' && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              bottom: '-2px', 
+                              left: '0', 
+                              right: '0', 
+                              height: '3px', 
+                              backgroundColor: '#3b82f6',
+                              borderRadius: '2px',
+                              boxShadow: '0 0 4px rgba(59,130,246,0.5)',
+                              zIndex: 10,
+                              pointerEvents: 'none'
+                            }} />
+                          )}
+                          
                           {/* Header - clickable to toggle selection */}
                           <label style={{ display: 'flex', fontSize: '0.875rem', cursor: 'pointer', alignItems: 'flex-start', gap: '0.5rem' }}>
                             <input
@@ -2781,10 +3020,38 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                             position: 'relative'
                           }}
                         >
-                          {/* Target highlight for swap */}
-                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && (
-                            <div style={{ position: 'absolute', inset: 0, borderRadius: '0.25rem', border: '2px dashed #6ee7b7', opacity: 0.8, pointerEvents: 'none' }} />
+                          {/* Insertion line indicator - BEFORE */}
+                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'before' && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              top: '-2px', 
+                              left: '0', 
+                              right: '0', 
+                              height: '3px', 
+                              backgroundColor: '#10b981',
+                              borderRadius: '2px',
+                              boxShadow: '0 0 4px rgba(16,185,129,0.5)',
+                              zIndex: 10,
+                              pointerEvents: 'none'
+                            }} />
                           )}
+                          
+                          {/* Insertion line indicator - AFTER */}
+                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'after' && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              bottom: '-2px', 
+                              left: '0', 
+                              right: '0', 
+                              height: '3px', 
+                              backgroundColor: '#10b981',
+                              borderRadius: '2px',
+                              boxShadow: '0 0 4px rgba(16,185,129,0.5)',
+                              zIndex: 10,
+                              pointerEvents: 'none'
+                            }} />
+                          )}
+                          
                           {/* Header - clickable to toggle selection */}
                           <label style={{ display: 'flex', fontSize: '0.875rem', cursor: 'pointer', alignItems: 'flex-start', gap: '0.5rem' }}>
                             <input
