@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { uploadToR2 } from "@/lib/r2";
+import { uploadToR2, generatePresignedUploadUrl } from "@/lib/r2";
 
 // Configure route to accept large file uploads (360° photos can be 30-50MB)
 export const runtime = 'nodejs';
@@ -16,10 +16,47 @@ async function getHeicConvert() {
   return heicConvert;
 }
 
-// GET handler to proxy image fetching (avoid CORS issues)
+// GET handler supports:
+// 1. Image proxying: ?imageUrl=... (legacy)
+// 2. Presigned URL generation: ?action=presigned&fileName=...&contentType=...
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const action = searchParams.get('action');
+    
+    // NEW: Presigned URL generation
+    if (action === 'presigned') {
+      const fileName = searchParams.get('fileName');
+      const contentType = searchParams.get('contentType');
+      
+      if (!fileName || !contentType) {
+        return NextResponse.json(
+          { error: "fileName and contentType are required for presigned URL" },
+          { status: 400 }
+        );
+      }
+
+      // Generate unique key with timestamp
+      const timestamp = Date.now();
+      const key = `uploads/${timestamp}-${fileName}`;
+
+      console.log('🔑 Generating presigned URL for:', key);
+
+      const { uploadUrl, publicUrl, key: finalKey } = await generatePresignedUploadUrl(
+        key,
+        contentType,
+        300 // 5 minutes expiry
+      );
+
+      return NextResponse.json({
+        success: true,
+        uploadUrl,
+        publicUrl,
+        key: finalKey,
+      });
+    }
+
+    // LEGACY: Image proxy
     const imageUrl = searchParams.get('imageUrl');
 
     if (!imageUrl) {

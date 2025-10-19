@@ -7,6 +7,7 @@ import {
   DeleteObjectCommand,
   CopyObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID!;
 const bucketName = process.env.CLOUDFLARE_R2_BUCKET!;
@@ -204,4 +205,34 @@ export function resolveR2KeyFromUrl(src: string): string | null {
   // 5) Non-root-relative keys (e.g., "inspections/..." without leading slash)
   if (src.startsWith('uploads/') || src.startsWith('inspections/') || src.startsWith('reports/')) return src;
   return null;
+}
+
+// Generate a presigned URL for direct browser-to-R2 upload
+export async function generatePresignedUploadUrl(
+  key: string,
+  contentType: string,
+  expiresIn: number = 300 // 5 minutes default
+): Promise<{ uploadUrl: string; publicUrl: string; key: string }> {
+  if (!process.env.CLOUDFLARE_R2_BUCKET) {
+    throw new Error("R2 bucket name is not configured");
+  }
+  
+  if (!public_url) {
+    throw new Error("Cloudflare public URL is not configured");
+  }
+
+  const bucket = process.env.CLOUDFLARE_R2_BUCKET;
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  const uploadUrl = await getSignedUrl(S3, command, { expiresIn });
+  const publicUrl = `${public_url}/${key}`;
+
+  console.log(`✅ Generated presigned URL for key: ${key}, expires in ${expiresIn}s`);
+
+  return { uploadUrl, publicUrl, key };
 }

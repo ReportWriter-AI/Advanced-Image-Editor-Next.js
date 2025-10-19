@@ -1682,23 +1682,36 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
     try {
       file = await fixOrientationIfNeeded(file);
-      // Upload image to R2
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const uploadRes = await fetch('/api/r2api', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `Upload failed with status ${uploadRes.status}`);
+      
+      // NEW: Direct R2 upload using presigned URL (bypasses Vercel's 4.5MB body limit)
+      console.log('🚀 Starting direct R2 upload for file:', file.name, 'size:', file.size);
+      
+      // Step 1: Get presigned upload URL from server
+      const presignedRes = await fetch(
+        `/api/r2api?action=presigned&fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type)}`
+      );
+      
+      if (!presignedRes.ok) {
+        throw new Error('Failed to get presigned upload URL');
       }
-
-      const uploadData = await uploadRes.json();
-
-      console.log('✅ File uploaded to R2:', uploadData.url, 'kind:', uploadData.type);
+      
+      const { uploadUrl, publicUrl } = await presignedRes.json();
+      console.log('✅ Got presigned URL, uploading directly to R2...');
+      
+      // Step 2: Upload file DIRECTLY to R2 using presigned URL
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+      
+      if (!uploadRes.ok) {
+        throw new Error(`Direct R2 upload failed with status ${uploadRes.status}`);
+      }
+      
+      console.log('✅ File uploaded directly to R2:', publicUrl);
 
       // Check if this should be a 360° photo
       const isThreeSixty = isThreeSixtyMap[checklistId] || false;
@@ -1706,7 +1719,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       // Add image to formState
       const newImage: IBlockImage = {
-        url: uploadData.url,
+        url: publicUrl, // Use the public URL from presigned response
         annotations: undefined,
         checklist_id: checklistId,
         isThreeSixty: isThreeSixty, // Include 360° flag

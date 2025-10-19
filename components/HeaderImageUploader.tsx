@@ -143,18 +143,35 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
       tempUrl = URL.createObjectURL(file);
       setPreviewUrl(tempUrl);
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      console.log('Uploading header image to R2... (converted:', isHeic, ')');
-      const response = await fetch('/api/r2api', { method: 'POST', body: formData });
-      const data = await response.json();
-      if (!response.ok) {
-        console.error('Upload failed response:', data);
-        throw new Error(data.error || 'Failed to upload image');
+      console.log('Uploading header image to R2 using presigned URL... (converted:', isHeic, ')');
+      
+      // NEW: Direct R2 upload using presigned URL
+      const presignedRes = await fetch(
+        `/api/r2api?action=presigned&fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type)}`
+      );
+      
+      if (!presignedRes.ok) {
+        throw new Error('Failed to get presigned upload URL');
       }
-      console.log('Upload successful, URL:', data.url);
-      onImageUploaded(data.url);
+      
+      const { uploadUrl, publicUrl } = await presignedRes.json();
+      console.log('✅ Got presigned URL, uploading directly to R2...');
+      
+      // Upload file DIRECTLY to R2
+      const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Direct R2 upload failed with status ${response.status}`);
+      }
+      
+      console.log('✅ Upload successful, URL:', publicUrl);
+      onImageUploaded(publicUrl);
     } catch (error: any) {
       console.error('Upload error:', error);
       alert(`Failed to upload image: ${error.message || 'Please try again.'}`);
