@@ -1572,11 +1572,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     // Check file size and warn for large files (360° photos)
         const fileSizeMB = file.size / (1024 * 1024);
         // Vercel has a 100MB body size limit on Pro plan, 4.5MB on Hobby
-        // Cloudflare has similar limits. Warn at 50MB to avoid upload failures.
-        if (fileSizeMB > 50) {
+        // Cloudflare has similar limits. Warn at 150MB to avoid upload failures.
+        if (fileSizeMB > 150) {
           const proceed = confirm(
             `⚠️ Large file detected (${fileSizeMB.toFixed(1)}MB)\n\n` +
-            `Files over 50MB may fail to upload due to server limits.\n` +
+            `Files over 150MB may fail to upload due to server limits.\n` +
             `Recommended: Compress the image before uploading.\n\n` +
             `Tools: TinyPNG, Squoosh, IrfanView, or ImageOptim\n\n` +
             `Continue upload anyway?`
@@ -1739,13 +1739,13 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       // Show user-friendly error message
       const errorMessage = error.message || 'Unknown error occurred';
       if (errorMessage.includes('100MB') || errorMessage.includes('200MB')) {
-        alert('File is too large. 360° photos should be compressed to under 50MB for reliable uploads.');
+        alert('File is too large. 360° photos should be compressed to under 200MB for reliable uploads.');
       } else if (errorMessage.includes('File size exceeds')) {
         alert('File size exceeds the limit. Please compress the image or choose a smaller file.');
       } else if (errorMessage.includes('413') || errorMessage.toLowerCase().includes('payload') || errorMessage.toLowerCase().includes('too large')) {
         alert(
           `Upload failed: Server rejected the file (too large).\n\n` +
-          `This usually happens with files over 50MB.\n` +
+          `This usually happens with files over 200MB.\n` +
           `Please compress the image using:\n` +
           `• TinyPNG (online)\n` +
           `• Squoosh (online)\n` +
@@ -1754,7 +1754,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           `Target: Under 10MB for best performance.`
         );
       } else {
-        alert(`Failed to upload image/video: ${errorMessage}\n\nFor large files, please compress them to under 50MB.`);
+        alert(`Failed to upload image/video: ${errorMessage}\n\nFor large files, please compress them to under 200MB.`);
       }
     }
   };
@@ -2153,7 +2153,40 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       const res = await fetch(`/api/checklists/${checklistId}`, { method: 'DELETE' });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Failed to delete checklist');
+      
+      // Update sections data
       await fetchSections();
+      
+      // IMMEDIATELY UPDATE activeSection to reflect the deletion in the current modal
+      if (activeSection) {
+        const updatedChecklists = activeSection.checklists.filter(cl => cl._id !== checklistId);
+        setActiveSection({
+          ...activeSection,
+          checklists: updatedChecklists
+        });
+        
+        // Update reorderIds to remove the deleted item
+        setReorderIds(prev => ({
+          status: prev.status.filter(id => id !== checklistId),
+          limitations: prev.limitations.filter(id => id !== checklistId)
+        }));
+        
+        // Also remove from formState if it was selected
+        if (formState && formState.selected_checklist_ids.has(checklistId)) {
+          const newSelectedIds = new Set(formState.selected_checklist_ids);
+          newSelectedIds.delete(checklistId);
+          const newAnswers = new Map(formState.selected_answers);
+          newAnswers.delete(checklistId);
+          setFormState({
+            ...formState,
+            selected_checklist_ids: newSelectedIds,
+            selected_answers: newAnswers
+          });
+        }
+        
+        console.log('✅ Template checklist deleted and UI updated immediately');
+      }
+      
       // Also close any open menu
       setDeleteMenuForId(null);
     } catch (e: any) {

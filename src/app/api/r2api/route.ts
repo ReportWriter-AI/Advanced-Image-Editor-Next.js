@@ -90,6 +90,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    console.log('🚀 R2 API POST request received');
+    
     // Check if required environment variables are set
     const requiredEnvVars = [
       "CLOUDFLARE_ACCOUNT_ID",
@@ -108,19 +110,37 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log('📋 Parsing form data...');
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 
     if (!file) {
+      console.error('❌ No file provided in request');
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
+
+    console.log('📁 File received:', {
+      name: file.name,
+      size: file.size,
+      sizeMB: (file.size / (1024 * 1024)).toFixed(2),
+      type: file.type
+    });
 
   // Validate file size: different limits for images vs videos
   // Note: 360° photos are typically larger (30-50MB). Limit increased to 200MB for both images and videos.
     const fileExt = file.name.toLowerCase().split('.').pop() || '';
     const isVideo = file.type.startsWith('video/') || ['mp4','mov','webm','3gp','3gpp','m4v'].includes(fileExt);
   const maxSizeBytes = isVideo ? 200 * 1024 * 1024 : 200 * 1024 * 1024; // 200MB for both videos and images
+    
+    console.log('🔍 File size validation:', {
+      fileSize: file.size,
+      maxSizeBytes,
+      isVideo,
+      withinLimit: file.size <= maxSizeBytes
+    });
+    
     if (file.size > maxSizeBytes) {
+      console.error('❌ File size exceeds limit:', file.size, 'bytes (', (file.size / (1024 * 1024)).toFixed(2), 'MB)');
       return NextResponse.json(
         { error: `File size exceeds the 200MB limit` },
         { status: 400 }
@@ -206,7 +226,29 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("Upload failed:", error);
+    console.error("❌ Upload failed with error:", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack?.split('\n')[0],
+      name: error.name
+    });
+    
+    // Check for specific Vercel body size limit errors
+    if (error.message?.includes('413') || error.message?.toLowerCase().includes('payload too large')) {
+      return NextResponse.json(
+        { error: "File too large for Vercel plan. Consider upgrading to Pro plan or compress file under 4.5MB." },
+        { status: 413 }
+      );
+    }
+    
+    // Check for timeout errors
+    if (error.message?.toLowerCase().includes('timeout') || error.code === 'ETIMEDOUT') {
+      return NextResponse.json(
+        { error: "Upload timeout. Large files may take longer to process." },
+        { status: 408 }
+      );
+    }
+    
     return NextResponse.json(
       { error: `Upload failed: ${error.message}` },
       { status: 500 }

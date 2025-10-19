@@ -226,6 +226,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
 
   const setHeaderImage = async (imageUrl: string) => {
     try {
+      console.log('🚀 setHeaderImage called with URL:', imageUrl);
       setSavingHeaderImage(true);
       const response = await fetch(`/api/inspections/${inspectionId}`, {
         method: 'PUT',
@@ -235,14 +236,20 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
         body: JSON.stringify({ headerImage: imageUrl }),
       });
 
+      console.log('📡 API response status:', response.status);
       if (response.ok) {
+        const responseData = await response.json();
+        console.log('✅ API response data:', responseData);
         setInspectionDetails(prev => ({ ...prev, headerImage: imageUrl }));
+        console.log('✅ Updated inspectionDetails with headerImage:', imageUrl);
         alert('Header image updated successfully');
       } else {
+        const errorData = await response.json();
+        console.error('❌ API error response:', errorData);
         alert('Failed to update header image');
       }
     } catch (error) {
-      console.error('Error updating header image:', error);
+      console.error('❌ Error updating header image:', error);
       alert('Error updating header image');
     } finally {
       setSavingHeaderImage(false);
@@ -506,6 +513,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                     onImageRemoved={() => setHeaderImage('')}
                     onHeaderNameChanged={(text) => setHeaderName(text)}
                     onHeaderAddressChanged={(text) => setHeaderAddress(text)}
+                    getProxiedSrc={getProxiedSrc}
                   />
                 </div>
               </div>

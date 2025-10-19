@@ -12,6 +12,7 @@ interface HeaderImageUploaderProps {
   onImageRemoved: () => void;
   onHeaderNameChanged: (text: string) => void;
   onHeaderAddressChanged: (text: string) => void;
+  getProxiedSrc?: (url: string | null | undefined) => string;
 }
 
 const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({ 
@@ -21,7 +22,8 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
   onImageUploaded,
   onImageRemoved,
   onHeaderNameChanged,
-  onHeaderAddressChanged
+  onHeaderAddressChanged,
+  getProxiedSrc
 }) => {
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -209,9 +211,15 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
           <h4>Current Header Image</h4>
           <div className="image-with-text-preview">
             <img 
-              src={currentImage} 
+              src={getProxiedSrc ? getProxiedSrc(currentImage) : currentImage} 
               alt="Current header" 
               className="header-image-preview"
+              onError={(e) => {
+                console.error('Failed to load header image preview:', currentImage);
+                if (getProxiedSrc && !(e.currentTarget.src?.includes('/api/proxy-image?'))) {
+                  e.currentTarget.src = getProxiedSrc(currentImage) || '';
+                }
+              }}
             />
             {(localHeaderName || localHeaderAddress) && (
               <div className="header-text-overlay" style={{ lineHeight: 1.15, flexDirection: 'column' }}>

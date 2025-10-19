@@ -395,10 +395,23 @@ export default function InspectionReportPage() {
           const response = await fetch(`/api/inspections/${id}`);
           if (response.ok) {
             const data = await response.json();
+            console.log('🔍 Fetched inspection data:', {
+              hasHeaderImage: !!data.headerImage,
+              headerImage: data.headerImage,
+              hasHeaderText: !!data.headerText,
+              headerText: data.headerText,
+              hasHeaderName: !!data.headerName,
+              headerName: data.headerName,
+              hasHeaderAddress: !!data.headerAddress,
+              headerAddress: data.headerAddress
+            });
             setInspection(data);
             // If inspection has headerImage and headerText, use them
             if (data.headerImage) {
+              console.log('✅ Setting header image:', data.headerImage);
               setHeaderImage(data.headerImage);
+            } else {
+              console.log('❌ No header image found in inspection data');
             }
             if (data.headerText) {
               setHeaderText(data.headerText);
@@ -2107,36 +2120,42 @@ export default function InspectionReportPage() {
           <div ref={reportRef} className={styles.mainContent}>
             <div className={styles.reportSectionsContainer}>
               {/* Header Image Display - At the very top */}
-              {headerImage && (
-                <div className={styles.headerImageDisplay}>
-                  <img 
-                    src={headerImage} 
-                    alt="Report Header" 
-                    className={styles.headerImage}
-                    onError={(e) => {
-                      console.error('Failed to load header image:', headerImage);
-                      // Hide the header image section if image fails to load
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                  {/* Header Text - Below the image */}
-                  <div className={styles.headerTextContainer}>
-                    {(inspection?.headerName || inspection?.headerAddress || headerText) && (
-                      <div style={{ textAlign:'center', marginBottom:'8px' }}>
-                        { (inspection?.headerName || headerText?.split('\n')[0]) && (
-                          <h1 className={styles.inspectionTitle} style={{ margin:'0 0 4px 0', fontSize:'1.75rem' }}>
-                            {inspection?.headerName || headerText?.split('\n')[0]}
-                          </h1>) }
-                        { (inspection?.headerAddress || headerText?.split('\n').slice(1).join(' ')) && (
-                          <div style={{fontSize:'1.75rem', fontWeight:700, color:'#1f2937', marginTop:'2px'}}>
-                            {inspection?.headerAddress || headerText?.split('\n').slice(1).join(' ')}
-                          </div>) }
-                      </div>
-                    )}
-                    <h2 className={styles.reportTitle}>HOME INSPECTION REPORT</h2>
+              {(() => {
+                console.log('🎨 Header Image Render Check:', {
+                  hasHeaderImage: !!headerImage,
+                  headerImageValue: headerImage,
+                  renderCondition: !!headerImage
+                });
+                return headerImage && (
+                  <div className={styles.headerImageDisplay}>
+                    <img 
+                      src={getProxiedSrc(headerImage)} 
+                      alt="Report Header" 
+                      className={styles.headerImage}
+                      onError={handleImgError}
+                      onLoad={() => {
+                        console.log('✅ Header image loaded successfully:', headerImage);
+                      }}
+                    />
+                    {/* Header Text - Below the image */}
+                    <div className={styles.headerTextContainer}>
+                      {(inspection?.headerName || inspection?.headerAddress || headerText) && (
+                        <div style={{ textAlign:'center', marginBottom:'8px' }}>
+                          { (inspection?.headerName || headerText?.split('\n')[0]) && (
+                            <h1 className={styles.inspectionTitle} style={{ margin:'0 0 4px 0', fontSize:'1.75rem' }}>
+                              {inspection?.headerName || headerText?.split('\n')[0]}
+                            </h1>) }
+                          { (inspection?.headerAddress || headerText?.split('\n').slice(1).join(' ')) && (
+                            <div style={{fontSize:'1.75rem', fontWeight:700, color:'#1f2937', marginTop:'2px'}}>
+                              {inspection?.headerAddress || headerText?.split('\n').slice(1).join(' ')}
+                            </div>) }
+                        </div>
+                      )}
+                      <h2 className={styles.reportTitle}>HOME INSPECTION REPORT</h2>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
               
               {/* Permanent Report Links Section */}
               <PermanentReportLinks
