@@ -15,7 +15,7 @@ const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY!;
 const public_url = process.env.CLOUDFLARE_PUBLIC_URL;
 
 // Initialize the S3 client with proper configuration
-const S3 = new S3Client({
+const S3: S3Client = new S3Client({
   region: "auto",
   endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
   credentials: {

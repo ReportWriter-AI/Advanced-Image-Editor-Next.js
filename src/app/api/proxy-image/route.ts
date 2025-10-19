@@ -101,7 +101,31 @@ export async function GET(request: NextRequest) {
 
     const targetUrl = normalizeUrl(imageUrl);
 
-    // Fetch image from target
+    // For R2 URLs, try SDK fallback first to avoid connection issues
+    const r2Key = extractR2KeyFromAnyUrl(targetUrl);
+    if (r2Key) {
+      console.log('🔑 Detected R2 URL, attempting direct SDK fetch for key:', r2Key);
+      try {
+        const { Body, ContentType } = await getS3().send(new GetObjectCommand({ Bucket: bucketName!, Key: r2Key }));
+        const arrayBuffer = await (Body as any).transformToByteArray();
+        console.log('✅ R2 SDK fetch successful for key:', r2Key);
+        return new NextResponse(Buffer.from(arrayBuffer), {
+          status: 200,
+          headers: {
+            'Content-Type': ContentType || 'application/octet-stream',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD',
+            'Access-Control-Allow-Headers': '*',
+            'Cache-Control': 'public, max-age=3600',
+          },
+        });
+      } catch (sdkErr) {
+        console.error('⚠️ R2 SDK fetch failed, falling back to HTTP fetch:', sdkErr);
+        // Continue to HTTP fetch fallback below
+      }
+    }
+
+    // Fetch image from target via HTTP
     let response: Response;
     try {
       // First attempt: default fetch with absolute URL
@@ -110,8 +134,8 @@ export async function GET(request: NextRequest) {
       response = await fetch(absoluteUrl, { cache: 'no-store', redirect: 'follow' });
     } catch (err: any) {
       const code = err?.cause?.code || err?.code;
-      if (code === 'ERR_SSL_WRONG_VERSION_NUMBER') {
-        console.error('⚠️ SSL handshake error (wrong version) for URL (attempt 1):', targetUrl);
+      if (code === 'ECONNRESET' || code === 'ERR_SSL_WRONG_VERSION_NUMBER') {
+        console.error('⚠️ Connection error for URL (attempt 1):', targetUrl, 'Code:', code);
         // Retry with explicit TLS settings via Node https agent
         try {
           const absoluteUrl = targetUrl.startsWith('http') ? targetUrl : new URL(targetUrl, request.url).toString();
