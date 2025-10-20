@@ -158,6 +158,79 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     drawWidth: 0,
     drawHeight: 0,
   });
+  // Normalize smartphone EXIF orientation for JPEG/PNG before using as image; HEIC handled elsewhere
+  const fixOrientationIfNeeded = useCallback(async (f: File): Promise<File> => {
+    try {
+      if (!f.type.startsWith('image/') || /heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)) return f;
+      // Lazy import ESM build to avoid UMD warnings
+      const exifr: any = (await import('exifr/dist/full.esm.mjs')) as any;
+      const orientation: number | undefined = await exifr.orientation(f);
+      if (!orientation || orientation === 1) return f;
+
+      const imgUrl = URL.createObjectURL(f);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = imgUrl;
+      });
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(imgUrl);
+        return f;
+      }
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+
+      switch (orientation) {
+        case 2: // flip X
+          canvas.width = width; canvas.height = height;
+          ctx.translate(width, 0); ctx.scale(-1, 1);
+          break;
+        case 3: // 180
+          canvas.width = width; canvas.height = height;
+          ctx.translate(width, height); ctx.rotate(Math.PI);
+          break;
+        case 4: // flip Y
+          canvas.width = width; canvas.height = height;
+          ctx.translate(0, height); ctx.scale(1, -1);
+          break;
+        case 5: // 90 + flip X
+          canvas.width = height; canvas.height = width;
+          ctx.rotate(0.5 * Math.PI); ctx.translate(0, -height); ctx.scale(1, -1);
+          break;
+        case 6: // 90
+          canvas.width = height; canvas.height = width;
+          ctx.rotate(0.5 * Math.PI); ctx.translate(0, -height);
+          break;
+        case 7: // 270 + flip X
+          canvas.width = height; canvas.height = width;
+          ctx.rotate(1.5 * Math.PI); ctx.translate(-width, 0); ctx.scale(1, -1);
+          break;
+        case 8: // 270
+          canvas.width = height; canvas.height = width;
+          ctx.rotate(1.5 * Math.PI); ctx.translate(-width, 0);
+          break;
+        default:
+          canvas.width = width; canvas.height = height;
+      }
+
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(imgUrl);
+      const blob: Blob = await new Promise((res) => canvas.toBlob(b => res(b || new Blob()), 'image/jpeg', 0.95));
+      const normalized = new File([blob], f.name.replace(/\.(png|jpg|jpeg|webp)$/i, '') + '.jpg', { type: 'image/jpeg' });
+      return normalized;
+    } catch (e) {
+      console.warn('EXIF normalize skipped:', e);
+      return f;
+    }
+  }, []);
+
+
+  // Track whether we've normalized EXIF orientation for the current preloaded file to avoid loops
+  const exifNormalizedRef = useRef<string | null>(null);
 
   // Load preloaded image if provided
   useEffect(() => {
@@ -165,17 +238,45 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     console.log('  - preloadedImage exists:', !!preloadedImage);
     console.log('  - preloadedFile exists:', !!preloadedFile);
     console.log('  - current image state exists:', !!image);
-    
+
+    const normalizeAndSet = async (file: File) => {
+      try {
+        // Avoid re-running on the same file instance
+        if (exifNormalizedRef.current === `${file.name}:${file.size}`) {
+          return file;
+        }
+        const normalized = await fixOrientationIfNeeded(file);
+        exifNormalizedRef.current = `${normalized.name}:${normalized.size}`;
+
+        // Create image from normalized file
+        const url = URL.createObjectURL(normalized);
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const i = new Image();
+          i.onload = () => resolve(i);
+          i.onerror = reject;
+          i.src = url;
+        });
+
+        setImage(img);
+        setEditedFile(normalized);
+        onImageChange?.(img);
+        onEditedFile?.(normalized);
+      } catch (err) {
+        console.warn('EXIF normalize skipped for preloaded file:', err);
+        // Fallback to original preloaded
+        if (preloadedImage && preloadedFile) {
+          setImage(preloadedImage);
+          setEditedFile(preloadedFile);
+          onImageChange?.(preloadedImage);
+          onEditedFile?.(preloadedFile);
+        }
+      }
+    };
+
     if (preloadedImage && preloadedFile) {
       console.log('📥 Setting preloaded image in ImageEditor');
-      setImage(preloadedImage);
-      setEditedFile(preloadedFile);
-      if (onImageChange) {
-        onImageChange(preloadedImage);
-      }
-      if (onEditedFile) {
-        onEditedFile(preloadedFile);
-      }
+      // Normalize orientation for JPEG/PNG (HEIC handled elsewhere)
+      normalizeAndSet(preloadedFile);
     } else if (!preloadedImage && image) {
       console.log('⚠️ preloadedImage became null/undefined but image state still exists - NOT clearing');
       // DON'T clear the image if preloadedImage becomes null
@@ -233,15 +334,17 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
 
 
-const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   if (!file) return;
 
-  setEditedFile(file);
-  if (onEditedFile) onEditedFile(file);
+  // Normalize EXIF orientation when possible
+  const normalized = await fixOrientationIfNeeded(file);
+  setEditedFile(normalized);
+  if (onEditedFile) onEditedFile(normalized);
 
   // Check MIME type
-  if (file.type.startsWith("image/")) {
+  if (normalized.type.startsWith("image/")) {
     // 🖼 Image handling
     const img = new Image();
     img.onload = () => {
@@ -251,20 +354,20 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
       onCropStateChange(false);
       if (onImageChange) onImageChange(img);
     };
-    img.src = URL.createObjectURL(file);
+    img.src = URL.createObjectURL(normalized);
   } 
-  else if (file.type.startsWith("video/")) {
+  else if (normalized.type.startsWith("video/")) {
     // 🎥 Video handling
-    const videoURL = URL.createObjectURL(file);
+    const videoURL = URL.createObjectURL(normalized);
     setImage(null); // clear canvas image
     setLines([]);
     setCropFrame(null);
     onCropStateChange(false);
 
     setVideoSrc(videoURL);   // for <video> preview
-    setVideoFile(file);      // store full video
+    setVideoFile(normalized as any);      // store full video
     setVideoSrc2(videoURL);  // optional second preview
-    setVideoFile2(file);     // optional second video
+    setVideoFile2(normalized as any);     // optional second video
 
     // Capture the first frame as thumbnail
     const video = document.createElement("video");
@@ -629,9 +732,12 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         Math.round(image.naturalHeight || image.height || displayCanvas.height)
       );
 
-      const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = naturalWidth;
-      exportCanvas.height = naturalHeight;
+  const angle = ((imageRotation % 360) + 360) % 360; // normalize
+  const is90 = angle === 90 || angle === 270;
+  const exportCanvas = document.createElement('canvas');
+  // For 90/270, swap dimensions to avoid clipping
+  exportCanvas.width = is90 ? naturalHeight : naturalWidth;
+  exportCanvas.height = is90 ? naturalWidth : naturalHeight;
 
       const ctx = exportCanvas.getContext('2d', {
         willReadFrequently: false,
@@ -645,18 +751,21 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.clearRect(0, 0, naturalWidth, naturalHeight);
+      ctx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
 
-      if (imageRotation !== 0) {
-        ctx.save();
-        ctx.translate(naturalWidth / 2, naturalHeight / 2);
-        ctx.rotate((imageRotation * Math.PI) / 180);
-        ctx.translate(-naturalWidth / 2, -naturalHeight / 2);
-        ctx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
-        ctx.restore();
-      } else {
-        ctx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
+  // Apply rotation for image and keep transform active for annotations
+      ctx.save();
+      if (angle === 90) {
+        ctx.translate(exportCanvas.width, 0);
+        ctx.rotate(Math.PI / 2);
+      } else if (angle === 180) {
+        ctx.translate(exportCanvas.width, exportCanvas.height);
+        ctx.rotate(Math.PI);
+      } else if (angle === 270) {
+        ctx.translate(0, exportCanvas.height);
+        ctx.rotate(3 * Math.PI / 2);
       }
+  ctx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
 
       const metrics = renderMetricsRef.current;
       const baseDrawWidth = metrics.drawWidth || displayCanvas.width;
@@ -667,8 +776,8 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
       const safeDrawWidth = baseDrawWidth || displayCanvas.width;
       const safeDrawHeight = baseDrawHeight || displayCanvas.height;
 
-      const scaleX = safeDrawWidth !== 0 ? naturalWidth / safeDrawWidth : 1;
-      const scaleY = safeDrawHeight !== 0 ? naturalHeight / safeDrawHeight : 1;
+  const scaleX = safeDrawWidth !== 0 ? naturalWidth / safeDrawWidth : 1;
+  const scaleY = safeDrawHeight !== 0 ? naturalHeight / safeDrawHeight : 1;
       const avgScale = (scaleX + scaleY) / 2;
 
       const transformPoint = (point: Point): Point => ({
@@ -681,6 +790,7 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         y: Number.isFinite(point.y) ? point.y : 0,
       });
 
+      // Draw annotations within the same rotation transform so they align with rotated image
       lines.forEach((line) => {
         const scaledPoints = line.points.map((pt) => sanitizePoint(transformPoint(pt)));
 
@@ -753,7 +863,10 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         }
       });
 
-      const quality = 0.98;
+  // Restore after annotations
+  ctx.restore();
+
+  const quality = 0.98;
       const dataUrl = exportCanvas.toDataURL('image/jpeg', quality);
       const byteString = atob(dataUrl.split(",")[1]);
       const mimeString = dataUrl.split(",")[0].split(":")[1].split(";")[0];
@@ -2320,8 +2433,8 @@ const drawSquare = (
 
     renderMetricsRef.current = currentMetrics;
 
-    // Draw existing lines
-    lines.forEach(line => {
+    // Helper to draw all lines
+    const drawAllLines = () => lines.forEach(line => {
       ctx.strokeStyle = line.color;
       ctx.lineWidth = line.size;
       ctx.lineCap = 'round';
@@ -2505,6 +2618,18 @@ const drawSquare = (
         }
       }
     });
+
+    // Draw existing lines (apply same rotation as image to keep alignment visually)
+    if (image && imageRotation !== 0) {
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((imageRotation * Math.PI) / 180);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      drawAllLines();
+      ctx.restore();
+    } else {
+      drawAllLines();
+    }
 
     // Draw current line if drawing
     if (isDrawing && currentLine && currentLine.length > 0) {

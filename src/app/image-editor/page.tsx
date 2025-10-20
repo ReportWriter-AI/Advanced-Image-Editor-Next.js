@@ -245,8 +245,8 @@ export default function ImageEditorPage() {
     if (preloadImageUrl) {
       console.log('🖼️ Loading existing image from URL:', preloadImageUrl);
       
-      // Use Next.js API route to proxy the image to avoid CORS
-      const proxyUrl = `/api/r2api?imageUrl=${encodeURIComponent(preloadImageUrl)}`;
+  // Use the robust proxy-image API (has R2 SDK fallback) to avoid CORS and TLS hiccups
+  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(preloadImageUrl)}`;
       
       fetch(proxyUrl)
         .then(res => {
