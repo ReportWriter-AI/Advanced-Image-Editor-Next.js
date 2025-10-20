@@ -208,6 +208,8 @@ export function resolveR2KeyFromUrl(src: string): string | null {
 }
 
 // Generate a presigned URL for direct browser-to-R2 upload
+// NOTE: Presigned URLs CANNOT use public R2.dev domains - they only work with private S3-compatible endpoints
+// WORKAROUND: We generate the presigned URL with private endpoint, but CORS must be configured on the bucket
 export async function generatePresignedUploadUrl(
   key: string,
   contentType: string,
@@ -223,30 +225,19 @@ export async function generatePresignedUploadUrl(
 
   const bucket = process.env.CLOUDFLARE_R2_BUCKET;
 
-  // Create a separate S3 client that uses the PUBLIC R2 domain for presigned URLs
-  // This ensures CORS headers are applied (CORS only works on public domains)
-  const publicS3Client = new S3Client({
-    region: "auto",
-    endpoint: public_url, // Use public URL as endpoint for presigned URLs
-    credentials: {
-      accessKeyId: accessKeyId,
-      secretAccessKey: secretAccessKey,
-    },
-    // Force path-style URLs so presigned URL uses public domain
-    forcePathStyle: false,
-  });
-
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: key,
     ContentType: contentType,
   });
 
-  const uploadUrl = await getSignedUrl(publicS3Client, command, { expiresIn });
+  // Generate presigned URL using the private S3-compatible endpoint
+  // CORS MUST be configured on this bucket for this to work from browsers!
+  const uploadUrl = await getSignedUrl(S3, command, { expiresIn });
   const publicUrl = `${public_url}/${key}`;
 
   console.log(`✅ Generated presigned URL for key: ${key}, expires in ${expiresIn}s`);
-  console.log(`🔗 Upload URL (should use public domain):`, uploadUrl);
+  console.log(`🔗 Upload URL (private endpoint):`, uploadUrl);
 
   return { uploadUrl, publicUrl, key };
 }
