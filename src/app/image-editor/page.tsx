@@ -480,29 +480,107 @@ export default function ImageEditorPage() {
     }
   
     try {
-      const formData = new FormData();
-      formData.append('image', editedFile!);
-      formData.append('description', description);
-      formData.append('location', selectedLocationValue);
-      formData.append('section', selectedSection);
-      formData.append('subSection', selectedSubsection);
-      formData.append('inspectionId', selectedInspectionId);
-      formData.append('selectedColor', selectedColor);
-      // ⚠️ DON'T send imageDataUrl (base64) - it's huge and causes "Request Entity Too Large"
-      // formData.append('imageUrl', imageDataUrl);
-      formData.append('isThreeSixty', isThreeSixty.toString()); // Add 360° flag
-      if (videoFile) {
-        formData.append('videoFile', videoFile);
-        formData.append('thumbnail', thumbnail!);
-        formData.append('videoSrc', videoSrc!);
-        formData.append('type', 'video');
-      } else {
-        formData.append('type', 'image');  
+      // 1) Upload image directly to R2 via presigned URL (bypasses Vercel's 4.5MB limit)
+      // Image is required for both image and video flows (representative frame for analysis and/or the defect image itself)
+      if (!editedFile) {
+        throw new Error('No edited image to upload');
       }
 
+      // Get presigned URL for image
+      const presignedImgRes = await fetch(
+        `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
+      );
+      if (!presignedImgRes.ok) {
+        const t = await presignedImgRes.text();
+        throw new Error(`Failed to get presigned URL for image: ${t}`);
+      }
+      const { uploadUrl: imgUploadUrl, publicUrl: imagePublicUrl } = await presignedImgRes.json();
+      // Upload the edited image directly to R2
+      const putImg = await fetch(imgUploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': editedFile.type },
+        body: editedFile,
+      });
+      if (!putImg.ok) {
+        const t = await putImg.text();
+        throw new Error(`Failed to upload image to R2: ${putImg.status} ${t}`);
+      }
+
+      // Optional video upload via presigned URL
+      let videoPublicUrl: string | null = null;
+      let thumbnailPublicUrl: string | null = null;
+      let finalType: 'image' | 'video' = 'image';
+      if (videoFile) {
+        finalType = 'video';
+
+        // Upload video
+        const presignedVidRes = await fetch(
+          `/api/r2api?action=presigned&fileName=${encodeURIComponent(videoFile.name)}&contentType=${encodeURIComponent(videoFile.type)}`
+        );
+        if (!presignedVidRes.ok) {
+          const t = await presignedVidRes.text();
+          throw new Error(`Failed to get presigned URL for video: ${t}`);
+        }
+        const { uploadUrl: vidUploadUrl, publicUrl: vidPublicUrl } = await presignedVidRes.json();
+        const putVid = await fetch(vidUploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': videoFile.type },
+          body: videoFile,
+        });
+        if (!putVid.ok) {
+          const t = await putVid.text();
+          throw new Error(`Failed to upload video to R2: ${putVid.status} ${t}`);
+        }
+        videoPublicUrl = vidPublicUrl;
+
+        // Upload thumbnail if present (data URL => Blob)
+        if (thumbnail && thumbnail.startsWith('data:')) {
+          const mimeMatch = thumbnail.match(/^data:(.+);base64,(.+)$/);
+          const thumbMime = mimeMatch ? mimeMatch[1] : 'image/png';
+          const b64 = mimeMatch ? mimeMatch[2] : '';
+          const thumbBuffer = b64 ? Uint8Array.from(atob(b64), c => c.charCodeAt(0)) : undefined;
+          if (thumbBuffer) {
+            const thumbFile = new Blob([thumbBuffer], { type: thumbMime });
+            const fileName = `thumbnail-${Date.now()}.png`;
+            const presignedThumbRes = await fetch(
+              `/api/r2api?action=presigned&fileName=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(thumbMime)}`
+            );
+            if (!presignedThumbRes.ok) {
+              const t = await presignedThumbRes.text();
+              throw new Error(`Failed to get presigned URL for thumbnail: ${t}`);
+            }
+            const { uploadUrl: thumbUploadUrl, publicUrl: thumbPublicUrl } = await presignedThumbRes.json();
+            const putThumb = await fetch(thumbUploadUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': thumbMime },
+              body: thumbFile,
+            });
+            if (!putThumb.ok) {
+              const t = await putThumb.text();
+              throw new Error(`Failed to upload thumbnail to R2: ${putThumb.status} ${t}`);
+            }
+            thumbnailPublicUrl = thumbPublicUrl;
+          }
+        }
+      }
+
+      // 2) Send only JSON metadata and URLs to the analysis endpoint
       const response = await fetch('/api/llm/analyze-image', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl: imagePublicUrl,
+          description,
+          location: selectedLocationValue,
+          inspectionId: selectedInspectionId,
+          section: selectedSection,
+          subSection: selectedSubsection,
+          selectedColor,
+          isThreeSixty,
+          type: finalType,
+          videoUrl: videoPublicUrl,
+          thumbnailUrl: thumbnailPublicUrl,
+        }),
       });
       
       if (!response.ok) {
@@ -527,7 +605,7 @@ export default function ImageEditorPage() {
   
 
   
-      // ✅ Navigate only if job started successfully
+  // ✅ Navigate only if job started successfully
       window.location.href = `/image-editor/?inspectionId=${selectedInspectionId}`;
     } catch (error: any) {
       console.error('Submission error:', error);

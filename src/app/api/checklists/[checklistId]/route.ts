@@ -43,7 +43,15 @@ export async function PUT(
     if (type !== undefined && ['status', 'information'].includes(type)) updateData.type = type;
     if (tab !== undefined && ['information', 'limitations'].includes(tab)) updateData.tab = tab;
     if (answer_choices !== undefined) {
-      updateData.answer_choices = Array.isArray(answer_choices) && answer_choices.length > 0 ? answer_choices : undefined;
+      // If answer_choices provided as a non-empty array, set it.
+      // If provided as an empty array, UNSET the field to fully remove previous options.
+      if (Array.isArray(answer_choices)) {
+        if (answer_choices.length > 0) {
+          updateData.answer_choices = answer_choices;
+        } else {
+          unsetData.answer_choices = '';
+        }
+      }
     }
 
     // Build the update object with both $set and $unset operations

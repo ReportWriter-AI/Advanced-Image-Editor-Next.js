@@ -54,7 +54,9 @@ export async function POST(request: Request) {
 
     const client = getQstashClient();
 
-    let imageUrl: string | undefined;
+  let imageUrl: string | undefined;
+  let videoUrlJson: string | undefined;
+  let thumbnailUrlJson: string | undefined;
     let description: string | undefined;
     let file: File | null = null;
     let location: string | undefined;
@@ -80,6 +82,10 @@ export async function POST(request: Request) {
       subSection = body.subSection;
       selectedColor = body.selectedColor;
       isThreeSixty = body.isThreeSixty || false;
+      type = body.type;
+      // Optional: video/thumbnail urls already uploaded to R2
+      videoUrlJson = body.videoUrl;
+      thumbnailUrlJson = body.thumbnailUrl;
     }
     else if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
@@ -113,11 +119,15 @@ export async function POST(request: Request) {
     }
 
     console.log(videoFile);
-    let finalVideoUrl = null;
+  let finalVideoUrl = null;
     let finalImageUrl = imageUrl;
-    let finalThumbnailUrl = thumbnail;
+  let finalThumbnailUrl = thumbnail;
   
-    if (videoFile) {
+  if (videoUrlJson) {
+    // Already uploaded via presigned URL
+    finalVideoUrl = videoUrlJson;
+    console.log("✅ Using pre-uploaded video URL:", finalVideoUrl);
+  } else if (videoFile) {
         // Generate R2 key
         const extension = videoFile.name.split(".").pop();
         const key = `inspections/${inspectionId}/${Date.now()}.${extension}`;
@@ -130,7 +140,10 @@ export async function POST(request: Request) {
       console.log('no video found')
     }
 
-    if (file) {
+    if (finalImageUrl && !finalImageUrl.startsWith('data:') && !file) {
+      // Using pre-uploaded URL from client
+      console.log("✅ Using pre-uploaded image URL:", finalImageUrl);
+    } else if (file) {
       const extension = file.name.split(".").pop() || "jpg";
       const key = `inspections/${inspectionId}/${Date.now()}.${extension}`;
       const buffer = Buffer.from(await file.arrayBuffer());
@@ -144,7 +157,10 @@ export async function POST(request: Request) {
       console.log("✅ Base64 image uploaded to R2:", finalImageUrl);
     }
 
-    if (thumbnail && thumbnail.startsWith('data:')) {
+    if (thumbnailUrlJson) {
+      finalThumbnailUrl = thumbnailUrlJson;
+      console.log("✅ Using pre-uploaded thumbnail URL:", finalThumbnailUrl);
+    } else if (thumbnail && thumbnail.startsWith('data:')) {
       const { mime, buffer } = decodeBase64Image(thumbnail);
       const key = `inspections/${inspectionId}/${Date.now()}-thumbnail.png`;
       finalThumbnailUrl = await uploadToR2(buffer, key, mime);
