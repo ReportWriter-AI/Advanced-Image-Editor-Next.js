@@ -661,6 +661,7 @@ export default function InspectionReportPage() {
           const parts = (item.text || '').split(':');
           const label = parts[0]?.trim() || '';
           const value = parts.slice(1).join(':').trim() || '';
+          const formattedComment = item.comment ? formatTextForHTML(item.comment) : '';
           
           return `
             <div class="rpt-info-grid-item">
@@ -670,6 +671,10 @@ export default function InspectionReportPage() {
                   ${escapeHtml(value)}
                 </span>` : ''}
               </div>
+              ${formattedComment ? `
+              <div style="font-size: 0.875rem; color: #374151; line-height: 1.6; margin-top: 0.5rem;">
+                ${formattedComment}
+              </div>` : ''}
               ${selectedAnswers.length > 0 ? `
               <div style="margin-left: 0.25rem; font-weight: 400; color: #6b7280; font-size: 0.875rem;">
                 ${selectedAnswers.map((ans: string) => escapeHtml(ans)).join(', ')}
@@ -1309,10 +1314,10 @@ export default function InspectionReportPage() {
             <p style="margin: 0 0 0.75rem 0;">The home inspection report (Report) was prepared by AGI: Property Inspections (AGI) for the specific purposes of assessing the general condition of the building and identifying defects that are readily apparent at the time of inspection based on the limited visual, non-invasive inspection as further described below in the Scope and Limitations & Exclusions sections. No responsibility is accepted if the Report is used for any other purpose, by any other parties, than the client in this inspection.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Scope</p>
-            <p style="margin: 0 0 0.75rem 0;">- The Report is based on a limited visual, above-ground, non-invasive inspection of the standard systems and components of the building AGI does not open up, uncover or dismantle any part of the building as part of the inspection or undertake any internal assessment of the building, aside from the electrical panel dead front.</p>
+            <p style="margin: 0 0 0.75rem 0;">The Report is based on a limited visual, above-ground, non-invasive inspection of the standard systems and components of the building AGI does not open up, uncover or dismantle any part of the building as part of the inspection or undertake any internal assessment of the building, aside from the electrical panel dead front.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Report Limitations & Exclusions</p>
-            <p style="margin: 0 0 0.75rem 0;">- The Report is an evaluation only and not a guarantee or warranty as to the state of the building or any product, system, or feature in the building.</p>
+            <p style="margin: 0 0 0.75rem 0;">The Report is an evaluation only and not a guarantee or warranty as to the state of the building or any product, system, or feature in the building.</p>
             
             <p style="margin: 0 0 0.75rem 0;">AGI accepts no responsibility or liability for any omission in its inspection or the Report related to defects or irregularities which are not reasonably visible at the time of the inspection or which relate to components of the building:</p>
             
@@ -1327,44 +1332,44 @@ export default function InspectionReportPage() {
             <p style="margin: 0 0 0.75rem 0;">Descriptions in the Report of systems or appliances relate to the existence of such systems or appliances only and not the adequacy, efficiency, or life expectancy of such systems or appliances.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">The Report</p>
-            <p style="margin: 0 0 0.75rem 0;">- is not a structural survey, engineer's report, or weather tightness inspection; does not assess compliance with the requirements of any legislation (including any act, regulation, code, or by-law) unless otherwise stated; is not a geotechnical, site or environmental report. AGI makes no representation as to the existence or absence of any hazard (as defined in the Health and Safety in Employment Act) or any hazardous substance, natural hazard, or contaminant (as those terms are defined in the Resource Management Act) in the building or property.</p>
+            <p style="margin: 0 0 0.75rem 0;">is not a structural survey, engineer's report, or weather tightness inspection; does not assess compliance with the requirements of any legislation (including any act, regulation, code, or by-law) unless otherwise stated; is not a geotechnical, site or environmental report. AGI makes no representation as to the existence or absence of any hazard (as defined in the Health and Safety in Employment Act) or any hazardous substance, natural hazard, or contaminant (as those terms are defined in the Resource Management Act) in the building or property.</p>
             
             <p style="margin: 0 0 0.75rem 0;">AGI has not undertaken any title search and assumes all improvements are within the legal boundaries of the property.</p>
             
             <p style="margin: 0 0 0.75rem 0;">No property survey or any search of the information held by the territorial authority or any other relevant authority has been undertaken. It is recommended that the customer conducts its own Land Information Memorandum or Council property file search.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Unit Title Properties</p>
-            <p style="margin: 0 0 0.75rem 0;">- If the property is a Unit Title property, the inspection and Report are limited to the actual unit and any accessory unit(s) and do not extend to the remainder of the building or the common areas.</p>
+            <p style="margin: 0 0 0.75rem 0;">If the property is a Unit Title property, the inspection and Report are limited to the actual unit and any accessory unit(s) and do not extend to the remainder of the building or the common areas.</p>
             
             <p style="margin: 0 0 0.75rem 0;">AGI recommends the customer obtain a copy of the financial statements and minutes from meetings of the Body Corporate to establish the history of the inspected property under such Body Corporate.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Responsibility to Third Parties</p>
-            <p style="margin: 0 0 0.75rem 0;">- Our responsibility in connection with this Report is limited to the client to whom the Report is addressed and to that client only. We disclaim all responsibility and will accept no liability to any other party without first obtaining the written consent of AGI and the author of the Report.</p>
+            <p style="margin: 0 0 0.75rem 0;">Our responsibility in connection with this Report is limited to the client to whom the Report is addressed and to that client only. We disclaim all responsibility and will accept no liability to any other party without first obtaining the written consent of AGI and the author of the Report.</p>
             
             <p style="margin: 0 0 0.75rem 0;">AGI reserves the right to alter, amend, explain, or limit any information given to any other party.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Publication</p>
-            <p style="margin: 0 0 0.75rem 0;">- Neither the whole nor any part of the Report (or any other report provided by AGI, whether written or verbal) may be published or included in any published document, circular, or statement whether in hard copy or electronic form or otherwise disseminated or sold without the prior written approval of AGI and the inspector.</p>
+            <p style="margin: 0 0 0.75rem 0;">Neither the whole nor any part of the Report (or any other report provided by AGI, whether written or verbal) may be published or included in any published document, circular, or statement whether in hard copy or electronic form or otherwise disseminated or sold without the prior written approval of AGI and the inspector.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Claims & Disputes</p>
-            <p style="margin: 0 0 0.75rem 0;">- Should any dispute arise as a result of the inspection or the Report, it must be submitted to AGI in writing as soon as practically possible but in any case, within ten working days of discovery. The customer agrees that in the event of a dispute, the Report's contents may not be used to satisfy any terms of a sale and purchase agreement until the dispute/dispute has been resolved. In the event the customer nevertheless enters into an unconditional agreement for the purchase of the subject property or makes an existing agreement unconditional before the resolution of the dispute, the customer shall be deemed to have waived the customer's rights to continue with and/or make any future claim against AGI in relation to that matter.</p>
+            <p style="margin: 0 0 0.75rem 0;">Should any dispute arise as a result of the inspection or the Report, it must be submitted to AGI in writing as soon as practically possible but in any case, within ten working days of discovery. The customer agrees that in the event of a dispute, the Report's contents may not be used to satisfy any terms of a sale and purchase agreement until the dispute/dispute has been resolved. In the event the customer nevertheless enters into an unconditional agreement for the purchase of the subject property or makes an existing agreement unconditional before the resolution of the dispute, the customer shall be deemed to have waived the customer's rights to continue with and/or make any future claim against AGI in relation to that matter.</p>
             
             <p style="margin: 0 0 0.75rem 0;">Any claim relating to the accuracy of the Report, in the form of errors or omissions, is limited to the failure on the part of AGI to follow the Standards of Practice promulgated by the Louisiana State Board of Home Inspectors (a copy is made available for viewing along with the Pre-Inspection Agreement).</p>
             
             <p style="margin: 0 0 0.75rem 0;">Except in the case of an emergency, the customer further agrees not to disturb, repair, replace, or alter anything that may constitute evidence relating to the dispute or claimed discrepancy before AGI has had an opportunity to re-inspect and investigate the claim. The Client understands and agrees that any failure to notify AGI or permit AGI to re-inspect as stated above shall be deemed a waiver of the customer's rights to continue with and/or make any future claim against AGI about that matter.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Limitation of Liability</p>
-            <p style="margin: 0 0 0.75rem 0;">- The customer acknowledges and agrees that the director(s) and employee(s) of AGI shall not be held liable to the client.</p>
+            <p style="margin: 0 0 0.75rem 0;">The customer acknowledges and agrees that the director(s) and employee(s) of AGI shall not be held liable to the client.</p>
             
             <p style="margin: 0 0 0.75rem 0;">AGI shall have no liability to the client for any indirect or consequential loss suffered by the client or any other person. The client indemnifies AGI concerning any claims concerning any such loss.</p>
             
             <p style="margin: 0 0 0.75rem 0;">Subject to any legal provisions, if AGI becomes liable to the customer for any reason, for any loss, damage, harm, or injury in any way connected to the inspection and/or the Report, AGI's total liability shall be limited to a sum not exceeding the original fee of the home inspection.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Consumer Guarantees Act</p>
-            <p style="margin: 0 0 0.75rem 0;">- Nothing contained in these terms and conditions shall be deemed to exclude or restrict any rights or remedies that the client may have under the Consumer Guarantees Act 1993 or otherwise at law.</p>
+            <p style="margin: 0 0 0.75rem 0;">Nothing contained in these terms and conditions shall be deemed to exclude or restrict any rights or remedies that the client may have under the Consumer Guarantees Act 1993 or otherwise at law.</p>
             
             <p style="margin: 0 0 0.75rem 0; font-weight: 700;">Partial Invalidity</p>
-            <p style="margin: 0 0 0.75rem 0;">- If any provision in these terms and conditions is illegal, invalid, or unenforceable, such provision shall be deemed to be excluded or read down to the extent necessary to make the provision legal, valid, or enforceable, and the remaining provisions of these terms and conditions shall not be affected.</p>
+            <p style="margin: 0 0 0.75rem 0;">If any provision in these terms and conditions is illegal, invalid, or unenforceable, such provision shall be deemed to be excluded or read down to the extent necessary to make the provision legal, valid, or enforceable, and the remaining provisions of these terms and conditions shall not be affected.</p>
           </div>
         </div>
       </div>
@@ -2589,6 +2594,17 @@ export default function InspectionReportPage() {
                                                   {answerValue}
                                                 </div>
                                               )}
+                                                {item.comment && (
+                                                  <div style={{ 
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151',
+                                                    lineHeight: 1.6,
+                                                    marginTop: '0.5rem',
+                                                    whiteSpace: 'pre-wrap'
+                                                  }}>
+                                                    {item.comment}
+                                                  </div>
+                                                )}
                                               {itemImages.length > 0 && (
                                                 <div className={styles.informationImages}>
                                                   {itemImages.map((img: any, imgIdx: number) => (
@@ -3278,6 +3294,17 @@ export default function InspectionReportPage() {
                                                   {value}
                                                 </span>
                                               )}
+                                              {item.comment && (
+                                                <div style={{ 
+                                                  fontSize: '0.875rem',
+                                                  color: '#374151',
+                                                  lineHeight: 1.6,
+                                                  marginTop: '0.5rem',
+                                                  whiteSpace: 'pre-wrap'
+                                                }}>
+                                                  {item.comment}
+                                                </div>
+                                              )}
                                               {selectedAnswers.length > 0 && (
                                                 <div style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280', fontSize: '0.875rem' }}>
                                                   {selectedAnswers.join(', ')}
@@ -3561,6 +3588,16 @@ export default function InspectionReportPage() {
                                                 }}>
                                                   {value}
                                                 </span>
+                                              )}
+                                              {item.comment && (
+                                                <div style={{ 
+                                                  fontSize: '0.875rem', 
+                                                  color: '#374151', 
+                                                  lineHeight: 1.6, 
+                                                  marginTop: '0.5rem' 
+                                                }}>
+                                                  {item.comment}
+                                                </div>
                                               )}
                                               {selectedAnswers.length > 0 && (
                                                 <div style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280', fontSize: '0.875rem' }}>
@@ -4331,10 +4368,10 @@ export default function InspectionReportPage() {
                         <p style={{ margin: '0 0 0.75rem 0' }}>The home inspection report (Report) was prepared by AGI: Property Inspections (AGI) for the specific purposes of assessing the general condition of the building and identifying defects that are readily apparent at the time of inspection based on the limited visual, non-invasive inspection as further described below in the Scope and Limitations & Exclusions sections. No responsibility is accepted if the Report is used for any other purpose, by any other parties, than the client in this inspection.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Scope</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- The Report is based on a limited visual, above-ground, non-invasive inspection of the standard systems and components of the building. AGI does not open up, uncover or dismantle any part of the building as part of the inspection or undertake any internal assessment of the building, aside from the electrical panel dead front.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>The Report is based on a limited visual, above-ground, non-invasive inspection of the standard systems and components of the building. AGI does not open up, uncover or dismantle any part of the building as part of the inspection or undertake any internal assessment of the building, aside from the electrical panel dead front.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Report Limitations & Exclusions</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- The Report is an evaluation only and not a guarantee or warranty as to the state of the building or any product, system, or feature in the building.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>The Report is an evaluation only and not a guarantee or warranty as to the state of the building or any product, system, or feature in the building.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>AGI accepts no responsibility or liability for any omission in its inspection or the Report related to defects or irregularities which are not reasonably visible at the time of the inspection or which relate to components of the building:</p>
                         
@@ -4349,44 +4386,44 @@ export default function InspectionReportPage() {
                         <p style={{ margin: '0 0 0.75rem 0' }}>Descriptions in the Report of systems or appliances relate to the existence of such systems or appliances only and not the adequacy, efficiency, or life expectancy of such systems or appliances.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>The Report</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- is not a structural survey, engineer's report, or weather tightness inspection; does not assess compliance with the requirements of any legislation (including any act, regulation, code, or by-law) unless otherwise stated; is not a geotechnical, site or environmental report. AGI makes no representation as to the existence or absence of any hazard (as defined in the Health and Safety in Employment Act) or any hazardous substance, natural hazard, or contaminant (as those terms are defined in the Resource Management Act) in the building or property.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>is not a structural survey, engineer's report, or weather tightness inspection; does not assess compliance with the requirements of any legislation (including any act, regulation, code, or by-law) unless otherwise stated; is not a geotechnical, site or environmental report. AGI makes no representation as to the existence or absence of any hazard (as defined in the Health and Safety in Employment Act) or any hazardous substance, natural hazard, or contaminant (as those terms are defined in the Resource Management Act) in the building or property.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>AGI has not undertaken any title search and assumes all improvements are within the legal boundaries of the property.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>No property survey or any search of the information held by the territorial authority or any other relevant authority has been undertaken. It is recommended that the customer conducts its own Land Information Memorandum or Council property file search.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Unit Title Properties</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- If the property is a Unit Title property, the inspection and Report are limited to the actual unit and any accessory unit(s) and do not extend to the remainder of the building or the common areas.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>If the property is a Unit Title property, the inspection and Report are limited to the actual unit and any accessory unit(s) and do not extend to the remainder of the building or the common areas.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>AGI recommends the customer obtain a copy of the financial statements and minutes from meetings of the Body Corporate to establish the history of the inspected property under such Body Corporate.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Responsibility to Third Parties</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- Our responsibility in connection with this Report is limited to the client to whom the Report is addressed and to that client only. We disclaim all responsibility and will accept no liability to any other party without first obtaining the written consent of AGI and the author of the Report.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>Our responsibility in connection with this Report is limited to the client to whom the Report is addressed and to that client only. We disclaim all responsibility and will accept no liability to any other party without first obtaining the written consent of AGI and the author of the Report.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>AGI reserves the right to alter, amend, explain, or limit any information given to any other party.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Publication</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- Neither the whole nor any part of the Report (or any other report provided by AGI, whether written or verbal) may be published or included in any published document, circular, or statement whether in hard copy or electronic form or otherwise disseminated or sold without the prior written approval of AGI and the inspector.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>Neither the whole nor any part of the Report (or any other report provided by AGI, whether written or verbal) may be published or included in any published document, circular, or statement whether in hard copy or electronic form or otherwise disseminated or sold without the prior written approval of AGI and the inspector.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Claims & Disputes</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- Should any dispute arise as a result of the inspection or the Report, it must be submitted to AGI in writing as soon as practically possible but in any case, within ten working days of discovery. The customer agrees that in the event of a dispute, the Report's contents may not be used to satisfy any terms of a sale and purchase agreement until the disagreement/dispute has been resolved. In the event the customer nevertheless enters into an unconditional agreement for the purchase of the subject property or makes an existing agreement unconditional before the resolution of the dispute, the customer shall be deemed to have waived the customer's rights to continue with and/or make any future claim against AGI in relation to that matter.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>Should any dispute arise as a result of the inspection or the Report, it must be submitted to AGI in writing as soon as practically possible but in any case, within ten working days of discovery. The customer agrees that in the event of a dispute, the Report's contents may not be used to satisfy any terms of a sale and purchase agreement until the disagreement/dispute has been resolved. In the event the customer nevertheless enters into an unconditional agreement for the purchase of the subject property or makes an existing agreement unconditional before the resolution of the dispute, the customer shall be deemed to have waived the customer's rights to continue with and/or make any future claim against AGI in relation to that matter.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>Any claim relating to the accuracy of the Report, in the form of errors or omissions, is limited to the failure on the part of AGI to follow the Standards of Practice promulgated by the Louisiana State Board of Home Inspectors (a copy is made available for viewing along with the Pre-Inspection Agreement).</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>Except in the case of an emergency, the customer further agrees not to disturb, repair, replace, or alter anything that may constitute evidence relating to the dispute or claimed discrepancy before AGI has had an opportunity to re-inspect and investigate the claim. The Client understands and agrees that any failure to notify AGI or permit AGI to re-inspect as stated above shall be deemed a waiver of the customer's rights to continue with and/or make any future claim against AGI about that matter.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Limitation of Liability</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- The customer acknowledges and agrees that the director(s) and employee(s) of AGI shall not be held liable to the client.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>The customer acknowledges and agrees that the director(s) and employee(s) of AGI shall not be held liable to the client.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>AGI shall have no liability to the client for any indirect or consequential loss suffered by the client or any other person. The client indemnifies AGI concerning any claims concerning any such loss.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0' }}>Subject to any statutory provisions, if AGI becomes liable to the customer for any reason, for any loss, damage, harm, or injury in any way connected to the inspection and/or the Report, AGI's total liability shall be limited to a sum not exceeding the original fee of the home inspection.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Consumer Guarantees Act</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- Nothing contained in these terms and conditions shall be deemed to exclude or restrict any rights or remedies that the client may have under the Consumer Guarantees Act 1993 or otherwise at law.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>Nothing contained in these terms and conditions shall be deemed to exclude or restrict any rights or remedies that the client may have under the Consumer Guarantees Act 1993 or otherwise at law.</p>
                         
                         <p style={{ margin: '0 0 0.75rem 0', fontWeight: 700 }}>Partial Invalidity</p>
-                        <p style={{ margin: '0 0 0.75rem 0' }}>- If any provision in these terms and conditions is illegal, invalid, or unenforceable, such provision shall be deemed to be excluded or read down to the extent necessary to make the provision legal, valid, or enforceable, and the remaining provisions of these terms and conditions shall not be affected.</p>
+                        <p style={{ margin: '0 0 0.75rem 0' }}>If any provision in these terms and conditions is illegal, invalid, or unenforceable, such provision shall be deemed to be excluded or read down to the extent necessary to make the provision legal, valid, or enforceable, and the remaining provisions of these terms and conditions shall not be affected.</p>
                       </div>
                     </div>
                   </div>

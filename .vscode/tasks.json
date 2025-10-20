@@ -20,6 +20,19 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Dev - Next.js",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"dev"
+			],
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
 		}
 	]
 }

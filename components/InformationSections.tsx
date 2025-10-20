@@ -1005,7 +1005,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         selected_answers: newAnswers
       };
       setFormState(updatedFormState);
-      setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
+      
+      // Cancel any pending auto-save and schedule a new one
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = setTimeout(() => {
+        performAutoSaveWithState(updatedFormState);
+        autoSaveTimerRef.current = null;
+      }, 500);
     } else {
       // Checking - restore from localStorage backup if exists
       setIds.add(id);
@@ -1035,7 +1043,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       }
       
       setFormState(updatedFormState);
-      setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
+      
+      // Cancel any pending auto-save and schedule a new one
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = setTimeout(() => {
+        performAutoSaveWithState(updatedFormState);
+        autoSaveTimerRef.current = null;
+      }, 500);
     }
   };
 
