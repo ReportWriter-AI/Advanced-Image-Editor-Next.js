@@ -277,6 +277,11 @@ export default function UserReport() {
     }
   
     try {
+      // Calculate base_cost for future photo multiplier calculations
+      const materialCost = analysisResult?.materials_total_cost || 0;
+      const laborCost = (analysisResult?.labor_rate || 0) * (analysisResult?.hours_required || 0);
+      const baseCost = materialCost + laborCost;
+      
       const res = await fetch("/api/defects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -294,6 +299,7 @@ export default function UserReport() {
           hours_required: analysisResult?.hours_required,
           recommendation: analysisResult?.recommendation,
           color: analysisData?.selectedArrowColor || '#d63636', // pass the selected arrow color (default to red if not set)
+          base_cost: baseCost, // Save base cost for photo multiplier calculations
         }),
       });
 

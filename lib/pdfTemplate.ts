@@ -11,6 +11,8 @@ export type DefectItem = {
   recommendation?: string;
   color?: string;
   display_number?: string; // Dynamic numbering like "3.1.2"
+  additional_images?: Array<{ url: string; location: string }>; // Multiple location photos
+  base_cost?: number; // Base cost (AI-calculated from first image)
 };
 
 export type InformationBlockImage = {
@@ -461,7 +463,12 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
         subCounter = subsectionNum;
       }
 
-      const totalCost = (d.material_total_cost || 0) + (d.labor_rate || 0) * (d.hours_required || 0);
+      // Calculate total cost with photo multiplier
+      // Fallback: if base_cost doesn't exist (legacy defects), calculate it from material + labor
+      const baseCost = d.base_cost || ((d.material_total_cost || 0) + (d.labor_rate || 0) * (d.hours_required || 0));
+      const photoCount = 1 + (d.additional_images?.length || 0);
+      const totalCost = baseCost * photoCount;
+      
       const selectedColor = d.color || "#d63636";
       const defectParts = splitDefectText(d.defect_description || "");
       const defectTitle = defectParts.title;

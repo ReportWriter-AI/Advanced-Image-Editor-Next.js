@@ -1882,9 +1882,11 @@ export default function InspectionReportPage() {
 
         const anchorId = `defect-${defect._id || numbering.replace(/\./g, '-')}`;
 
-        const totalEstimatedCost =
-          defect.material_total_cost +
-          defect.labor_rate * defect.hours_required;
+        // Calculate total cost with photo multiplier if base_cost is available
+        // Fallback: if base_cost doesn't exist (legacy defects), calculate it from material + labor
+        const baseCost = defect.base_cost || (defect.material_total_cost + defect.labor_rate * defect.hours_required);
+        const photoCount = 1 + (defect.additional_images?.length || 0);
+        const totalEstimatedCost = baseCost * photoCount;
 
         return {
           id: defect._id,
