@@ -18,16 +18,18 @@
 }
 
 /* Multiple Photos Layout (3+) */
+/* Mobile-first: 1 large on top, 2 small below in a row */
 .gridMultiple {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
   width: 100%;
 }
 
 .photoColumn {
   display: grid;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto;
   gap: 8px;
 }
 
@@ -50,7 +52,7 @@
 }
 
 .photoWrapperLarge {
-  grid-row: 1 / 3;
+  /* No special grid positioning needed - renders as first item */
 }
 
 .photo {
@@ -215,19 +217,6 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-  .gridMultiple {
-    grid-template-columns: 1fr;
-  }
-  
-  .photoColumn {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr;
-  }
-  
-  .photoWrapperLarge {
-    grid-row: auto;
-  }
-  
   .overlayText {
     font-size: 2rem;
   }

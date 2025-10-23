@@ -80,6 +80,25 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const optionDragStateRef = useRef<{ checklistId: string | null; draggingChoice: string | null }>({ checklistId: null, draggingChoice: null });
   const [optionDragVisual, setOptionDragVisual] = useState<{ checklistId: string | null; draggingChoice: string | null; overChoice: string | null; position: 'before' | 'after' | null; axis: 'horizontal' | 'vertical' | null }>({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
   
+  // Touch drag state for mobile (iOS Safari fix)
+  const optionTouchStateRef = useRef<{
+    isDragging: boolean;
+    checklistId: string | null;
+    draggingChoice: string | null;
+    startY: number;
+    startX: number;
+    currentY: number;
+    currentX: number;
+  }>({
+    isDragging: false,
+    checklistId: null,
+    draggingChoice: null,
+    startY: 0,
+    startX: 0,
+    currentY: 0,
+    currentX: 0,
+  });
+  
   // Auto-scroll during drag
   const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const modalScrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -627,6 +646,116 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
   const onOptionDragEnd = () => (
     (_e: React.DragEvent<HTMLLabelElement>) => {
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+    }
+  );
+
+  // Touch handlers for iOS Safari compatibility
+  const onOptionTouchStart = (checklistId: string, choice: string, isCustom: boolean) => (
+    (e: React.TouchEvent<HTMLLabelElement>) => {
+      if (isCustom) return;
+      
+      const touch = e.touches[0];
+      optionTouchStateRef.current = {
+        isDragging: true,
+        checklistId,
+        draggingChoice: choice,
+        startY: touch.clientY,
+        startX: touch.clientX,
+        currentY: touch.clientY,
+        currentX: touch.clientX,
+      };
+      
+      optionDragStateRef.current = { checklistId, draggingChoice: choice };
+      setOptionDragVisual({ checklistId, draggingChoice: choice, overChoice: null, position: null, axis: null });
+      
+      // Prevent scrolling while dragging
+      e.currentTarget.style.opacity = '0.5';
+    }
+  );
+
+  const onOptionTouchMove = (checklistId: string, templateChoices: string[]) => (
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      const touchState = optionTouchStateRef.current;
+      if (!touchState.isDragging) return;
+      
+      e.preventDefault(); // Prevent scroll
+      
+      const touch = e.touches[0];
+      touchState.currentY = touch.clientY;
+      touchState.currentX = touch.clientX;
+      
+      // Find element under touch point
+      const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!elementUnderTouch) return;
+      
+      // Find closest label with data-choice attribute
+      const targetLabel = elementUnderTouch.closest('[data-choice]') as HTMLElement;
+      if (!targetLabel) return;
+      
+      const targetChoice = targetLabel.getAttribute('data-choice');
+      if (!targetChoice || !templateChoices.includes(targetChoice)) return;
+      
+      const { draggingChoice } = touchState;
+      if (targetChoice === draggingChoice) return;
+      
+      // Calculate position
+      const rect = targetLabel.getBoundingClientRect();
+      const centerY = rect.top + rect.height / 2;
+      const centerX = rect.left + rect.width / 2;
+      const distY = Math.abs(touch.clientY - centerY);
+      const distX = Math.abs(touch.clientX - centerX);
+      const axis: 'horizontal' | 'vertical' = distX >= distY ? 'horizontal' : 'vertical';
+      const position: 'before' | 'after' = axis === 'horizontal'
+        ? (touch.clientX < centerX ? 'before' : 'after')
+        : (touch.clientY < centerY ? 'before' : 'after');
+      
+      setOptionDragVisual({ 
+        checklistId, 
+        draggingChoice, 
+        overChoice: targetChoice, 
+        position, 
+        axis 
+      });
+    }
+  );
+
+  const onOptionTouchEnd = (checklistId: string, templateChoices: string[]) => (
+    async (e: React.TouchEvent<HTMLLabelElement>) => {
+      const touchState = optionTouchStateRef.current;
+      if (!touchState.isDragging) return;
+      
+      e.currentTarget.style.opacity = '1';
+      
+      const { draggingChoice } = touchState;
+      const { overChoice, position } = optionDragVisual;
+      
+      if (draggingChoice && overChoice && draggingChoice !== overChoice) {
+        const list = [...templateChoices];
+        const fromIndex = list.indexOf(draggingChoice);
+        let toIndex = list.indexOf(overChoice);
+        
+        if (fromIndex !== -1 && toIndex !== -1) {
+          list.splice(fromIndex, 1);
+          toIndex = list.indexOf(overChoice);
+          if (position === 'after') toIndex += 1;
+          list.splice(toIndex, 0, draggingChoice);
+          
+          await persistOptionOrder(checklistId, list);
+        }
+      }
+      
+      // Reset state
+      optionTouchStateRef.current = {
+        isDragging: false,
+        checklistId: null,
+        draggingChoice: null,
+        startY: 0,
+        startX: 0,
+        currentY: 0,
+        currentX: 0,
+      };
       optionDragStateRef.current = { checklistId: null, draggingChoice: null };
       setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
     }
@@ -2981,22 +3110,24 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 {/* Answer Choices & Custom Answer - show when selected */}
                                 {isSelected && (
                                   <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                                    {getAllAnswers(cl._id, cl.answer_choices || []).length > 0 && (
+                                    {getAllAnswers(cl._id, cl.answer_choices || []).length > 0 && (() => {
+                                      const templateChoices = cl.answer_choices || [];
+                                      return (
                                       <>
                                         <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
                                           Select Options:
                                         </div>
-                                        <div className="checklist-options-grid">
+                                        <div className="checklist-options-grid" onTouchMove={onOptionTouchMove(cl._id, templateChoices)}>
                                           {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
                                             const selectedAnswers = getSelectedAnswers(cl._id);
                                             const isAnswerSelected = selectedAnswers.has(choice);
                                             const isCustom = isCustomAnswer(cl._id, choice, cl.answer_choices || []);
                                             
                                             const isTemplateChoice = Array.isArray(cl.answer_choices) && cl.answer_choices.includes(choice);
-                                            const templateChoices = cl.answer_choices || [];
                                             return (
                                               <label 
                                                 key={idx}
+                                                data-choice={choice}
                                                 style={{ 
                                                   display: 'flex', 
                                                   alignItems: 'center',
@@ -3008,7 +3139,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                   cursor: 'pointer',
                                                   fontSize: '0.75rem',
                                                   transition: 'all 0.15s ease',
-                                                  position: 'relative'
+                                                  position: 'relative',
+                                                  touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto'
                                                 }}
                                                 onMouseEnter={(e) => {
                                                   if (!isAnswerSelected) {
@@ -3027,6 +3159,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                 onDragOver={onOptionDragOver(cl._id, choice, isCustom)}
                                                 onDrop={onOptionDrop(cl._id, choice, isCustom, templateChoices)}
                                                 onDragEnd={onOptionDragEnd()}
+                                                onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
+                                                onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
                                               >
                                                 {/* Insertion line indicators for options */}
                                                 {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
@@ -3071,7 +3205,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                           })}
                                         </div>
                                       </>
-                                    )}
+                                      );
+                                    })()}
 
                                     {/* Custom Answer Input */}
                                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
@@ -3610,7 +3745,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
                                       Select Options:
                                     </div>
-                                    <div className="checklist-options-grid">
+                                    <div className="checklist-options-grid" onTouchMove={onOptionTouchMove(cl._id, cl.answer_choices || [])}>
                                       {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
                                         const selectedAnswers = getSelectedAnswers(cl._id);
                                         const isAnswerSelected = selectedAnswers.has(choice);
@@ -3621,6 +3756,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                         return (
                                           <label 
                                             key={idx}
+                                            data-choice={choice}
                                             style={{ 
                                               display: 'flex', 
                                               alignItems: 'center',
@@ -3632,7 +3768,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                               cursor: 'pointer',
                                               fontSize: '0.75rem',
                                               transition: 'all 0.15s ease',
-                                              position: 'relative'
+                                              position: 'relative',
+                                              touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto'
                                             }}
                                             onMouseEnter={(e) => {
                                               if (!isAnswerSelected) {
@@ -3651,6 +3788,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                             onDragOver={onOptionDragOver(cl._id, choice, isCustom)}
                                             onDrop={onOptionDrop(cl._id, choice, isCustom, templateChoices)}
                                             onDragEnd={onOptionDragEnd()}
+                                            onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
+                                            onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
                                           >
                                             {/* Insertion line indicators for options */}
                                             {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (

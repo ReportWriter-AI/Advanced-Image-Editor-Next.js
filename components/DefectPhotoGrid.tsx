@@ -81,16 +81,17 @@ export default function DefectPhotoGrid({
       );
     }
 
-    // 3 or more photos - grid layout
+    // 3 or more photos - mobile-style grid layout
+    // 1 large photo on top, 2 smaller photos below side-by-side
     return (
       <div className={styles.gridMultiple}>
-        {/* First photo - takes left half */}
+        {/* First photo - takes full width at top */}
         <div className={styles.photoWrapperLarge} onClick={() => handlePhotoClick(0)}>
           <img src={allPhotos[0].url} alt={allPhotos[0].location} className={styles.photo} />
           <div className={styles.locationLabel}>{allPhotos[0].location}</div>
         </div>
         
-        {/* Right side - 2 photos stacked */}
+        {/* Bottom row - 2 photos side by side */}
         <div className={styles.photoColumn}>
           <div className={styles.photoWrapper} onClick={() => handlePhotoClick(1)}>
             <img src={allPhotos[1].url} alt={allPhotos[1].location} className={styles.photo} />

@@ -347,11 +347,18 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 0.5rem;
+  /* Enable smooth touch interactions on mobile */
+  -webkit-overflow-scrolling: touch;
 }
 
 .checklist-options-grid label {
   /* Ensure items wrap nicely on small screens */
   min-height: 38px;
+  /* Optimize touch targets for iOS */
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Mobile breakpoint: two columns for options */
