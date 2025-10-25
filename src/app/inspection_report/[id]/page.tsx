@@ -112,11 +112,11 @@ const splitDefectText = (raw?: string): DefectTextParts => {
 
   return { title: normalized, body: "", paragraphs: [] };
 };
+export default function Page() {
+  // Route param (App Router) for current inspection id
+  const { id } = useParams() as { id: string };
 
-
-export default function InspectionReportPage() {
-  const params = useParams();
-  const { id } = params; // this is inspection_id
+  // Core data sets
   const [defects, setDefects] = useState<any[]>([]);
   const [informationBlocks, setInformationBlocks] = useState<any[]>([]);
   const [sections, setSections] = useState<any[]>([]); // All sections with order_index
@@ -1014,7 +1014,7 @@ export default function InspectionReportPage() {
               <!-- Subsection Heading (Colored with badge) -->
               <div class="rpt-section-heading" id="${s.anchorId}-heading" data-cat="${category}" style="--selected-color:${selectedColor};--shadow-color:${shadowColor};margin-top:${isNewSection ? '1rem' : '0.5rem'};">
                 <h2 class="rpt-section-heading-text">
-                  ${escapeHtml(s.numbering)} ${escapeHtml(summaryTitle)}
+                  ${escapeHtml(s.numbering)} - ${escapeHtml((s as any).subsectionName || (s as any).subsection || (s as any).heading2 || '')}
                   <span class="rpt-badge">${badgeLabel}</span>
                 </h2>
               </div>
@@ -1024,9 +1024,88 @@ export default function InspectionReportPage() {
                 <div class="rpt-content-grid">
                   <div class="rpt-image-section">
                     <h3 class="rpt-section-title">Visual Evidence</h3>
-                    <div class="rpt-image-container">
-                      ${imgSrc ? `<img class="rpt-img" src="${imgSrc}" alt="Defect image"/>` : `<div class="rpt-image-placeholder"><p>No image available</p></div>`}
-                    </div>
+                    ${(() => {
+                      const additionalArr = Array.isArray((s as any).additionalPhotos)
+                        ? (s as any).additionalPhotos
+                        : (Array.isArray((s as any).additional_images)
+                           ? (s as any).additional_images.map((img: any) => ({ url: img.url, location: img.location }))
+                           : []);
+                      
+                      // Build allPhotos array: main photo + additional photos
+                      const allPhotos = [
+                        { url: imgSrc, location: locationText },
+                        ...additionalArr
+                      ];
+                      // Per-defect gallery payload (encoded) so the lightbox shows only this defect's photos
+                      const galleryData = encodeURIComponent(JSON.stringify(allPhotos));
+                      const totalCount = allPhotos.length;
+                      const visibleCount = Math.min(totalCount, 3);
+                      const remainingCount = totalCount - visibleCount;
+                      
+                      // Render photo grid based on count (1, 2, or 3+ photos)
+                      if (totalCount === 1) {
+                        // Single photo - full width
+                        return `
+                          <div class="rpt-photo-gallery" data-gallery="${galleryData}">
+                            <div class="rpt-photo-grid-single">
+                              <div class="rpt-photo-wrapper" onclick="openGallery(this, 0);">
+                                <img class="rpt-photo rpt-img" src="${escapeHtml(allPhotos[0].url)}" alt="${escapeHtml(allPhotos[0].location)}" />
+                                <div class="rpt-photo-label">${escapeHtml(allPhotos[0].location)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      }
+                      
+                      // 2 photos total: show side by side
+                      if (totalCount === 2) {
+                        return `
+                          <div class="rpt-photo-gallery" data-gallery="${galleryData}">
+                            <div class="rpt-photo-grid-two">
+                              ${allPhotos.map((photo, idx) => `
+                                <div class="rpt-photo-wrapper" onclick="openGallery(this, ${idx});">
+                                  <img class="rpt-photo rpt-img" src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.location)}" />
+                                  <div class="rpt-photo-label">${escapeHtml(photo.location)}</div>
+                                </div>
+                              `).join('')}
+                            </div>
+                          </div>
+                        `;
+                      }
+                      
+                      // 3+ photos: 1 large on top, 2 smaller below side-by-side
+                      return `
+                        <div class="rpt-photo-gallery" data-gallery="${galleryData}">
+                          <div class="rpt-photo-grid-multiple">
+                            <!-- First photo large -->
+                            <div class="rpt-photo-wrapper-large" onclick="openGallery(this, 0);">
+                              <img class="rpt-photo rpt-img" src="${escapeHtml(allPhotos[0].url)}" alt="${escapeHtml(allPhotos[0].location)}" />
+                              <div class="rpt-photo-label">${escapeHtml(allPhotos[0].location)}</div>
+                            </div>
+                            
+                            <!-- Bottom row: 2 photos side by side -->
+                            <div class="rpt-photo-column">
+                              <div class="rpt-photo-wrapper" onclick="openGallery(this, 1);">
+                                <img class="rpt-photo rpt-img" src="${escapeHtml(allPhotos[1].url)}" alt="${escapeHtml(allPhotos[1].location)}" />
+                                <div class="rpt-photo-label">${escapeHtml(allPhotos[1].location)}</div>
+                              </div>
+                              
+                              ${visibleCount > 2 ? `
+                                <div class="rpt-photo-wrapper-overlay" onclick="openGallery(this, 2);">
+                                  <img class="rpt-photo rpt-img" src="${escapeHtml(allPhotos[2].url)}" alt="${escapeHtml(allPhotos[2].location)}" />
+                                  <div class="rpt-photo-label">${escapeHtml(allPhotos[2].location)}</div>
+                                  ${remainingCount > 0 ? `
+                                    <div class="rpt-photo-overlay" onclick="event.stopPropagation(); openGallery(this.parentNode, 2);">
+                                      <span class="rpt-photo-overlay-text">+${remainingCount}</span>
+                                    </div>
+                                  ` : ''}
+                                </div>
+                              ` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      `;
+                    })()}
                     <div class="rpt-location-section">
                       <h4 class="rpt-subsection-title">Location</h4>
                       <p class="rpt-subsection-content">${locationText}</p>
@@ -1042,21 +1121,36 @@ export default function InspectionReportPage() {
                       </div>
                     </div>
                     <div class="rpt-detail-card">
-                      <h4 class="rpt-subsection-title">Estimated Costs</h4>
-                      <div class="rpt-subsection-content">
-                        <p>
-                          <strong>Materials:</strong> ${escapeHtml(s.estimatedCosts?.materials)} ($${s.estimatedCosts?.materialsCost ?? 0})<br/>
-                          <strong>Labor:</strong> ${escapeHtml(s.estimatedCosts?.labor)} at $${s.estimatedCosts?.laborRate ?? 0}/hr<br/>
-                          <strong>Hours:</strong> ${s.estimatedCosts?.hoursRequired ?? 0}<br/>
-                          <strong>Recommendation:</strong> ${escapeHtml(s.estimatedCosts?.recommendation)}
-                        </p>
-                      </div>
+                      ${inspection?.hidePricing
+                        ? (
+                          s.estimatedCosts?.recommendation
+                            ? `
+                              <h4 class="rpt-subsection-title">Recommendation</h4>
+                              <div class="rpt-subsection-content">
+                                <p>${escapeHtml(s.estimatedCosts?.recommendation)}</p>
+                              </div>
+                            `
+                            : ''
+                        )
+                        : `
+                          <h4 class="rpt-subsection-title">Estimated Costs</h4>
+                          <div class="rpt-subsection-content">
+                            <p>
+                              <strong>Materials:</strong> ${escapeHtml(s.estimatedCosts?.materials)} ($${s.estimatedCosts?.materialsCost ?? 0})<br/>
+                              <strong>Labor:</strong> ${escapeHtml(s.estimatedCosts?.labor)} at $${s.estimatedCosts?.laborRate ?? 0}/hr<br/>
+                              <strong>Hours:</strong> ${s.estimatedCosts?.hoursRequired ?? 0}<br/>
+                              <strong>Recommendation:</strong> ${escapeHtml(s.estimatedCosts?.recommendation)}
+                            </p>
+                          </div>
+                        `}
                     </div>
-                    <div class="rpt-cost-highlight">
-                      <div class="rpt-total-cost">
-                        Total Estimated Cost: $${cost}
+                    ${!inspection?.hidePricing ? `
+                      <div class="rpt-cost-highlight">
+                        <div class="rpt-total-cost">
+                          Total Estimated Cost: $${cost}
+                        </div>
                       </div>
-                    </div>
+                    ` : ''}
                   </div>
                 </div>
               </section>
@@ -1087,17 +1181,13 @@ export default function InspectionReportPage() {
   .rpt-summary-table tbody td{padding:13px 14px;font-size:0.95rem;color:#1f2937;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0}
   .rpt-summary-table tbody td:last-child{border-right:none}
   .rpt-summary-table tbody tr:last-child td{border-bottom:none}
-  .rpt-summary-row{cursor:pointer;transition:background 0.2s ease,transform 0.2s ease}
-  .rpt-summary-row:hover{background:#f8fafc}
+  /* Summary rows are always color-filled (no hover fade) */
+  .rpt-summary-row{cursor:pointer}
   .rpt-summary-row:focus{outline:2px solid #3b82f6;outline-offset:-2px}
-  .rpt-row-cat-red{border-left:6px solid #dc2626}
-  .rpt-row-cat-orange{border-left:6px solid #f59e0b}
-  .rpt-row-cat-blue{border-left:6px solid #3b82f6}
-  .rpt-row-cat-purple{border-left:6px solid #7c3aed}
-  .rpt-row-cat-red:hover{background:rgba(220,38,38,0.06)}
-  .rpt-row-cat-orange:hover{background:rgba(245,158,11,0.08)}
-  .rpt-row-cat-blue:hover{background:rgba(59,130,246,0.08)}
-  .rpt-row-cat-purple:hover{background:rgba(124,58,237,0.08)}
+  .rpt-row-cat-red{border-left:6px solid #dc2626;background:rgba(220,38,38,0.14)}
+  .rpt-row-cat-orange{border-left:6px solid #f59e0b;background:rgba(245,158,11,0.16)}
+  .rpt-row-cat-blue{border-left:6px solid #3b82f6;background:rgba(59,130,246,0.16)}
+  .rpt-row-cat-purple{border-left:6px solid #7c3aed;background:rgba(124,58,237,0.16)}
     .rpt-section{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 8px 32px rgba(15,23,42,0.12);padding:32px;margin:32px 0 0 0}
     .rpt-section:first-of-type{margin-top:0}
   .rpt-section-heading{margin:56px 0 24px 0;padding-bottom:16px;border-bottom:2px solid var(--selected-color,#dc2626)}
@@ -1112,12 +1202,28 @@ export default function InspectionReportPage() {
     .rpt-image-section::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,var(--selected-color,#dc2626),var(--shadow-color,rgba(214,54,54,0.16)),var(--selected-color,#dc2626))}
   .rpt-section-title{font-size:1.5rem;font-weight:700;color:#1f2937;margin-bottom:24px;letter-spacing:-0.025em}
   @media(max-width:640px){.rpt-section-title{text-align:center;}}
-    .rpt-image-container{border-radius:16px;overflow:hidden;min-height:300px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(15,23,42,0.15)}
+  .rpt-image-container{border-radius:16px;overflow:hidden;min-height:300px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(15,23,42,0.15);position:relative}
     .rpt-img{width:100%;height:auto;display:block;cursor:zoom-in;border-radius:12px;transition:transform .3s ease}
     .rpt-img:hover{transform:scale(1.02)}
     .rpt-image-placeholder{color:#64748b;border:2px dashed #cbd5e1;background:#fff;width:100%;height:300px;display:flex;align-items:center;justify-content:center;border-radius:16px;font-weight:500}
+  .rpt-main-caption{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);background:rgba(255,255,255,0.95);color:#111827;border:1px solid #e5e7eb;border-radius:9999px;padding:6px 10px;font-weight:600;font-size:0.85rem;box-shadow:0 2px 8px rgba(0,0,0,0.12)}
     .rpt-location-section{margin-top:24px;padding:16px;background:#fff;border-radius:12px;border-left:3px solid var(--selected-color,#dc2626);box-shadow:0 4px 6px var(--shadow-color,rgba(214,54,54,0.15));transition:all .3s ease}
     .rpt-location-section:hover{background:#f8fafc;transform:translateX(2px)}
+  /* Photo Grid Layouts - matching DefectPhotoGrid component exactly */
+  .rpt-photo-grid-single{width:100%}
+  .rpt-photo-grid-two{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+  .rpt-photo-grid-multiple{display:grid;grid-template-columns:1fr;gap:8px;width:100%}
+  .rpt-photo-column{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .rpt-photo-wrapper,.rpt-photo-wrapper-large,.rpt-photo-wrapper-overlay{position:relative;overflow:hidden;border-radius:8px;cursor:pointer;transition:transform 0.2s ease, box-shadow 0.2s ease;background:#f0f0f0}
+  .rpt-photo-wrapper:hover,.rpt-photo-wrapper-large:hover,.rpt-photo-wrapper-overlay:hover{transform:scale(1.02);box-shadow:0 4px 12px rgba(0,0,0,0.15)}
+  .rpt-photo{width:100%;height:100%;object-fit:cover;display:block;min-height:200px}
+  .rpt-photo-grid-single .rpt-photo{min-height:300px;max-height:500px}
+  .rpt-photo-grid-two .rpt-photo{min-height:250px;max-height:400px}
+  .rpt-photo-grid-multiple .rpt-photo-wrapper-large .rpt-photo{min-height:300px;max-height:500px}
+  .rpt-photo-grid-multiple .rpt-photo-column .rpt-photo{min-height:145px;max-height:245px}
+  .rpt-photo-label{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top, rgba(0,0,0,0.8), transparent);color:white;padding:8px 12px;font-size:0.85rem;font-weight:500;text-align:center}
+  .rpt-photo-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+  .rpt-photo-overlay-text{color:white;font-size:2.5rem;font-weight:700;text-shadow:0 2px 4px rgba(0,0,0,0.5)}
     .rpt-description-section{background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:24px;box-shadow:0 4px 16px rgba(15,23,42,0.12);position:relative;overflow:hidden}
     .rpt-detail-card{margin-bottom:16px;padding:16px;background:#fff;border-radius:12px;border-left:3px solid var(--selected-color,#dc2626);box-shadow:0 4px 6px var(--shadow-color,rgba(214,54,54,0.15));transition:all .3s ease}
     .rpt-detail-card:hover{background:#f8fafc;transform:translateX(2px)}
@@ -1133,8 +1239,12 @@ export default function InspectionReportPage() {
   .lb-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.9);display:none;align-items:center;justify-content:center;z-index:9999;padding:20px}
   .lb-overlay.open{display:flex}
   .lb-img{width:auto;height:auto;max-width:98vw;max-height:98vh;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:transform 80ms linear;will-change:transform;cursor:zoom-in;image-rendering:auto;object-fit:contain;-webkit-backface-visibility:hidden;backface-visibility:hidden}
-  .lb-close{position:absolute;top:20px;right:20px;background:rgba(0,0,0,0.8);color:#fff;border:none;font-size:32px;line-height:1;font-weight:400;padding:8px 14px;border-radius:8px;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,0.5);transition:all .2s ease;z-index:10000;width:48px;height:48px;display:flex;align-items:center;justify-content:center}
-  .lb-close:hover{background:rgba(220,38,38,0.9);transform:scale(1.1)}
+  .lb-close{position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.2);color:#fff;border:none;font-size:3rem;width:50px;height:50px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;transition:background 0.2s ease;z-index:10001}
+  .lb-close:hover{background:rgba(255,255,255,0.3)}
+  .navBtn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);border:none;color:white;font-size:3rem;width:50px;height:50px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s ease;z-index:10001}
+  .navBtn:hover{background:rgba(255,255,255,0.3)}
+  .prevBtn{left:20px}
+  .nextBtn{right:20px}
     .rpt-hr{border:none;border-top:1px solid #e5e7eb;margin:12px 0}
   .cat-red{color:#cc0000}
   .cat-orange{color:#e69500}
@@ -1397,7 +1507,7 @@ export default function InspectionReportPage() {
       </div>
     </div>
     ` : ''}
-    ${reportType === 'summary' ? `
+    ${reportType === 'summary' && !inspection?.hidePricing ? `
     <section class="rpt-section">
       <h2 class="rpt-h2">Total Estimated Cost</h2>
       <table class="rpt-table">
@@ -1421,7 +1531,7 @@ export default function InspectionReportPage() {
       </table>
     </section>
     ` : ''}
-    ${reportType === 'full' ? `
+    ${reportType === 'full' && !inspection?.hidePricing ? `
     <section class="rpt-section">
       <h2 class="rpt-h2">Total Estimated Cost</h2>
       <table class="rpt-table">
@@ -1444,21 +1554,32 @@ export default function InspectionReportPage() {
         </tfoot>
       </table>
     </section>` : ''}
-    <!-- Lightbox overlay for image zoom/pan -->
-    <div id="lb-overlay" class="lb-overlay" role="dialog" aria-modal="true" aria-label="Image preview">
+    <!-- Lightbox overlay for image zoom/pan with gallery support -->
+    <div id="lb-overlay" class="lb-overlay" role="dialog" aria-modal="true" aria-label="Image gallery preview">
       <button type="button" id="lb-close" class="lb-close" aria-label="Close image">×</button>
+      <button type="button" id="lb-prev" class="navBtn prevBtn" aria-label="Previous image">‹</button>
+      <button type="button" id="lb-next" class="navBtn nextBtn" aria-label="Next image">›</button>
       <img id="lb-img" class="lb-img" alt="Zoomed defect" />
+      <div id="lb-caption" class="lb-caption" style="position:absolute;left:50%;transform:translateX(-50%);bottom:12px;color:#fff;font-weight:600;"></div>
+      <div id="lb-counter" class="lb-counter" style="position:absolute;left:50%;transform:translateX(-50%);bottom:40px;color:#fff;font-weight:600;"></div>
     </div>
     <script>
       (function(){
         var overlay = document.getElementById('lb-overlay');
         var img = document.getElementById('lb-img');
+        var prevBtn = document.getElementById('lb-prev');
+        var nextBtn = document.getElementById('lb-next');
+        var closeBtn = document.getElementById('lb-close');
+        var captionEl = document.getElementById('lb-caption');
+        var counterEl = document.getElementById('lb-counter');
         var isPanning = false;
         var startX = 0, startY = 0;
         var tx = 0, ty = 0;
         var startTx = 0, startTy = 0;
         var scale = 1;
         var baseW = 0, baseH = 0;
+        var gallery = [];
+        var currentIndex = 0;
 
         function updateTransform(){
           img.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + scale + ')';
@@ -1469,37 +1590,88 @@ export default function InspectionReportPage() {
           }
         }
 
-        function openLightbox(src){
-          // Preload image to get natural dimensions
+        function loadImageEntry(idx){
+          if (!gallery || !gallery.length) return;
+          currentIndex = (idx + gallery.length) % gallery.length;
+          var entry = gallery[currentIndex];
           var tempImg = new Image();
-          tempImg.onload = function() {
-            img.src = src;
+          tempImg.onload = function(){
+            img.src = entry.src;
+            captionEl.textContent = entry.caption || '';
+            counterEl.textContent = (currentIndex + 1) + ' / ' + gallery.length;
             img.style.width = 'auto';
             img.style.height = 'auto';
             img.style.maxWidth = '98vw';
             img.style.maxHeight = '98vh';
-            scale = 1; tx = 0; ty = 0;
+            scale = 1; tx = 0; ty = 0; startTx = 0; startTy = 0;
             updateTransform();
-            overlay.classList.add('open');
-            document.body.style.overflow = 'hidden';
             // measure base size after image loads
             setTimeout(function(){
-              var rect = img.getBoundingClientRect();
-              baseW = rect.width; baseH = rect.height;
-            }, 50);
+              var rect = img.getBoundingClientRect(); baseW = rect.width; baseH = rect.height;
+            },50);
           };
-          tempImg.src = src;
+          tempImg.onerror = function(){
+            console.error('Failed to load image:', entry.src);
+            // Try to set src anyway, browser will show broken image icon
+            img.src = entry.src;
+            captionEl.textContent = entry.caption || '';
+            counterEl.textContent = (currentIndex + 1) + ' / ' + gallery.length;
+          };
+          tempImg.src = entry.src;
         }
+
+        function openLightbox(index){
+          if (!gallery || !gallery.length) return;
+          loadImageEntry(index || 0);
+          overlay.classList.add('open');
+          document.body.style.overflow = 'hidden';
+        }
+
+        // Open a lightbox gallery scoped to a specific defect/photo group
+        function openGallery(el, index){
+          try {
+            var root = el && el.closest ? el.closest('.rpt-photo-gallery') : null;
+            if(!root) return;
+            var encoded = root.getAttribute('data-gallery');
+            if(!encoded) return;
+            var arr = JSON.parse(decodeURIComponent(encoded));
+            gallery = (arr || []).map(function(p){ return { src: p.url, caption: p.location || '' }; });
+            if(!gallery.length) return;
+            openLightbox(index || 0);
+          } catch(e) {
+            // fail silently
+          }
+        }
+        // Expose for inline onclick handlers in the exported HTML
+        window.openGallery = openGallery;
+
+        // Keep simple clicks for information images as single-image galleries
+        Array.prototype.forEach.call(document.querySelectorAll('.rpt-info-image'), function(n){
+          n.addEventListener('click', function(e){
+            e.preventDefault(); e.stopPropagation();
+            gallery = [{ src: n.getAttribute('src'), caption: n.getAttribute('alt') || '' }];
+            openLightbox(0);
+          });
+        });
 
         function closeLightbox(){
           overlay.classList.remove('open');
           document.body.style.overflow = '';
         }
 
-        document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeLightbox(); });
-  overlay.addEventListener('click', function(){ closeLightbox(); });
-  var closeBtn = document.getElementById('lb-close');
-  if(closeBtn){ closeBtn.addEventListener('click', function(e){ e.stopPropagation(); closeLightbox(); }); }
+        function showNext(){ loadImageEntry(currentIndex + 1); }
+        function showPrev(){ loadImageEntry(currentIndex - 1); }
+
+        document.addEventListener('keydown', function(e){
+          if (e.key === 'Escape') return closeLightbox();
+          if (e.key === 'ArrowRight') return showNext();
+          if (e.key === 'ArrowLeft') return showPrev();
+        });
+
+        overlay.addEventListener('click', function(){ closeLightbox(); });
+        if(closeBtn){ closeBtn.addEventListener('click', function(e){ e.stopPropagation(); closeLightbox(); }); }
+        if(nextBtn){ nextBtn.addEventListener('click', function(e){ e.stopPropagation(); showNext(); }); }
+        if(prevBtn){ prevBtn.addEventListener('click', function(e){ e.stopPropagation(); showPrev(); }); }
         img.addEventListener('click', function(e){ e.stopPropagation(); });
 
         // Double-click to toggle zoom
@@ -1523,7 +1695,6 @@ export default function InspectionReportPage() {
           var dy = e.clientY - startY;
           var nextX = startTx + dx;
           var nextY = startTy + dy;
-          // Clamp within overlay bounds
           var container = overlay.getBoundingClientRect();
           var scaledW = baseW * scale;
           var scaledH = baseH * scale;
@@ -1535,10 +1706,7 @@ export default function InspectionReportPage() {
         });
         document.addEventListener('mouseup', function(){ isPanning = false; });
 
-        // Attach click handlers to exported images
-        Array.prototype.forEach.call(document.querySelectorAll('.rpt-img'), function(el){
-          el.addEventListener('click', function(){ openLightbox(el.getAttribute('src')); });
-        });
+        // Note: Image clicks are wired inline via openGallery(...) so no global gallery is built here.
 
         // Make summary rows scroll to section anchors
         Array.prototype.forEach.call(document.querySelectorAll('.rpt-summary-row'), function(row){
@@ -4314,33 +4482,49 @@ export default function InspectionReportPage() {
                             </div>
                         </div>
 
-                        {/* Estimated Costs */}
-                        <div className={styles.section} style={{
-                          // boxShadow: getSelectedColor(section),
-                          "--shadow-color": getLightColor(section),
-                          // '--light-color': getLightColor(section)
-                        } as React.CSSProperties }>
-                          <h4 className={styles.sectionTitle}>Estimated Costs</h4>
-                          <div className={styles.sectionContent}>
-                              <p>
-                                <strong>Materials:</strong> {section.estimatedCosts.materials} ($
-                                {section.estimatedCosts.materialsCost})<br/>
-                                <strong>Labor:</strong> {section.estimatedCosts.labor} at $
-                                {section.estimatedCosts.laborRate}/hr<br/>
-                                <strong>Hours:</strong> {section.estimatedCosts.hoursRequired}<br/>
-                                <strong>Recommendation:</strong> {section.estimatedCosts.recommendation}
-                              </p>
-                          </div>
-                        </div>
+                        {/* Estimated Costs - Hidden when hidePricing is enabled */}
+                        {!inspection?.hidePricing && (
+                          <>
+                            <div className={styles.section} style={{
+                              // boxShadow: getSelectedColor(section),
+                              "--shadow-color": getLightColor(section),
+                              // '--light-color': getLightColor(section)
+                            } as React.CSSProperties }>
+                              <h4 className={styles.sectionTitle}>Estimated Costs</h4>
+                              <div className={styles.sectionContent}>
+                                  <p>
+                                    <strong>Materials:</strong> {section.estimatedCosts.materials} ($
+                                    {section.estimatedCosts.materialsCost})<br/>
+                                    <strong>Labor:</strong> {section.estimatedCosts.labor} at $
+                                    {section.estimatedCosts.laborRate}/hr<br/>
+                                    <strong>Hours:</strong> {section.estimatedCosts.hoursRequired}<br/>
+                                    <strong>Recommendation:</strong> {section.estimatedCosts.recommendation}
+                                  </p>
+                              </div>
+                            </div>
+                            
+                            {/* Cost Highlight */}
+                            <div className={styles.costHighlight} style={{
+                              "--selected-color": getSelectedColor(section),
+                            } as React.CSSProperties }>
+                              <div className={styles.totalCost}>
+                                Total Estimated Cost: ${section.estimatedCosts.totalEstimatedCost}
+                              </div>
+                            </div>
+                          </>
+                        )}
                         
-                        {/* Cost Highlight */}
-                        <div className={styles.costHighlight} style={{
-                          "--selected-color": getSelectedColor(section),
-                        } as React.CSSProperties }>
-                          <div className={styles.totalCost}>
-                            Total Estimated Cost: ${section.estimatedCosts.totalEstimatedCost}
+                        {/* Show only Recommendation when pricing is hidden */}
+                        {inspection?.hidePricing && section.estimatedCosts?.recommendation && (
+                          <div className={styles.section} style={{
+                            "--shadow-color": getLightColor(section),
+                          } as React.CSSProperties }>
+                            <h4 className={styles.sectionTitle}>Recommendation</h4>
+                            <div className={styles.sectionContent}>
+                              <p>{section.estimatedCosts.recommendation}</p>
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -4650,3 +4834,4 @@ export default function InspectionReportPage() {
 
   );
 }
+

@@ -94,7 +94,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Partial<Defect>>({});
-  const [inspectionDetails, setInspectionDetails] = useState<{headerImage?: string, headerText?: string, headerName?: string, headerAddress?: string}>({});
+  const [inspectionDetails, setInspectionDetails] = useState<{headerImage?: string, headerText?: string, headerName?: string, headerAddress?: string, hidePricing?: boolean}>({});
   const [savingHeaderImage, setSavingHeaderImage] = useState(false);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'defects' | 'information'>('defects');
@@ -105,6 +105,10 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
   // Additional images state
   const [uploadingLocationPhoto, setUploadingLocationPhoto] = useState(false);
   const [newLocationPhoto, setNewLocationPhoto] = useState<{ url: string; location: string } | null>(null);
+  
+  // Scroll to top button state
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const modalBodyRef = useRef<HTMLDivElement | null>(null);
 
 
 
@@ -263,6 +267,31 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
       setActiveTab('defects');
     }
   }, [isOpen, inspectionId]);
+
+  // Scroll detection for "Back to Top" button
+  useEffect(() => {
+    const modalBody = modalBodyRef.current;
+    if (!modalBody) return;
+
+    const handleScroll = () => {
+      // Show button when scrolled more than 300px
+      if (modalBody.scrollTop > 300) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+
+    modalBody.addEventListener('scroll', handleScroll);
+    return () => modalBody.removeEventListener('scroll', handleScroll);
+  }, [isOpen]);
+
+  // Scroll to top function
+  const scrollToTop = () => {
+    if (modalBodyRef.current) {
+      modalBodyRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
 
   const fetchDefects = async () => {
@@ -477,6 +506,29 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
     } catch(e){ console.error('Error updating header address', e); }
   };
 
+  const toggleHidePricing = async (hide: boolean) => {
+    try {
+      setInspectionDetails(prev => ({ ...prev, hidePricing: hide }));
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hidePricing: hide })
+      });
+      
+      if (response.ok) {
+        console.log('✅ Hide pricing setting updated:', hide);
+      } else {
+        console.error('❌ Failed to update hide pricing setting');
+        // Revert on error
+        setInspectionDetails(prev => ({ ...prev, hidePricing: !hide }));
+      }
+    } catch (e) {
+      console.error('Error updating hide pricing setting:', e);
+      // Revert on error
+      setInspectionDetails(prev => ({ ...prev, hidePricing: !hide }));
+    }
+  };
+
   // calculateTotalCost is now defined earlier in the file (line ~234) to include image count multiplication
 
   const startEditing = (defect: Defect) => {
@@ -654,7 +706,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
         className="modal-content defect-edit-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-body">
+        <div className="modal-body" ref={modalBodyRef}>
           <div className="modal-header">
             <h2>Edit Inspection - {inspectionName}</h2>
             <button className="modal-close-btn" onClick={onClose}>
@@ -715,6 +767,45 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                     onHeaderAddressChanged={(text) => setHeaderAddress(text)}
                     getProxiedSrc={getProxiedSrc}
                   />
+                </div>
+              </div>
+              
+              {/* Report Settings */}
+              <div className="header-image-section" style={{ marginTop: '1.5rem' }}>
+                <h3>Report Settings</h3>
+                <p className="section-description">Configure how this inspection report is displayed.</p>
+                
+                <div style={{ marginTop: '1rem' }}>
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '0.375rem',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={inspectionDetails.hidePricing || false}
+                      onChange={(e) => toggleHidePricing(e.target.checked)}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        cursor: 'pointer',
+                        accentColor: '#8230c9'
+                      }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#111827', marginBottom: '0.25rem' }}>
+                        Hide Pricing
+                      </div>
+                      <div style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                        Hide cost estimates, materials cost, labor cost, hours, and total cost in all report formats (web, PDF, HTML export)
+                      </div>
+                    </div>
+                  </label>
                 </div>
               </div>
               
@@ -894,76 +985,83 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                 displayDefect.defect_description || 'No description available'
                               )}
                             </div>
-                            <div className="detail-row">
-                              <strong>Materials:</strong>{' '}
-                              {isEditing ? (
-                                <input
-                                  className="defect-input"
-                                  type="text"
-                                  value={editedValues.materials ?? displayDefect.materials ?? ''}
-                                  onChange={(e) => handleFieldChange('materials', e.target.value)}
-                                />
-                              ) : (
-                                displayDefect.materials || 'No materials specified'
-                              )}
-                            </div>
-                            <div className="detail-row">
-                              <strong>Material Cost:</strong>{' '}
-                              {isEditing ? (
-                                <input
-                                  className="defect-input"
-                                  type="number"
-                                  step="0.01"
-                                  value={String(editedValues.material_total_cost ?? displayDefect.material_total_cost ?? 0)}
-                                  onChange={(e) => handleFieldChange('material_total_cost', e.target.value)}
-                                />
-                              ) : (
-                                formatCurrency(displayDefect.material_total_cost || 0)
-                              )}
-                            </div>
-                            <div className="detail-row">
-                              <strong>Labor:</strong>{' '}
-                              {isEditing ? (
-                                <input
-                                  className="defect-input"
-                                  type="text"
-                                  value={editedValues.labor_type ?? displayDefect.labor_type ?? ''}
-                                  onChange={(e) => handleFieldChange('labor_type', e.target.value)}
-                                />
-                              ) : (
-                                displayDefect.labor_type || 'Not specified'
-                              )}{' '}
-                              {isEditing ? (
-                                <>
-                                  at
-                                  <input
-                                    className="defect-input"
-                                    style={{ width: 100, marginLeft: 6, marginRight: 6 }}
-                                    type="number"
-                                    step="0.01"
-                                    value={String(editedValues.labor_rate ?? displayDefect.labor_rate ?? 0)}
-                                    onChange={(e) => handleFieldChange('labor_rate', e.target.value)}
-                                  />
-                                  /hr
-                                </>
-                              ) : (
-                                <> at {formatCurrency(displayDefect.labor_rate || 0)}/hr</>
-                              )}
-                            </div>
-                            <div className="detail-row">
-                              <strong>Hours:</strong>{' '}
-                              {isEditing ? (
-                                <input
-                                  className="defect-input"
-                                  type="number"
-                                  step="0.1"
-                                  value={String(editedValues.hours_required ?? displayDefect.hours_required ?? 0)}
-                                  onChange={(e) => handleFieldChange('hours_required', e.target.value)}
-                                />
-                              ) : (
-                                displayDefect.hours_required || 0
-                              )}
-                            </div>
+                            
+                            {/* Pricing Information - Hidden when hidePricing is enabled */}
+                            {!inspectionDetails.hidePricing && (
+                              <>
+                                <div className="detail-row">
+                                  <strong>Materials:</strong>{' '}
+                                  {isEditing ? (
+                                    <input
+                                      className="defect-input"
+                                      type="text"
+                                      value={editedValues.materials ?? displayDefect.materials ?? ''}
+                                      onChange={(e) => handleFieldChange('materials', e.target.value)}
+                                    />
+                                  ) : (
+                                    displayDefect.materials || 'No materials specified'
+                                  )}
+                                </div>
+                                <div className="detail-row">
+                                  <strong>Material Cost:</strong>{' '}
+                                  {isEditing ? (
+                                    <input
+                                      className="defect-input"
+                                      type="number"
+                                      step="0.01"
+                                      value={String(editedValues.material_total_cost ?? displayDefect.material_total_cost ?? 0)}
+                                      onChange={(e) => handleFieldChange('material_total_cost', e.target.value)}
+                                    />
+                                  ) : (
+                                    formatCurrency(displayDefect.material_total_cost || 0)
+                                  )}
+                                </div>
+                                <div className="detail-row">
+                                  <strong>Labor:</strong>{' '}
+                                  {isEditing ? (
+                                    <input
+                                      className="defect-input"
+                                      type="text"
+                                      value={editedValues.labor_type ?? displayDefect.labor_type ?? ''}
+                                      onChange={(e) => handleFieldChange('labor_type', e.target.value)}
+                                    />
+                                  ) : (
+                                    displayDefect.labor_type || 'Not specified'
+                                  )}{' '}
+                                  {isEditing ? (
+                                    <>
+                                      at
+                                      <input
+                                        className="defect-input"
+                                        style={{ width: 100, marginLeft: 6, marginRight: 6 }}
+                                        type="number"
+                                        step="0.01"
+                                        value={String(editedValues.labor_rate ?? displayDefect.labor_rate ?? 0)}
+                                        onChange={(e) => handleFieldChange('labor_rate', e.target.value)}
+                                      />
+                                      /hr
+                                    </>
+                                  ) : (
+                                    <> at {formatCurrency(displayDefect.labor_rate || 0)}/hr</>
+                                  )}
+                                </div>
+                                <div className="detail-row">
+                                  <strong>Hours:</strong>{' '}
+                                  {isEditing ? (
+                                    <input
+                                      className="defect-input"
+                                      type="number"
+                                      step="0.1"
+                                      value={String(editedValues.hours_required ?? displayDefect.hours_required ?? 0)}
+                                      onChange={(e) => handleFieldChange('hours_required', e.target.value)}
+                                    />
+                                  ) : (
+                                    displayDefect.hours_required || 0
+                                  )}
+                                </div>
+                              </>
+                            )}
+                            
                             <div className="detail-row">
                               <strong>Recommendation:</strong>{' '}
                               {isEditing ? (
@@ -1052,29 +1150,31 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                               </div>
                             )}
 
-                            <div className="detail-row total-cost">
-                              <strong>Total Cost:</strong>{' '}
-                              {formatCurrency(
-                                calculateTotalCost({
-                                  ...displayDefect,
-                                  material_total_cost: Number(
-                                    isEditing
-                                      ? editedValues.material_total_cost ?? displayDefect.material_total_cost ?? 0
-                                      : displayDefect.material_total_cost ?? 0
-                                  ),
-                                  labor_rate: Number(
-                                    isEditing
-                                      ? editedValues.labor_rate ?? displayDefect.labor_rate ?? 0
-                                      : displayDefect.labor_rate ?? 0
-                                  ),
-                                  hours_required: Number(
-                                    isEditing
-                                      ? editedValues.hours_required ?? displayDefect.hours_required ?? 0
-                                      : displayDefect.hours_required ?? 0
-                                  ),
-                                } as Defect)
-                              )}
-                            </div>
+                            {!inspectionDetails.hidePricing && (
+                              <div className="detail-row total-cost">
+                                <strong>Total Cost:</strong>{' '}
+                                {formatCurrency(
+                                  calculateTotalCost({
+                                    ...displayDefect,
+                                    material_total_cost: Number(
+                                      isEditing
+                                        ? editedValues.material_total_cost ?? displayDefect.material_total_cost ?? 0
+                                        : displayDefect.material_total_cost ?? 0
+                                    ),
+                                    labor_rate: Number(
+                                      isEditing
+                                        ? editedValues.labor_rate ?? displayDefect.labor_rate ?? 0
+                                        : displayDefect.labor_rate ?? 0
+                                    ),
+                                    hours_required: Number(
+                                      isEditing
+                                        ? editedValues.hours_required ?? displayDefect.hours_required ?? 0
+                                        : displayDefect.hours_required ?? 0
+                                    ),
+                                  } as Defect)
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1088,6 +1188,43 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
             <InformationSections inspectionId={inspectionId} />
           )}
           </div>
+
+          {/* Floating Scroll to Top Button */}
+          {showScrollTop && (
+            <button
+              onClick={scrollToTop}
+              style={{
+                position: 'fixed',
+                bottom: '100px',
+                right: '40px',
+                width: '50px',
+                height: '50px',
+                borderRadius: '50%',
+                backgroundColor: '#dc2626',
+                color: 'white',
+                border: 'none',
+                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.4)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '20px',
+                transition: 'all 0.3s ease',
+                zIndex: 1000,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.1)';
+                e.currentTarget.style.boxShadow = '0 6px 16px rgba(220, 38, 38, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.4)';
+              }}
+              title="Back to Top"
+            >
+              <i className="fas fa-arrow-up"></i>
+            </button>
+          )}
 
           <div className="modal-footer">
             <button className="modal-btn secondary-btn" onClick={onClose}>

@@ -148,6 +148,42 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   // 360° photo checkbox state (key: checklist_id, value: boolean)
   const [isThreeSixtyMap, setIsThreeSixtyMap] = useState<Record<string, boolean>>({});
 
+  // Collapsed/expanded state for selected Status items in the Add/Edit modal
+  const [expandedStatusIds, setExpandedStatusIds] = useState<Set<string>>(new Set());
+  const isStatusExpanded = useCallback((id: string) => expandedStatusIds.has(id), [expandedStatusIds]);
+  const expandStatus = useCallback((id: string) => {
+    setExpandedStatusIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+  const collapseStatus = useCallback((id: string) => {
+    setExpandedStatusIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  // Collapsed/expanded state for selected Limitations/Information items
+  const [expandedLimitIds, setExpandedLimitIds] = useState<Set<string>>(new Set());
+  const isLimitExpanded = useCallback((id: string) => expandedLimitIds.has(id), [expandedLimitIds]);
+  const expandLimit = useCallback((id: string) => {
+    setExpandedLimitIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+  const collapseLimit = useCallback((id: string) => {
+    setExpandedLimitIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
   // Proxy helper for reliable image loading
   const getProxiedSrc = useCallback((url?: string | null) => {
     if (!url) return '';
@@ -1366,6 +1402,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     if (setIds.has(id)) {
       // Unchecking - backup current answers to localStorage before clearing
       setIds.delete(id);
+      // If this item was marked as default-checked, uncheck the default toggle too
+      const cl = activeSection?.checklists.find(c => c._id === id);
+      if (cl?.default_checked) {
+        // This will persist to template or local temp checklist item as needed
+        toggleDefaultCheckedFor(id, false);
+      }
+  // Also collapse if it was expanded (Status or Limitations)
+      collapseStatus(id);
+  collapseLimit(id);
       
       // Backup selected answers for this checklist in localStorage
       const currentAnswers = formState.selected_answers.get(id);
@@ -2277,6 +2322,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     // Update local form state immediately for snappy UI
     setChecklistFormData(prev => ({ ...prev, default_checked: checked }));
 
+    // If turning default ON from the edit modal, ensure the field is selected in current inspection
+    if (checked && editingChecklistId && formState && !formState.selected_checklist_ids.has(editingChecklistId)) {
+      toggleChecklist(editingChecklistId);
+    }
+
     // If we're editing an existing checklist, persist change
     if (editingChecklistId) {
       const isTemporary = editingChecklistId.startsWith('temp_');
@@ -2321,6 +2371,59 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       } catch (err) {
         console.error('Auto-save default_checked failed:', err);
         alert('Failed to auto-save "Default to checked?". Please try again.');
+      }
+    }
+  };
+
+  // Toggle default_checked from the main Information Block modal for any checklist item
+  const toggleDefaultCheckedFor = async (checklistId: string, checked: boolean) => {
+    // Update UI immediately
+    if (activeSection) {
+      const updatedChecklists = activeSection.checklists.map(cl =>
+        cl._id === checklistId ? { ...cl, default_checked: checked } : cl
+      );
+      setActiveSection({ ...activeSection, checklists: updatedChecklists });
+    }
+
+    // If turning default ON, ensure the field is selected in the current inspection
+    if (checked && formState && !formState.selected_checklist_ids.has(checklistId)) {
+      // Reuse existing toggle logic to select and restore any backed up answers
+      toggleChecklist(checklistId);
+    }
+
+    // If this is an inspection-only temp item, persist only to local state
+    if (checklistId.startsWith('temp_')) {
+      if (activeSection) {
+        const sectionId = activeSection._id;
+        const currentInspectionChecklists = inspectionChecklists.get(sectionId) || [];
+        const updatedInspectionChecklists = currentInspectionChecklists.map(cl =>
+          cl._id === checklistId ? { ...cl, default_checked: checked } : cl
+        );
+        const newInspectionChecklistsMap = new Map(inspectionChecklists);
+        newInspectionChecklistsMap.set(sectionId, updatedInspectionChecklists);
+        setInspectionChecklists(newInspectionChecklistsMap);
+      }
+      return;
+    }
+
+    // Persist to server for template items
+    try {
+      const res = await fetch(`/api/checklists/${checklistId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_checked: checked }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to update');
+    } catch (err) {
+      console.error('Failed to update default_checked:', err);
+      alert('Failed to update "Default to checked?". Please try again.');
+      // Revert UI on failure
+      if (activeSection) {
+        const updatedChecklists = activeSection.checklists.map(cl =>
+          cl._id === checklistId ? { ...cl, default_checked: !checked } : cl
+        );
+        setActiveSection({ ...activeSection, checklists: updatedChecklists });
       }
     }
   };
@@ -2889,10 +2992,24 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           return (
           <div key={section._id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.375rem', padding: '1rem', backgroundColor: 'white', boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <h3 style={{ fontWeight: 500, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {isComplete && <span style={{ fontSize: '1.25rem', color: '#22c55e' }}>✅</span>}
-                {section.name}
-                {section.order_index === 1 && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#6b7280', fontWeight: 400 }}></span>}
+              <h3 style={{ fontWeight: 500, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                {/* Spectora-style completion indicator: empty circle or green checkmark */}
+                <span style={{ 
+                  fontSize: '1rem',
+                  color: isComplete ? '#22c55e' : '#d1d5db',
+                  lineHeight: 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '18px',
+                  height: '18px',
+                  marginRight: '0.25rem'
+                }}>
+                  {isComplete ? '✓' : '○'}
+                </span>
+                <span style={{ color: isComplete ? '#22c55e' : '#374151' }}>
+                  {section.name}
+                </span>
               </h3>
               <button
                 onClick={() => openAddModal(section)}
@@ -2955,43 +3072,59 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                     )}
                   </div>
                   <div style={{ fontSize: '0.875rem', color: '#374151' }}>
-                    <div style={{ marginLeft: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ marginLeft: '0rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
                       {getBlockChecklists(block).map((cl: any) => {
                         const clId = typeof cl === 'string' ? cl : cl._id;
                         const clType = typeof cl === 'object' && cl?.type ? cl.type : undefined;
+                        const clText = (typeof cl === 'object' && cl?.text) ? cl.text : clId;
                         const isStatus = clType === 'status';
+                        
                         return (
                           <div key={clId} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem', padding: '0.375rem 0' }}>
+                              {/* Spectora-style type indicator - checkbox for status, badge for others */}
                               {isStatus ? (
                                 <input
                                   type="checkbox"
                                   checked={true}
                                   readOnly
                                   aria-readonly="true"
-                                  style={{ cursor: 'default' }}
+                                  style={{
+                                    width: '18px',
+                                    height: '18px',
+                                    cursor: 'default',
+                                    accentColor: '#3b82f6',
+                                    flexShrink: 0,
+                                    marginTop: '0.125rem'
+                                  }}
+                                  title="Maintenance Item (selected)"
                                 />
                               ) : (
                                 <span style={{
-                                  fontSize: '0.7rem',
-                                  padding: '0.1rem 0.4rem',
+                                  fontSize: '0.75rem',
+                                  padding: '0.25rem 0.5rem',
                                   borderRadius: '0.25rem',
-                                  backgroundColor: '#d1fae5',
-                                  color: '#065f46',
+                                  backgroundColor: '#f59e0b',
+                                  color: 'white',
                                   fontWeight: 600,
-                                  textTransform: 'uppercase' as const
+                                  textTransform: 'capitalize' as const,
+                                  flexShrink: 0,
+                                  lineHeight: 1.2,
+                                  minWidth: '120px',
+                                  textAlign: 'center'
                                 }}>
-                                  {clType || 'info'}
+                                  {clType === 'information' ? 'Information' : 'Limitation'}
                                 </span>
                               )}
-                              <span style={{ fontWeight: 'bold' }}>{(typeof cl === 'object' && cl?.text) ? cl.text : clId}</span>
+                              <span style={{ fontWeight: 500, color: '#111827', lineHeight: 1.5 }}>{clText}</span>
                             </div>
                             {typeof cl === 'object' && cl?.comment && cl.comment.trim() !== '' && (
                               <div style={{ 
-                                marginLeft: '1rem', 
+                                marginLeft: '8.125rem', 
                                 color: '#6b7280',
-                                fontSize: '0.875rem',
-                                paddingTop: '0.125rem'
+                                fontSize: '0.8125rem',
+                                paddingTop: '0.125rem',
+                                lineHeight: 1.5
                               }}>
                                 {cl.comment}
                               </div>
@@ -3210,23 +3343,100 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                             }} />
                           )}
                           
-                          {/* Header - clickable to toggle selection */}
-                          <label style={{ display: 'flex', fontSize: '0.875rem', cursor: 'pointer', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          {/* Header - selection checkbox + title row (click to expand when collapsed) */}
+                          <div style={{ display: 'flex', fontSize: '0.875rem', alignItems: 'flex-start', gap: '0.625rem', padding: '0.125rem 0' }}>
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => toggleChecklist(cl._id)}
-                              style={{ marginTop: '0.2rem', cursor: 'pointer' }}
+                              style={{ marginTop: '0.25rem', cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
                             />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 600, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ cursor: 'grab', color: '#6b7280' }}>⋮⋮</span> {cl.text}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}
+                              onClick={() => { if (isSelected && !isStatusExpanded(cl._id)) { expandStatus(cl._id); } }}
+                              role="button"
+                              title={isSelected ? (isStatusExpanded(cl._id) ? 'Expanded' : 'Click to expand') : 'Select the checkbox to enable'}
+                            >
+                              <div style={{ fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem', lineHeight: 1.5 }}>
+                                <span style={{ cursor: 'grab', color: '#9ca3af', fontSize: '1rem', flexShrink: 0 }}>⋮⋮</span> 
+                                <span style={{ flex: 1 }}>{cl.text}</span>
+                                {isSelected && isStatusExpanded(cl._id) && (
+                                  <button
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); collapseStatus(cl._id); }}
+                                    title="Collapse"
+                                    style={{
+                                      backgroundColor: 'transparent',
+                                      border: '2px solid #d1d5db',
+                                      color: '#6b7280',
+                                      cursor: 'pointer',
+                                      fontSize: '1rem',
+                                      fontWeight: 700,
+                                      padding: '0.15rem 0.4rem',
+                                      borderRadius: '0.25rem'
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                                {!isMobile && (
+                                  <label
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
+                                    title="When enabled and saved to the template, new inspections will start with this item pre-selected"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!cl.default_checked}
+                                      onChange={(e) => { e.stopPropagation(); toggleDefaultCheckedFor(cl._id, e.target.checked); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    Default to checked?
+                                  </label>
+                                )}
+                              </div>
+                              {isMobile && (
+                                <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  {isSelected && isStatusExpanded(cl._id) && (
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); collapseStatus(cl._id); }}
+                                      title="Collapse"
+                                      style={{
+                                        backgroundColor: 'transparent',
+                                        border: '2px solid #d1d5db',
+                                        color: '#6b7280',
+                                        cursor: 'pointer',
+                                        fontSize: '1rem',
+                                        fontWeight: 700,
+                                        padding: '0.15rem 0.4rem',
+                                        borderRadius: '0.25rem'
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                  <label
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
+                                    title="When enabled and saved to the template, new inspections will start with this item pre-selected"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!cl.default_checked}
+                                      onChange={(e) => { e.stopPropagation(); toggleDefaultCheckedFor(cl._id, e.target.checked); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    Default to checked?
+                                  </label>
+                                </div>
+                              )}
                               {cl.comment && (
-                                <div style={{ marginLeft: '0rem', marginTop: '0.25rem', color: '#6b7280', fontSize: '0.8rem' }}>
+                                <div style={{ marginLeft: '1.75rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                                   {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
                                 </div>
                               )}
                             </div>
-                            <div style={{ display: 'flex', gap: '0.25rem', marginLeft: '0.5rem', position: 'relative' }} onClick={(e) => e.preventDefault()}>
+                            <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}>
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
@@ -3234,13 +3444,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   openChecklistForm('status', cl);
                                 }}
                                 style={{
-                                  padding: '0.2rem 0.35rem',
-                                  fontSize: '0.7rem',
-                                  borderRadius: '0.2rem',
+                                  padding: '0.3rem 0.45rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
                                   backgroundColor: '#f59e0b',
                                   color: 'white',
                                   border: 'none',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  lineHeight: 1
                                 }}
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
@@ -3255,13 +3466,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   handleDeleteChecklist(cl._id);
                                 }}
                                 style={{
-                                  padding: '0.2rem 0.35rem',
-                                  fontSize: '0.7rem',
-                                  borderRadius: '0.2rem',
+                                  padding: '0.3rem 0.45rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
                                   backgroundColor: '#ef4444',
                                   color: 'white',
                                   border: 'none',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  lineHeight: 1
                                 }}
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
@@ -3308,185 +3520,184 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 </div>
                               )}
                             </div>
-                          </label>
+                          </div>
 
                           {/* Content area - NOT clickable to toggle */}
                           <div>
-                                
-                                {/* Answer Choices & Custom Answer - show when selected */}
-                                {isSelected && (
-                                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                                    {getAllAnswers(cl._id, cl.answer_choices || []).length > 0 && (() => {
-                                      const templateChoices = cl.answer_choices || [];
-                                      return (
-                                      <>
-                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
-                                          Select Options:
-                                        </div>
-                                        <div className="checklist-options-grid" onTouchMove={onOptionTouchMove(cl._id, templateChoices)}>
-                                          {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
-                                            const selectedAnswers = getSelectedAnswers(cl._id);
-                                            const isAnswerSelected = selectedAnswers.has(choice);
-                                            const isCustom = isCustomAnswer(cl._id, choice, cl.answer_choices || []);
-                                            
-                                            const isTemplateChoice = Array.isArray(cl.answer_choices) && cl.answer_choices.includes(choice);
-                                            return (
-                                              <label 
-                                                key={idx}
-                                                data-choice={choice}
-                                                style={{ 
-                                                  display: 'flex', 
-                                                  alignItems: 'center',
-                                                  gap: '0.4rem',
-                                                  padding: '0.4rem 0.5rem',
-                                                  borderRadius: '0.25rem',
-                                                  backgroundColor: isAnswerSelected ? '#dbeafe' : '#f9fafb',
-                                                  border: `1px solid ${isAnswerSelected ? '#a466da' : '#e5e7eb'}`,
-                                                  cursor: 'pointer',
-                                                  fontSize: '0.75rem',
-                                                  transition: 'all 0.15s ease',
-                                                  position: 'relative',
-                                                  touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                  if (!isAnswerSelected) {
-                                                    e.currentTarget.style.backgroundColor = '#f3f4f6';
-                                                    e.currentTarget.style.borderColor = '#d1d5db';
-                                                  }
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                  if (!isAnswerSelected) {
-                                                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                                                    e.currentTarget.style.borderColor = '#e5e7eb';
-                                                  }
-                                                }}
-                                                draggable={!isCustom}
-                                                onDragStart={onOptionDragStart(cl._id, choice, isCustom)}
-                                                onDragOver={onOptionDragOver(cl._id, choice, isCustom)}
-                                                onDrop={onOptionDrop(cl._id, choice, isCustom, templateChoices)}
-                                                onDragEnd={onOptionDragEnd()}
-                                                onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
-                                                onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
-                                              >
-                                                {/* Insertion line indicators for options */}
-                                                {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
-                                                  <div style={{ position: 'absolute', top: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
-                                                )}
-                                                {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'after' && (
-                                                  <div style={{ position: 'absolute', bottom: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
-                                                )}
-                                                {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'before' && (
-                                                  <div style={{ position: 'absolute', left: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
-                                                )}
-                                                {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'after' && (
-                                                  <div style={{ position: 'absolute', right: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
-                                                )}
-                                                <input
-                                                  type="checkbox"
-                                                  checked={isAnswerSelected}
-                                                  onChange={() => toggleAnswer(cl._id, choice)}
-                                                  style={{ cursor: 'pointer' }}
-                                                  onClick={(e) => e.stopPropagation()}
-                                                />
-                                                <span style={{ color: '#374151', userSelect: 'none', flex: 1 }}>
-                                                  {choice}
-                                                </span>
-                                                {isCustom && (
-                                                  <span style={{ 
-                                                    fontSize: '0.6rem', 
-                                                    backgroundColor: '#fbbf24', 
-                                                    color: '#78350f',
-                                                    padding: '0.1rem 0.3rem',
-                                                    borderRadius: '0.2rem',
-                                                    fontWeight: 600
-                                                  }}>
-                                                    Custom
-                                                  </span>
-                                                )}
-                                                {!isCustom && (
-                                                  <span title="Drag to reorder" style={{ fontSize: '0.9rem', color: '#9ca3af', cursor: 'grab' }}>⋮⋮</span>
-                                                )}
-                                              </label>
-                                            );
-                                          })}
-                                        </div>
-                                      </>
-                                      );
-                                    })()}
+                                {/* Expanded details: answers and custom answer input */}
+                                {isSelected && isStatusExpanded(cl._id) && (
+                                  <>
+                                    <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #e5e7eb' }}>
+                                      {getAllAnswers(cl._id, cl.answer_choices || []).length > 0 && (() => {
+                                        const templateChoices = cl.answer_choices || [];
+                                        return (
+                                          <>
+                                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
+                                              Select Options:
+                                            </div>
+                                            <div className="checklist-options-grid" onTouchMove={onOptionTouchMove(cl._id, templateChoices)}>
+                                              {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
+                                                const selectedAnswers = getSelectedAnswers(cl._id);
+                                                const isAnswerSelected = selectedAnswers.has(choice);
+                                                const isCustom = isCustomAnswer(cl._id, choice, cl.answer_choices || []);
+                                                return (
+                                                  <label 
+                                                    key={idx}
+                                                    data-choice={choice}
+                                                    style={{ 
+                                                      display: 'flex', 
+                                                      alignItems: 'center',
+                                                      gap: '0.4rem',
+                                                      padding: '0.4rem 0.5rem',
+                                                      borderRadius: '0.25rem',
+                                                      backgroundColor: isAnswerSelected ? '#dbeafe' : '#f9fafb',
+                                                      border: `1px solid ${isAnswerSelected ? '#a466da' : '#e5e7eb'}`,
+                                                      cursor: 'pointer',
+                                                      fontSize: '0.75rem',
+                                                      transition: 'all 0.15s ease',
+                                                      position: 'relative',
+                                                      touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                      if (!isAnswerSelected) {
+                                                        e.currentTarget.style.backgroundColor = '#f3f4f6';
+                                                        e.currentTarget.style.borderColor = '#d1d5db';
+                                                      }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      if (!isAnswerSelected) {
+                                                        e.currentTarget.style.backgroundColor = '#f9fafb';
+                                                        e.currentTarget.style.borderColor = '#e5e7eb';
+                                                      }
+                                                    }}
+                                                    draggable={!isCustom}
+                                                    onDragStart={onOptionDragStart(cl._id, choice, isCustom)}
+                                                    onDragOver={onOptionDragOver(cl._id, choice, isCustom)}
+                                                    onDrop={onOptionDrop(cl._id, choice, isCustom, templateChoices)}
+                                                    onDragEnd={onOptionDragEnd()}
+                                                    onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
+                                                    onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
+                                                  >
+                                                    {/* Insertion line indicators for options */}
+                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
+                                                      <div style={{ position: 'absolute', top: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
+                                                    )}
+                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'after' && (
+                                                      <div style={{ position: 'absolute', bottom: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
+                                                    )}
+                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'before' && (
+                                                      <div style={{ position: 'absolute', left: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
+                                                    )}
+                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'after' && (
+                                                      <div style={{ position: 'absolute', right: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
+                                                    )}
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={isAnswerSelected}
+                                                      onChange={() => toggleAnswer(cl._id, choice)}
+                                                      style={{ cursor: 'pointer' }}
+                                                      onClick={(e) => e.stopPropagation()}
+                                                    />
+                                                    <span style={{ color: '#374151', userSelect: 'none', flex: 1 }}>
+                                                      {choice}
+                                                    </span>
+                                                    {isCustom && (
+                                                      <span style={{ 
+                                                        fontSize: '0.6rem', 
+                                                        backgroundColor: '#fbbf24', 
+                                                        color: '#78350f',
+                                                        padding: '0.1rem 0.3rem',
+                                                        borderRadius: '0.2rem',
+                                                        fontWeight: 600
+                                                      }}>
+                                                        Custom
+                                                      </span>
+                                                    )}
+                                                    {!isCustom && (
+                                                      <span title="Drag to reorder" style={{ fontSize: '0.9rem', color: '#9ca3af', cursor: 'grab' }}>⋮⋮</span>
+                                                    )}
+                                                  </label>
+                                                );
+                                              })}
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
 
-                                    {/* Custom Answer Input */}
-                                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
-                                        Add Custom Answer:
-                                      </div>
-                                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                                        <input
-                                          type="text"
-                                          placeholder="Type custom answer..."
-                                          value={customAnswerInputs[`custom-${cl._id}`] || ''}
-                                          onChange={(e) => setCustomAnswerInputs(prev => ({
-                                            ...prev,
-                                            [`custom-${cl._id}`]: e.target.value
-                                          }))}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                              e.preventDefault();
-                                              addCustomAnswer(cl._id);
-                                            }
-                                          }}
-                                          style={{
-                                            flex: 1,
-                                            padding: '0.5rem',
-                                            fontSize: '0.75rem',
-                                            borderRadius: '0.25rem',
-                                            border: '1px solid #d1d5db',
-                                            outline: 'none'
-                                          }}
-                                        />
-                                        <button
-                                          onClick={() => addCustomAnswer(cl._id)}
-                                          style={{
-                                            padding: '0.5rem 0.75rem',
-                                            fontSize: '0.7rem',
-                                            borderRadius: '0.25rem',
-                                            backgroundColor: '#a466da',
-                                            color: 'white',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            whiteSpace: 'nowrap',
-                                            fontWeight: 600
-                                          }}
-                                          title="Add answer for this inspection only"
-                                        >
-                                          Add
-                                        </button>
-                                        <button
-                                          onClick={() => addCustomAnswerPermanently(cl._id)}
-                                          style={{
-                                            padding: '0.5rem 0.75rem',
-                                            fontSize: '0.7rem',
-                                            borderRadius: '0.25rem',
-                                            backgroundColor: '#10b981',
-                                            color: 'white',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            whiteSpace: 'nowrap',
-                                            fontWeight: 600
-                                          }}
-                                          title="Save to template permanently for all future inspections"
-                                        >
-                                          Save to Template
-                                        </button>
-                                      </div>
-                                      <div style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.375rem', fontStyle: 'italic' }}>
-                                        💡 <strong>Add</strong> = Use only for this inspection • <strong>Save to Template</strong> = Add permanently for all inspections
+                                      {/* Custom Answer Input */}
+                                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
+                                          Add Custom Answer:
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                                          <input
+                                            type="text"
+                                            placeholder="Type custom answer..."
+                                            value={customAnswerInputs[`custom-${cl._id}`] || ''}
+                                            onChange={(e) => setCustomAnswerInputs(prev => ({
+                                              ...prev,
+                                              [`custom-${cl._id}`]: e.target.value
+                                            }))}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                addCustomAnswer(cl._id);
+                                              }
+                                            }}
+                                            style={{
+                                              flex: 1,
+                                              padding: '0.5rem',
+                                              fontSize: '0.75rem',
+                                              borderRadius: '0.25rem',
+                                              border: '1px solid #d1d5db',
+                                              outline: 'none'
+                                            }}
+                                          />
+                                          <button
+                                            onClick={() => addCustomAnswer(cl._id)}
+                                            style={{
+                                              padding: '0.5rem 0.75rem',
+                                              fontSize: '0.7rem',
+                                              borderRadius: '0.25rem',
+                                              backgroundColor: '#a466da',
+                                              color: 'white',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              whiteSpace: 'nowrap',
+                                              fontWeight: 600
+                                            }}
+                                            title="Add answer for this inspection only"
+                                          >
+                                            Add
+                                          </button>
+                                          <button
+                                            onClick={() => addCustomAnswerPermanently(cl._id)}
+                                            style={{
+                                              padding: '0.5rem 0.75rem',
+                                              fontSize: '0.7rem',
+                                              borderRadius: '0.25rem',
+                                              backgroundColor: '#10b981',
+                                              color: 'white',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              whiteSpace: 'nowrap',
+                                              fontWeight: 600
+                                            }}
+                                            title="Save to template permanently for all future inspections"
+                                          >
+                                            Save to Template
+                                          </button>
+                                        </div>
+                                        <div style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.375rem', fontStyle: 'italic' }}>
+                                          💡 <strong>Add</strong> = Use only for this inspection • <strong>Save to Template</strong> = Add permanently for all inspections
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
+                                  </>
                                 )}
 
-                          {/* Image upload section - show only when item is selected */}
-                          {isSelected && (
+                          {/* Image upload section - show only when item is selected and expanded */}
+                          {isSelected && isStatusExpanded(cl._id) && (
                             <div style={{ marginTop: '0.75rem', marginLeft: '1.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
                               {/* 360° Photo Checkbox */}
                               <div 
@@ -3842,23 +4053,101 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                             }} />
                           )}
                           
-                          {/* Header - clickable to toggle selection */}
-                          <label style={{ display: 'flex', fontSize: '0.875rem', cursor: 'pointer', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          {/* Header - selection checkbox + title (click to expand when collapsed) */}
+                          <div style={{ display: 'flex', fontSize: '0.875rem', alignItems: 'flex-start', gap: '0.625rem', padding: '0.125rem 0' }}>
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => toggleChecklist(cl._id)}
-                              style={{ marginTop: '0.2rem', cursor: 'pointer' }}
+                              style={{ marginTop: '0.25rem', cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
                             />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 600, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ cursor: 'grab', color: '#6b7280' }}>⋮⋮</span> {cl.text}</div>
+                            <div
+                              style={{ flex: 1, minWidth: 0 }}
+                              onClick={() => { if (isSelected && !isLimitExpanded(cl._id)) { expandLimit(cl._id); } }}
+                              role="button"
+                              title={isSelected ? (isLimitExpanded(cl._id) ? 'Expanded' : 'Click to expand') : 'Select the checkbox to enable'}
+                            >
+                              <div style={{ fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem', lineHeight: 1.5 }}>
+                                <span style={{ cursor: 'grab', color: '#9ca3af', fontSize: '1rem', flexShrink: 0 }}>⋮⋮</span>
+                                <span style={{ flex: 1 }}>{cl.text}</span>
+                                {isSelected && isLimitExpanded(cl._id) && (
+                                  <button
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); collapseLimit(cl._id); }}
+                                    title="Collapse"
+                                    style={{
+                                      backgroundColor: 'transparent',
+                                      border: '2px solid #d1d5db',
+                                      color: '#6b7280',
+                                      cursor: 'pointer',
+                                      fontSize: '1rem',
+                                      fontWeight: 700,
+                                      padding: '0.15rem 0.4rem',
+                                      borderRadius: '0.25rem'
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                                {!isMobile && (
+                                  <label
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
+                                    title="When enabled and saved to the template, new inspections will start with this item pre-selected"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!cl.default_checked}
+                                      onChange={(e) => { e.stopPropagation(); toggleDefaultCheckedFor(cl._id, e.target.checked); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    Default to checked?
+                                  </label>
+                                )}
+                              </div>
+                              {isMobile && (
+                                <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  {isSelected && isLimitExpanded(cl._id) && (
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); collapseLimit(cl._id); }}
+                                      title="Collapse"
+                                      style={{
+                                        backgroundColor: 'transparent',
+                                        border: '2px solid #d1d5db',
+                                        color: '#6b7280',
+                                        cursor: 'pointer',
+                                        fontSize: '1rem',
+                                        fontWeight: 700,
+                                        padding: '0.15rem 0.4rem',
+                                        borderRadius: '0.25rem'
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                  <label
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
+                                    title="When enabled and saved to the template, new inspections will start with this item pre-selected"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!cl.default_checked}
+                                      onChange={(e) => { e.stopPropagation(); toggleDefaultCheckedFor(cl._id, e.target.checked); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    Default to checked?
+                                  </label>
+                                </div>
+                              )}
                               {cl.comment && (
-                                <div style={{ marginLeft: '0rem', marginTop: '0.25rem', color: '#6b7280', fontSize: '0.8rem' }}>
+                                <div style={{ marginLeft: '1.75rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                                   {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
                                 </div>
                               )}
                             </div>
-                            <div style={{ display: 'flex', gap: '0.25rem', marginLeft: '0.5rem', position: 'relative' }} onClick={(e) => e.preventDefault()}>
+                            <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}>
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
@@ -3866,13 +4155,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   openChecklistForm('information', cl);
                                 }}
                                 style={{
-                                  padding: '0.2rem 0.35rem',
-                                  fontSize: '0.7rem',
-                                  borderRadius: '0.2rem',
+                                  padding: '0.3rem 0.45rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
                                   backgroundColor: '#f59e0b',
                                   color: 'white',
                                   border: 'none',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  lineHeight: 1
                                 }}
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
@@ -3887,13 +4177,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   handleDeleteChecklist(cl._id);
                                 }}
                                 style={{
-                                  padding: '0.2rem 0.35rem',
-                                  fontSize: '0.7rem',
-                                  borderRadius: '0.2rem',
+                                  padding: '0.3rem 0.45rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
                                   backgroundColor: '#ef4444',
                                   color: 'white',
                                   border: 'none',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  lineHeight: 1
                                 }}
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
@@ -3940,13 +4231,13 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 </div>
                               )}
                             </div>
-                          </label>
+                          </div>
 
                           {/* Content area - NOT clickable to toggle */}
                           <div>
                                 
-                                {/* Answer Choices - show when selected */}
-                                {isSelected && (cl.answer_choices && cl.answer_choices.length > 0 || getSelectedAnswers(cl._id).size > 0) && (
+                                {/* Answer Choices - show when selected and expanded */}
+                                {isSelected && isLimitExpanded(cl._id) && ((cl.answer_choices && cl.answer_choices.length > 0) || getSelectedAnswers(cl._id).size > 0) && (
                                   <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
                                     <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
                                       Select Options:
@@ -4111,8 +4402,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   </div>
                                 )}
 
-                          {/* Image upload section - show only when item is selected */}
-                          {isSelected && (
+                          {/* Image upload section - show only when item is selected and expanded */}
+                          {isSelected && isLimitExpanded(cl._id) && (
                             <div style={{ marginTop: '0.75rem', marginLeft: '1.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
                               {/* 360° Photo Checkbox */}
                               <div 

@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
   const videoSrcRegex = /(<video[^>]+src=["'])([^"']+)(["'][^>]*>)/gi;
   const srcsetRegex = /(<(?:img|source)[^>]+srcset=["'])([^"']+)(["'][^>]*>)/gi;
   const styleBgRegex = /(style=["'][^"']*background-image\s*:\s*url\(([^\)]+)\)[^"']*["'])/gi;
+  const galleryAttrRegex = /(data-gallery=["'])([^"']+)(["'])/gi; // payload is encodeURIComponent(JSON.stringify([{url,location}]))
   const rewrittenHtml = await (async () => {
       const replacements: Array<Promise<void>> = [];
       const copiedMap = new Map<string, string>(); // key -> destKey cache
@@ -257,6 +258,56 @@ export async function POST(req: NextRequest) {
       });
 
       // perform copies
+      // Also rewrite lightbox gallery payloads so offline HTML opens images correctly
+      updated = updated.replace(galleryAttrRegex, (full: string, p1: string, payload: string, p3: string) => {
+        try {
+          const decoded = decodeURIComponent(payload);
+          const arr = JSON.parse(decoded) as Array<{ url: string; location?: string }>;
+          if (!Array.isArray(arr) || arr.length === 0) return full;
+          const newArr: Array<{ url: string; location?: string }> = [...arr];
+          const ops = newArr.map(async (entry, idx) => {
+            const key = entry.url ? getEligibleR2Key(entry.url) : null;
+            if (!key) return; // keep as-is (could already be data:)
+            if (shouldInline(key)) {
+              try {
+                const dataUri = await getR2ObjectAsDataURI(key);
+                newArr[idx] = { ...entry, url: dataUri };
+              } catch {
+                let destKey = copiedMap.get(key);
+                if (!destKey) {
+                  const rawFilename = (key.split('/').pop() || 'image').split('?')[0];
+                  destKey = `${destPrefix}/${Date.now()}-${rawFilename}`;
+                  copiedMap.set(key, destKey);
+                  await copyInR2(key, destKey);
+                }
+                const newUrl = publicBase ? `${publicBase}/${destKey}` : `/${destKey}`;
+                newArr[idx] = { ...entry, url: newUrl };
+              }
+            } else if (!key.startsWith('reports/')) {
+              let destKey = copiedMap.get(key);
+              if (!destKey) {
+                const rawFilename = (key.split('/').pop() || 'asset').split('?')[0];
+                destKey = `${destPrefix}/${Date.now()}-${rawFilename}`;
+                copiedMap.set(key, destKey);
+                replacements.push(copyInR2(key, destKey));
+              }
+              const newUrl = publicBase ? `${publicBase}/${destKey}` : `/${destKey}`;
+              newArr[idx] = { ...entry, url: newUrl };
+            }
+          });
+          replacements.push(
+            (async () => {
+              await Promise.all(ops);
+              const encoded = encodeURIComponent(JSON.stringify(newArr));
+              updated = updated.replace(full, `${p1}${encoded}${p3}`);
+            })()
+          );
+          return full; // replaced asynchronously
+        } catch {}
+        return full;
+      });
+
+      // perform copies and inlines
       await Promise.all(replacements);
       return updated;
     })();

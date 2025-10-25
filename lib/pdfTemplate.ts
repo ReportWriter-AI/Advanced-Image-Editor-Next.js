@@ -56,6 +56,7 @@ export type ReportMeta = {
   startNumber?: number; // base section number, defaults to 1
   reportType?: 'full' | 'summary';
   informationBlocks?: InformationBlock[]; // Information sections to display before defects
+  hidePricing?: boolean; // Hide all cost/pricing information
 };
 
 function escapeHtml(str: string = ""): string {
@@ -397,6 +398,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     startNumber = 1,
     reportType = 'full',
     informationBlocks = [],
+    hidePricing = false,
   } = meta;
 
   // Detect if an Orientation / Shutoffs information block exists
@@ -540,6 +542,17 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
                 <h4 class="section-title">Location</h4>
                 <p class="section-content">${escapeHtml(d.location || "Not specified")}</p>
               </div>
+              ${d.additional_images && d.additional_images.length > 0 ? `
+              <div class="additional-photos">
+                <h4 class="section-title">Additional Location Photos (${1 + d.additional_images.length}/10)</h4>
+                <div class="additional-grid">
+                  ${d.additional_images.map(img => `
+                  <div class="additional-item">
+                    <img src="${escapeHtml(img.url)}" alt="Additional photo" class="additional-image" />
+                    ${img.location ? `<div class="additional-caption">${escapeHtml(img.location)}</div>` : ''}
+                  </div>`).join('')}
+                </div>
+              </div>` : ''}
             </div>
 
             <div class="description-section">
@@ -551,6 +564,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
                   ${defectBodyHtml}
                 </div>
               </div>
+              ${!hidePricing ? `
               <div class="section">
                 <h4 class="section-title">Estimated Costs</h4>
                 <div class="section-content">
@@ -566,6 +580,14 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
               <div class="cost-highlight">
                 <div class="total-cost">Total Estimated Cost: ${currency(totalCost)}</div>
               </div>
+              ` : `
+              <div class="section">
+                <h4 class="section-title">Recommendation</h4>
+                <div class="section-content">
+                  <p>${escapeHtml(d.recommendation || "N/A")}</p>
+                </div>
+              </div>
+              `}
             </div>
           </div>
         </section>
@@ -858,6 +880,13 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     .section-content { font-size: 13px; color: #374151; line-height: 1.5; }
   .defect-title { font-weight: 700; font-size: 14px; margin: 0 0 6px 0; color: var(--selected-color, #d63636); }
   .defect-body { font-size: 13px; color: #374151; line-height: 1.6; margin: 0 0 8px 0; }
+
+    /* Additional location photos */
+    .additional-photos { margin-top: 8px; background: #fff; border-left: 3px solid var(--selected-color, #d63636); padding: 8px; border-radius: 4px; }
+    .additional-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .additional-item { width: calc(50% - 4px); max-width: 220px; page-break-inside: avoid; break-inside: avoid; }
+    .additional-image { width: 100%; height: auto; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .additional-caption { text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500; }
 
     .cost-highlight { background: #f8fafc; border: 1px solid var(--selected-color, #d63636); padding: 8px; border-radius: 6px; margin-top: 8px; }
     .total-cost { text-align: center; font-weight: 700; color: var(--selected-color, #d63636); }
@@ -1356,7 +1385,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
 
   <div class="page-break"></div>
 
-  ${reportType === 'full' ? `<section class="cover">
+  ${reportType === 'full' && !hidePricing ? `<section class="cover">
     <h2>Total Estimated Cost</h2>
     <table class="table">
       <thead>
@@ -1376,7 +1405,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     </table>
   </section>` : ''}
 
-  ${reportType === 'summary' ? `<section class="cover">
+  ${reportType === 'summary' && !hidePricing ? `<section class="cover">
     <h2>Total Estimated Cost</h2>
     <table class="table">
       <thead>
