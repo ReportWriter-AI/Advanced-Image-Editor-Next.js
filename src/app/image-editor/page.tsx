@@ -392,21 +392,26 @@ export default function ImageEditorPage() {
       setSubmitStatus('Uploading photo...');
 
       try {
-        // Upload the annotated image to R2
-        const formData = new FormData();
-        formData.append('file', editedFile);
-
-        const uploadRes = await fetch('/api/r2api', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!uploadRes.ok) {
-          throw new Error(`Failed to upload image: ${uploadRes.status}`);
+        // Upload the annotated image to R2 via presigned URL (direct, no Vercel bandwidth)
+        const presignedRes = await fetch(
+          `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
+        );
+        if (!presignedRes.ok) {
+          const t = await presignedRes.text();
+          throw new Error(`Failed to get presigned URL: ${t}`);
         }
-
-        const uploadData = await uploadRes.json();
-        console.log('✅ Image uploaded:', uploadData.url);
+        const { uploadUrl, publicUrl } = await presignedRes.json();
+        const putRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': editedFile.type },
+          body: editedFile,
+        });
+        if (!putRes.ok) {
+          const t = await putRes.text();
+          throw new Error(`Failed to upload image to R2: ${putRes.status} ${t}`);
+        }
+        const uploadData = { url: publicUrl };
+        console.log('✅ Image uploaded (direct):', uploadData.url);
 
         // Get current defect data to update additional_images
         const defectRes = await fetch(`/api/defects/${selectedInspectionId}`);
@@ -505,19 +510,25 @@ export default function ImageEditorPage() {
 
         console.log('📤 Uploading annotated image:', editedFile.name, editedFile.size, 'bytes');
 
-        const uploadRes = await fetch('/api/r2api', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!uploadRes.ok) {
-          const errorText = await uploadRes.text();
-          console.error('❌ Upload failed:', uploadRes.status, errorText);
-          throw new Error(`Failed to upload annotated image: ${uploadRes.status}`);
+        const presignedRes = await fetch(
+          `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
+        );
+        if (!presignedRes.ok) {
+          const t = await presignedRes.text();
+          throw new Error(`Failed to get presigned URL: ${t}`);
         }
-
-        const uploadData = await uploadRes.json();
-        console.log('✅ Annotated image uploaded:', uploadData.url);
+        const { uploadUrl, publicUrl } = await presignedRes.json();
+        const putRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': editedFile.type },
+          body: editedFile,
+        });
+        if (!putRes.ok) {
+          const t = await putRes.text();
+          throw new Error(`Failed to upload annotated image to R2: ${putRes.status} ${t}`);
+        }
+        const uploadData = { url: publicUrl };
+        console.log('✅ Annotated image uploaded (direct):', uploadData.url);
 
         // Store the annotated image URL in localStorage for the modal to pick up
         // Include inspectionId so main page can reopen the correct modal

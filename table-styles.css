@@ -1561,19 +1561,20 @@
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    /* Make room for sticky footer + iOS safe area so last controls aren't hidden */
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    /* Footer no longer sticky on mobile; keep a modest bottom padding */
+    padding-bottom: 16px;
   }
   
   .modal-footer {
     padding: 12px 16px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    position: sticky;
-    bottom: 0;
+    /* Do NOT follow scroll on mobile; keep footer in normal flow at the bottom */
+    position: static;
+    bottom: auto;
     background: #f8fafc;
     border-top: 2px solid #e5e7eb;
-    /* Create own stacking context so it sits above content */
-    z-index: 2;
+    /* No stacking context needed since it's not overlaying content */
+    z-index: auto;
   }
   
   .header-image-section {

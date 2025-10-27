@@ -36,6 +36,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Path traversal detected' }, { status: 400 });
     }
 
+    // Prefer redirecting to public R2 URL to avoid streaming bytes through Vercel
+    const publicBase = process.env.CLOUDFLARE_PUBLIC_URL?.replace(/\/$/, '');
+    if (publicBase) {
+      const target = `${publicBase}/${key}`;
+      // 307 preserves method; suitable for GET and avoids caching surprises
+      return NextResponse.redirect(target, 307);
+    }
+
     const { buffer, contentType } = await getR2Object(key);
     const ct = contentType || inferMimeFromKey(key);
     const headers: Record<string, string> = {
