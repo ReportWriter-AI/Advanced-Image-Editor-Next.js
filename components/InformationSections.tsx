@@ -845,6 +845,16 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     return [...existingIds, ...selectedInspectionChecklists];
   };
 
+  // Resolve a checklist reference (object or string id) to full metadata from section/template or inspection-only
+  const resolveChecklist = (sectionId: string, cl: any): ISectionChecklist | null => {
+    if (cl && typeof cl === 'object' && cl._id) return cl as ISectionChecklist;
+    const section = sections.find(s => s._id === sectionId);
+    const fromTemplate = section?.checklists.find(c => c._id === cl) || null;
+    if (fromTemplate) return fromTemplate;
+    const fromInspection = (inspectionChecklists.get(sectionId) || []).find(c => c._id === cl) || null;
+    return fromInspection;
+  };
+
   // Quick toggle for a selected checklist inside an existing block (outside modal)
   const toggleChecklistInBlock = async (block: IInformationBlock, cl: any) => {
     try {
@@ -2948,13 +2958,17 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const isSectionComplete = useCallback((sectionId: string): boolean => {
     const sectionBlocksList = sectionBlocks(sectionId);
     if (sectionBlocksList.length === 0) return false;
-    
-    // Check if at least one block has selected items
+
+    // Completion now depends ONLY on Status Fields being selected in any block of this section.
     return sectionBlocksList.some(block => {
-      const checklists = getBlockChecklists(block);
-      return checklists.length > 0;
+      const secId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
+      const raw = getBlockChecklists(block);
+      const resolved = raw
+        .map((cl: any) => resolveChecklist(secId, cl))
+        .filter(Boolean) as ISectionChecklist[];
+      return resolved.some(item => item.type === 'status');
     });
-  }, [blocks, inspectionChecklists]);
+  }, [blocks, inspectionChecklists, sections]);
 
   return (
     <div style={{ padding: '1rem' }}>
@@ -3011,14 +3025,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   {section.name}
                 </span>
               </h3>
-              <button
-                onClick={() => openAddModal(section)}
-                style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem', borderRadius: '0.25rem', backgroundColor: '#8230c9', color: 'white', border: 'none', cursor: 'pointer' }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#6f29ac'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8230c9'}
-              >
-                Add Information Block
-              </button>
+              {/* Header-level Add button removed by request; users can use per-block Add or the empty-state button below */}
             </div>
 
             {/* Existing blocks */}
@@ -3071,78 +3078,158 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       </div>
                     )}
                   </div>
+                  {isMobile && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <button
+                        onClick={() => openAddModal(section)}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem 1rem',
+                          fontSize: '0.9rem',
+                          borderRadius: '0.5rem',
+                          backgroundColor: '#8230c9',
+                          color: 'white',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          boxShadow: '0 2px 8px rgba(130,48,201,0.25)'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#6f29ac'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8230c9'}
+                      >
+                        Add Information Block
+                      </button>
+                      <button
+                        onClick={() => openAddModal(section, block)}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem 1rem',
+                          fontSize: '0.9rem',
+                          borderRadius: '0.5rem',
+                          backgroundColor: '#a466da',
+                          color: 'white',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          boxShadow: '0 2px 8px rgba(164,102,218,0.25)'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#934ad3'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#a466da'}
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(block._id)}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem 1rem',
+                          fontSize: '0.9rem',
+                          borderRadius: '0.5rem',
+                          backgroundColor: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          boxShadow: '0 2px 8px rgba(239,68,68,0.25)'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  )}
                   <div style={{ fontSize: '0.875rem', color: '#374151' }}>
                     <div style={{ marginLeft: '0rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-                      {getBlockChecklists(block).map((cl: any) => {
-                        const clId = typeof cl === 'string' ? cl : cl._id;
-                        const clType = typeof cl === 'object' && cl?.type ? cl.type : undefined;
-                        const clText = (typeof cl === 'object' && cl?.text) ? cl.text : clId;
-                        const isStatus = clType === 'status';
-                        
-                        return (
-                          <div key={clId} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: isMobile ? '0.5rem' : '0.625rem',
-                              padding: '0.375rem 0',
-                              flexDirection: 'row',
-                              flexWrap: 'wrap'
-                            }}>
-                              {/* Spectora-style type indicator - checkbox for status, badge for others */}
-                              {isStatus ? (
-                                <input
-                                  type="checkbox"
-                                  checked={true}
-                                  readOnly
-                                  aria-readonly="true"
-                                  style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    cursor: 'default',
-                                    accentColor: '#3b82f6',
-                                    flexShrink: 0
-                                  }}
-                                  title="Maintenance Item (selected)"
-                                />
-                              ) : (
-                                <span style={{
-                                  fontSize: '0.75rem',
-                                  padding: '0.25rem 0.5rem',
-                                  borderRadius: '0.25rem',
-                                  backgroundColor: '#f59e0b',
-                                  color: 'white',
-                                  fontWeight: 600,
-                                  textTransform: 'capitalize' as const,
-                                  flexShrink: 0,
-                                  lineHeight: 1.2,
-                                  minWidth: isMobile ? undefined : '120px',
-                                  textAlign: isMobile ? 'left' : 'center',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center'
-                                }}>
-                                  {clType === 'information' ? 'Information' : 'Limitation'}
-                                </span>
-                              )}
-                              <span style={{ fontWeight: 600, color: '#111827', lineHeight: 1.45, whiteSpace: 'normal', flex: 1, minWidth: 0 }}>{clText}</span>
-                            </div>
-                            {typeof cl === 'object' && cl?.comment && cl.comment.trim() !== '' && (
-                              <div style={{ 
-                                marginLeft: isMobile ? (isStatus ? '2rem' : 0) : '8.125rem', 
-                                color: '#6b7280',
-                                fontSize: '0.8125rem',
-                                paddingTop: '0.125rem',
-                                lineHeight: 1.6,
-                                whiteSpace: 'normal',
-                                wordBreak: 'break-word'
+                      {(() => {
+                        const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
+                        const rawItems = getBlockChecklists(block);
+                        // Resolve to full objects so we can reliably read type/tab/text/comment
+                        const resolved = rawItems
+                          .map((cl: any) => resolveChecklist(sectionId, cl))
+                          .filter(Boolean) as ISectionChecklist[];
+                        // Group: Status first, then others (keep original relative order within groups)
+                        const grouped = [
+                          ...resolved.filter(item => item.type === 'status'),
+                          ...resolved.filter(item => item.type !== 'status')
+                        ];
+
+                        return grouped.map((item) => {
+                          const isStatus = item.type === 'status';
+                          return (
+                            <div key={item._id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: isMobile ? '0.5rem' : '0.625rem',
+                                padding: '0.375rem 0',
+                                flexDirection: 'row',
+                                flexWrap: 'wrap'
                               }}>
-                                {cl.comment}
+                                {/* Spectora-style type indicator - checkbox for status, badge for others */}
+                                {isStatus ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={true}
+                                    readOnly
+                                    aria-readonly="true"
+                                    style={{
+                                      width: '18px',
+                                      height: '18px',
+                                      cursor: 'default',
+                                      accentColor: '#3b82f6',
+                                      flexShrink: 0
+                                    }}
+                                    title="Maintenance Item (selected)"
+                                  />
+                                ) : (
+                                  <span style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '0.25rem',
+                                    backgroundColor: '#f59e0b',
+                                    color: 'white',
+                                    fontWeight: 600,
+                                    textTransform: 'capitalize' as const,
+                                    flexShrink: 0,
+                                    lineHeight: 1.2,
+                                    minWidth: isMobile ? undefined : '120px',
+                                    textAlign: isMobile ? 'left' : 'center',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}>
+                                    {item.tab === 'limitations' ? 'Limitation' : 'Information'}
+                                  </span>
+                                )}
+                                <span style={{ fontWeight: 600, color: '#111827', lineHeight: 1.45, whiteSpace: 'normal', flex: 1, minWidth: 0 }}>{item.text}</span>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                              {item.comment && item.comment.trim() !== '' && (
+                                <div style={{ 
+                                  marginLeft: isMobile ? (isStatus ? '2rem' : 0) : '8.125rem', 
+                                  color: '#6b7280',
+                                  fontSize: '0.8125rem',
+                                  paddingTop: '0.125rem',
+                                  lineHeight: 1.6,
+                                  whiteSpace: 'normal',
+                                  wordBreak: 'break-word'
+                                }}>
+                                  {item.comment}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                     {block.custom_text && (
                       <div style={{ marginTop: '0.5rem' }}><span style={{ fontWeight: 600 }}>Custom Text:</span> {block.custom_text}</div>
@@ -3199,7 +3286,17 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 </div>
               ))}
               {sectionBlocks(section._id).length === 0 && (
-                <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>No information blocks yet.</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#6b7280', fontStyle: 'italic' }}>No information blocks yet.</div>
+                  <button
+                    onClick={() => openAddModal(section)}
+                    style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem', borderRadius: '0.5rem', backgroundColor: '#8230c9', color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(130,48,201,0.2)' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#6f29ac'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8230c9'}
+                  >
+                    Add Information Block
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -3972,14 +4069,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               {/* Limitations/Information Section */}
               <div>
                 {(() => {
-                  // Check if any limitations/information checklist item is selected
-                  const limitationsChecklists = activeSection.checklists.filter(cl => cl.tab === 'limitations');
-                  const hasLimitationsSelected = limitationsChecklists.some(cl => formState.selected_checklist_ids.has(cl._id));
-                  
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                       <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #10b981', paddingBottom: '0.5rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {hasLimitationsSelected && <span style={{ fontSize: '1.125rem', color: '#22c55e' }}>✅</span>}
                         Limitations / Information
                       </h5>
                       <button

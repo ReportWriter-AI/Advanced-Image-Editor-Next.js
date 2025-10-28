@@ -81,7 +81,9 @@ const FileUpload: React.FC<FileUploadProps> = ({
         display: 'grid', 
         gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
         gap: '0.5rem',
-        maxWidth: '500px'
+        maxWidth: '500px',
+        width: '100%',
+        margin: '0 auto'
       }}>
         <label 
           htmlFor={id}

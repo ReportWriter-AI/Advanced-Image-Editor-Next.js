@@ -1079,8 +1079,8 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
 
                             {/* Additional Location Photos Section */}
                             {isEditing && (
-                              <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                              <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #dee2e6', maxWidth: 760, marginLeft: 'auto', marginRight: 'auto' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                                   <strong style={{ fontSize: '0.95rem', color: '#495057' }}>
                                     📍 Additional Location Photos ({displayDefect.additional_images?.length || 0})
                                   </strong>
@@ -1117,7 +1117,13 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                     padding: '0.75rem',
                                     background: '#f8fafc',
                                     border: '1px solid #e5e7eb',
-                                    borderRadius: 8
+                                    borderRadius: 8,
+                                    maxWidth: 720,
+                                    marginLeft: 'auto',
+                                    marginRight: 'auto',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center'
                                   }}>
                                     <p style={{ margin: '0 0 8px 0', color: '#374151', fontWeight: 600 }}>Select multiple photos and set a location for each:</p>
                                     <FileUpload
@@ -1132,11 +1138,11 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                       }}
                                     />
                                     {bulkItems.length > 0 && (
-                                      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
                                         {bulkItems.map((item, i) => (
-                                          <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
+                                          <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10, flexWrap: 'wrap' }}>
                                             <img src={item.preview} alt={`bulk-${i}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
-                                            <div style={{ flex: 1 }}>
+                                            <div style={{ flex: '1 1 240px', minWidth: 220 }}>
                                               <label style={{ display: 'block', fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Location</label>
                                               <LocationSearch
                                                 options={LOCATION_OPTIONS}
@@ -1147,7 +1153,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                                   return copy;
                                                 })}
                                                 placeholder="Type to search…"
-                                                width={260}
+                                                width={240}
                                               />
                                               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#374151' }}>
                                                 <input type="checkbox" checked={item.isThreeSixty} onChange={(e) => setBulkItems((prev) => {
@@ -1166,7 +1172,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                             </button>
                                           </div>
                                         ))}
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
                                           <button
                                             disabled={bulkSaving || bulkItems.length === 0}
                                             onClick={async () => {
