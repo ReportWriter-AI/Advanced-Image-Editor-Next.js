@@ -1340,7 +1340,7 @@ export default function Page() {
     </div>
     <section class="rpt-summary-card">
       <div class="rpt-summary-header">
-        <h2 class="rpt-h2">Inspection Sections</h2>
+  <h2 class="rpt-h2">Inspection Defects <small style="font-weight:400;color:#6b7280;font-size:0.65em;margin-left:6px;">(clickable links)</small></h2>
       </div>
       <div class="rpt-summary-table-wrap">
         <table class="rpt-summary-table">
@@ -1361,7 +1361,7 @@ export default function Page() {
     ${reportType === 'summary' ? `
     <section class="rpt-summary-card">
       <div class="rpt-summary-header">
-        <h2 class="rpt-h2">Inspection Sections</h2>
+  <h2 class="rpt-h2">Inspection Defects <small style="font-weight:400;color:#6b7280;font-size:0.65em;margin-left:6px;">(clickable links)</small></h2>
       </div>
       <div class="rpt-summary-table-wrap">
         <table class="rpt-summary-table">
@@ -2587,9 +2587,14 @@ export default function Page() {
               </div>
               
               {/* Defects Summary Table */}
-              <section className={styles.summaryCard} aria-label="Inspection Sections">
+              <section className={styles.summaryCard} aria-label="Inspection Defects — clickable links">
                 <div className={styles.summaryHeader}>
-                  <h2 className={styles.summaryTitle}>Inspection Sections</h2>
+                  <h2 className={styles.summaryTitle}>
+                    Inspection Defects
+                    <span style={{ fontSize: '0.65em', fontWeight: 400, color: '#6b7280', marginLeft: 6 }}>
+                      (clickable links)
+                    </span>
+                  </h2>
                   
                 </div>
                 <div className={styles.summaryTableWrapper}>
