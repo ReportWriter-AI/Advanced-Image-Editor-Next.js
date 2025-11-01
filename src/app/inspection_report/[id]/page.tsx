@@ -2753,14 +2753,29 @@ export default function Page() {
                                               <div className={styles.informationImages} style={{ marginLeft: '0.75rem', marginTop: '0.75rem' }}>
                                                 {itemImages.map((img: any, imgIdx: number) => (
                                                   <div key={imgIdx} style={{ position: 'relative' }}>
-                                                    <img
-                                                      src={getProxiedSrc(img.url)}
-                                                      alt="Item image"
-                                                      onClick={() => openLightbox(getProxiedSrc(img.url))}
-                                                      className={styles.informationImage}
-                                                      onError={handleImgError}
-                                                      loading="eager"
-                                                    />
+                                                    {img.isThreeSixty ? (
+                                                      <div style={{ 
+                                                        width: '100%', 
+                                                        minWidth: isMobile ? '300px' : '400px',
+                                                        marginBottom: '1rem' 
+                                                      }}>
+                                                        <ThreeSixtyViewer
+                                                          imageUrl={getProxiedSrc(img.url)}
+                                                          alt={`360° view for information item`}
+                                                          width="100%"
+                                                          height={isMobile ? "300px" : "400px"}
+                                                        />
+                                                      </div>
+                                                    ) : (
+                                                      <img
+                                                        src={getProxiedSrc(img.url)}
+                                                        alt="Item image"
+                                                        onClick={() => openLightbox(getProxiedSrc(img.url))}
+                                                        className={styles.informationImage}
+                                                        onError={handleImgError}
+                                                        loading="eager"
+                                                      />
+                                                    )}
                                                     {img.location && (
                                                       <div style={{ 
                                                         textAlign: 'center', 
@@ -3343,14 +3358,29 @@ export default function Page() {
                                               <div className={styles.informationImages} style={{ marginTop: '0.75rem' }}>
                                                 {itemImages.map((img: any, imgIdx: number) => (
                                                   <div key={imgIdx} style={{ position: 'relative' }}>
-                                                    <img
-                                                      src={getProxiedSrc(img.url)}
-                                                      alt="Item image"
-                                                      onClick={() => openLightbox(getProxiedSrc(img.url))}
-                                                      className={styles.informationImage}
-                                                      onError={handleImgError}
-                                                      loading="eager"
-                                                    />
+                                                    {img.isThreeSixty ? (
+                                                      <div style={{ 
+                                                        width: '100%', 
+                                                        minWidth: isMobile ? '300px' : '400px',
+                                                        marginBottom: '1rem' 
+                                                      }}>
+                                                        <ThreeSixtyViewer
+                                                          imageUrl={getProxiedSrc(img.url)}
+                                                          alt={`360° view for information item`}
+                                                          width="100%"
+                                                          height={isMobile ? "300px" : "400px"}
+                                                        />
+                                                      </div>
+                                                    ) : (
+                                                      <img
+                                                        src={getProxiedSrc(img.url)}
+                                                        alt="Item image"
+                                                        onClick={() => openLightbox(getProxiedSrc(img.url))}
+                                                        className={styles.informationImage}
+                                                        onError={handleImgError}
+                                                        loading="eager"
+                                                      />
+                                                    )}
                                                     {img.location && (
                                                       <div style={{ 
                                                         textAlign: 'center', 
