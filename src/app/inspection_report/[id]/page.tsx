@@ -850,85 +850,6 @@ export default function Page() {
           }).join('')
         : '';
 
-      // Intro sections (Section 1 & 2) content (tagged with data-intro for mode filtering in exported HTML)
-      // Find Section 2 (Inspection Details) information block if it exists
-      const section1Block = informationBlocks.find((block: any) => {
-        const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
-        if (!blockSection) return false;
-        const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-        return cleanBlock.toLowerCase() === 'inspection details' || 
-               blockSection.toLowerCase().includes('inspection details') ||
-               blockSection === '2 - Inspection Details';
-      });
-      const section1Html = section1Block ? generateInformationSectionHTMLForExport(section1Block) : '';
-      
-      const introHtml = `
-        <div class="rpt-section-heading" data-intro-heading="1">
-          <h2 class="rpt-section-heading-text" style="color:#111827">Section 1 - Inspection Overview & Client Responsibilities</h2>
-        </div>
-        <section class="rpt-section intro-section" data-intro="1">
-          <div class="rpt-card">
-            <p>This is a visual inspection only. The scope of this inspection is to verify the proper performance of the home's major systems. We do not verify proper design.</p>
-            <p>The following items reflect the condition of the home and its systems at the time and date the inspection was performed. Conditions of an occupied home can change after the inspection (e.g., leaks may occur beneath sinks, water may run at toilets, walls or flooring may be damaged during moving, appliances may fail, etc.).</p>
-            <p>Furnishings, personal items, and/or systems of the home are not dismantled or moved. A 3–4 hour inspection is not equal to "live-in exposure" and will not discover all concerns. Unless otherwise stated, we will only inspect/comment on the following systems: <em>Electrical, Heating/Cooling, Appliances, Plumbing, Roof and Attic, Exterior, Grounds, and the Foundation</em>.</p>
-            <p>This inspection is not a warranty or insurance policy. The limit of liability of AGI Property Inspections and its employees does not extend beyond the day the inspection was performed.</p>
-            <p>Cosmetic items (e.g., peeling wallpaper, wall scuffs, nail holes, normal wear and tear, etc.) are not part of this inspection. We also do not inspect for fungi, rodents, or insects. If such issues are noted, it is only to bring them to your attention so you can have the proper contractor evaluate further.</p>
-            <p>Although every effort is made to inspect all systems, not every defect can be identified. Some areas may be inaccessible or hazardous. The home should be carefully reviewed during your final walk-through to ensure no new concerns have occurred and that requested repairs have been completed.</p>
-            <p>Please contact our office immediately at <a href="tel:3379051428">337-905-1428</a> if you suspect or discover any concerns during the final walk-through.</p>
-            <p>Repair recommendations and cost estimates included in this report are approximate, generated from typical labor and material rates in our region. They are not formal quotes and must always be verified by licensed contractors. AGI Property Inspections does not guarantee their accuracy.</p>
-            <p>We do not provide guaranteed repair methods. Any corrections should be performed by qualified, licensed contractors. Consult your Real Estate Professional, Attorney, or Contractor for further advice regarding responsibility for these repairs.</p>
-            <p>While this report may identify products involved in recalls or lawsuits, it is not comprehensive. Identifying all recalled products is not a requirement for Louisiana licensed Home Inspectors.</p>
-            <p>This inspection complies with the standards of practice of the State of Louisiana Home Inspectors Licensing Board. Home inspectors are generalists and recommend further review by licensed specialists when needed.</p>
-            <p>This inspection report and all information contained within is the sole property of AGI Property Inspections and is leased to the clients named in this report. It may not be shared or passed on without AGI’s consent. Doing so may result in legal action.</p>
-          </div>
-        </section>
-        <div class="rpt-section-heading" data-intro-heading="2">
-          <h2 class="rpt-section-heading-text" style="color:#111827">Section 2 - Inspection Scope & Limitations</h2>
-        </div>
-        ${section1Html}
-        <section class="rpt-section intro-section" data-intro="1">
-          <div class="rpt-card">
-            <h3>Inspection Categories & Summary</h3>
-            <h4 class="cat-red">Immediate Attention</h4>
-            <p class="cat-red">Major Defects: Issues that compromise the home’s structural integrity, may result in additional damage if not repaired, or are considered a safety hazard. These items are color-coded red in the report and should be corrected as soon as possible.</p>
-
-            <h4 class="cat-orange">Items for Repair</h4>
-            <p class="cat-orange">Defects: Items in need of repair or correction, such as plumbing or electrical concerns, damaged or improperly installed components, etc. These are color-coded orange in the report and have no strict repair timeline.</p>
-
-            <h4 class="cat-blue">Maintenance Items</h4>
-            <p class="cat-blue">Small DIY-type repairs and maintenance recommendations provided to increase knowledge of long-term care. While not urgent, addressing these will reduce future repair needs and costs.</p>
-
-            <h4 class="cat-purple">Further Evaluation</h4>
-            <p class="cat-purple">In some cases, a defect falls outside the scope of a general home inspection or requires a more extensive level of knowledge to determine the full extent of the issue. These items should be further evaluated by a specialist.</p>
-
-            <hr class="rpt-hr" />
-            <h3>Important Information & Limitations</h3>
-            <p>AGI Property Inspections performs all inspections in compliance with the Louisiana Standards of Practice. We inspect readily accessible, visually observable, permanently installed systems and components of the home. This inspection is not technically exhaustive or quantitative.</p>
-            <p>Some comments may go beyond the minimum Standards as a courtesy to provide additional detail. Any item noted for repair, replacement, maintenance, or further evaluation should be reviewed by qualified, licensed tradespeople.</p>
-            <p>This inspection cannot predict future conditions or reveal hidden or latent defects. The report reflects the home’s condition only at the time of inspection. Weather, occupancy, or use may reveal issues not present at the time.</p>
-            <p>This report should be considered alongside the seller’s disclosure, pest inspection report, and contractor evaluations for a complete picture of the home’s condition.</p>
-
-            <hr class="rpt-hr" />
-            <h3>Repair Estimates Disclaimer</h3>
-            <p>This report may include repair recommendations and estimated costs. These are based on typical labor and material rates in our region, generated from AI image review. They are approximate and not formal quotes.</p>
-            <p>Estimates are not formal quotes. They do not account for unique site conditions and may vary depending on contractor, materials, and methods. Final pricing must always be obtained through qualified, licensed contractors with on-site evaluation. AGI Property Inspections does not guarantee the accuracy of estimates or assume responsibility for work performed by outside contractors.</p>
-
-            <hr class="rpt-hr" />
-            <h3>Recommendations</h3>
-            <p>Contractors / Further Evaluation: Repairs noted should be performed by licensed professionals. Keep receipts for warranty and documentation purposes.</p>
-            <p>Causes of Damage / Methods of Repair: Suggested repair methods are based on inspector experience and opinion. Final determination should always be made by licensed contractors.</p>
-
-            <hr class="rpt-hr" />
-            <h3>Excluded Items</h3>
-            <p>The following are not included in this inspection: septic systems, security systems, irrigation systems, pools, hot tubs, wells, sheds, playgrounds, saunas, outdoor lighting, central vacuums, water filters, water softeners, sound or intercom systems, generators, sport courts, sea walls, outbuildings, operating skylights, awnings, exterior BBQ grills, and firepits.</p>
-
-            <hr class="rpt-hr" />
-            <h3>Occupied Home Disclaimer</h3>
-            <p>If the home was occupied at the time of inspection, some areas may not have been accessible (furniture, personal belongings, etc.). Every effort was made to inspect all accessible areas; however, some issues may not have been visible.</p>
-            <p>We recommend using your final walkthrough to verify that no issues were missed and that the property remains in the same condition as at the time of inspection.</p>
-          </div>
-        </section>
-      `;
 
       // Track previous section to detect section changes
       let prevSectionName: string | null = null;
@@ -981,8 +902,7 @@ export default function Page() {
               // Match by removing leading numbers like "9 - " from both
               const cleanSection = currentSectionName.replace(/^\d+\s*-\s*/, '');
               const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-              // Exclude Section 1 (Inspection Details) as it appears after Section 2
-              return cleanBlock === cleanSection && cleanBlock !== 'Inspection Details';
+              return cleanBlock === cleanSection;
             });
             
             if (matchingBlock) {
@@ -1379,7 +1299,7 @@ export default function Page() {
       </div>
     </section>
     ` : ''}
-    ${reportType === 'full' ? introHtml : ''}
+    
     ${sectionHtml}
     ${reportType === 'full' ? `
     <!-- Hardcoded Section - Resources and Disclaimers -->
@@ -2168,12 +2088,6 @@ export default function Page() {
         // Clean section name (remove leading numbers like "9 - ")
         const cleanBlockSection = blockSection.replace(/^\d+\s*-\s*/, '');
         
-        // EXCLUDE Section 1 (Inspection Details) - it appears after Section 2, not as standalone section
-        if (cleanBlockSection.toLowerCase() === 'inspection details' || 
-            blockSection.toLowerCase().includes('inspection details')) {
-          return; // Skip Section 1
-        }
-        
         // Check if this section already exists in the sections array
         const sectionExists = sections.some((section) => {
           const cleanSectionName = (section.sectionName || '').replace(/^\d+\s*-\s*/, '');
@@ -2654,531 +2568,7 @@ export default function Page() {
                   </table>
                 </div>
               </section>
-              <br></br><br></br>
-              {filterMode === 'full' && <>
-              <div className={styles.sectionHeadingStart}>
-                    <h2 className={styles.sectionHeadingTextStart}>Section 1 - Inspection Overview & Client Responsibilities</h2>
-                  </div>
-                      <div className={styles.descriptionSectionStart}>
-                        <p>
-                          This is a visual inspection only. The scope of this
-                          inspection is to verify the proper performance of the home's major
-                          systems. We do not verify proper design.
-                        </p>
-
-                        <p>
-                          The following items reflect the condition of the home and its systems
-                           at the time and date the inspection was performed.
-                          Conditions of an occupied home can change after the inspection (e.g.,
-                          leaks may occur beneath sinks, water may run at toilets, walls or flooring
-                          may be damaged during moving, appliances may fail, etc.).
-                        </p>
-                          
-                        <p>
-                          Furnishings, personal items, and/or systems of the home are not dismantled
-                          or moved. A 3–4 hour inspection is not equal to "live-in exposure" and
-                          will not discover all concerns. Unless otherwise stated, we will only
-                          inspect/comment on the following systems:
-                          
-                            Electrical, Heating/Cooling, Appliances, Plumbing, Roof and Attic,
-                            Exterior, Grounds, and the Foundation
-                          
-                          .
-                        </p>
-                          
-                        <p>
-                          This inspection is not a warranty or insurance policy. The limit of
-                          liability of AGI Property Inspections and its employees does not extend
-                          beyond the day the inspection was performed.
-                        </p>
-                          
-                        <p>
-                          Cosmetic items (e.g., peeling wallpaper, wall scuffs, nail holes, normal
-                          wear and tear, etc.) are not part of this inspection. We also do not
-                          inspect for fungi, rodents, or insects. If such issues are noted, it is
-                          only to bring them to your attention so you can have the proper contractor
-                          evaluate further.
-                        </p>
-                          
-                        <p>
-                          Although every effort is made to inspect all systems, not every defect can
-                          be identified. Some areas may be inaccessible or hazardous. The home
-                          should be carefully reviewed during your final walk-through to ensure no
-                          new concerns have occurred and that requested repairs have been completed.
-                        </p>
-                          
-                        <p>
-                          Please contact our office immediately at{" "}
-                          <a href="tel:3379051428">337-905-1428</a> if you suspect or discover any
-                          concerns during the final walk-through.
-                        </p>
-                          
-                        <p>
-                          Repair recommendations and cost estimates included in this report are
-                          approximate, generated from typical labor and material
-                          rates in our region. They are not formal quotes and must always be
-                          verified by licensed contractors. AGI Property Inspections does not
-                          guarantee their accuracy.
-                        </p>
-                          
-                        <p>
-                          We do not provide guaranteed repair methods. Any corrections should be
-                          performed by qualified, licensed contractors. Consult your Real Estate
-                          Professional, Attorney, or Contractor for further advice regarding
-                          responsibility for these repairs.
-                        </p>
-                          
-                        <p>
-                          While this report may identify products involved in recalls or lawsuits,
-                          it is not comprehensive. Identifying all recalled products is not a
-                          requirement for Louisiana licensed Home Inspectors.
-                        </p>
-                          
-                        <p>
-                          This inspection complies with the standards of practice of the{" "}
-                          
-                            State of Louisiana Home Inspectors Licensing Board
-                          
-                          . Home inspectors are generalists and recommend further review by licensed
-                          specialists when needed.
-                        </p>
-                          
-                        <p>
-                          This inspection report and all information contained within is the sole
-                          property of AGI Property Inspections and is leased to the clients named in
-                          this report. It may not be shared or passed on without AGI’s consent. Doing so may result in legal action.
-                        </p>
-                      </div>
-
-                  <br></br><br></br>
-
-                <div className={styles.sectionHeadingStart}>
-                    <h2 className={styles.sectionHeadingTextStart}>Section 2 - Inspection Scope & Limitations</h2>
-                  </div>
-                  
-                  {/* INFORMATION BLOCKS - Render "2 - Inspection Details" from database */}
-                  {informationBlocks && informationBlocks.length > 0 && (
-                    <>
-                      {informationBlocks
-                        .filter((block: any) => {
-                          const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
-                          if (!blockSection) return false;
-                          const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-                          return cleanBlock.toLowerCase() === 'inspection details' || 
-                                 blockSection.toLowerCase().includes('inspection details') ||
-                                 blockSection === '2 - Inspection Details';
-                        })
-                        .map((block: any, blockIdx: number) => {
-                          const allItems = block.selected_checklist_ids || [];
-                          
-                          return (
-                            <div key={blockIdx} style={{ 
-                              margin: '1.5rem 0 2rem',
-                              background: '#f8fafc',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: '12px',
-                              padding: '1.5rem',
-                              boxShadow: '0 4px 16px rgba(15,23,42,0.08)'
-                            }}>
-                              {/* INFORMATION Header */}
-                              <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                marginBottom: '1rem',
-                                paddingBottom: '0.75rem',
-                                borderBottom: '2px solid #3b82f6'
-                              }}>
-                                <h3 style={{
-                                  fontSize: '0.95rem',
-                                  fontWeight: 700,
-                                  letterSpacing: '0.05em',
-                                  color: '#1e40af',
-                                  margin: 0,
-                                  textTransform: 'uppercase'
-                                }}>
-                                  INFORMATION
-                                </h3>
-                              </div>
-                              
-                              {/* Separate rendering for status vs information items */}
-                              {(() => {
-                                const statusItems = allItems.filter((item: any) => item.type === 'status');
-                                const informationItems = allItems.filter((item: any) => item.type === 'information');
-                                
-                                return (
-                                  <>
-                                    {/* 3-Column Grid for STATUS items only */}
-                                    {statusItems.length > 0 && (
-                                      <div 
-                                        className={styles.informationGrid}
-                                        style={{ 
-                                          marginBottom: (informationItems.length > 0 || block.custom_text) ? '1.5rem' : '0'
-                                        }}>
-                                        {statusItems.map((item: any) => {
-                                          const itemId = item._id || item;
-                                          const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
-                                          
-                                          // Get selected answers for this checklist item
-                                          const selectedAnswersObj = (block.selected_answers || []).find(
-                                            (ans: any) => ans.checklist_id === itemId
-                                          );
-                                          const selectedAnswers = selectedAnswersObj?.selected_answers || [];
-                                          
-                                          // Parse the label from item.text (e.g., "General: Style of Home")
-                                          const parts = item.text?.split(':') || [];
-                                          const label = parts[0]?.trim() || '';
-                                          const fieldName = parts.slice(1).join(':').trim() || '';
-                                          const displayLabel = fieldName || label;
-                                          
-                                          // Join selected answers with comma
-                                          const answerValue = selectedAnswers.join(', ');
-                                          
-                                          // Hide "General:" prefix, only show the field name in bold
-                                          const shouldHideLabel = label === 'General';
-                                          
-                                          return (
-                                            <div key={itemId} className={styles.informationGridItem}>
-                                              <div>
-                                                {!shouldHideLabel && (
-                                                  <span style={{ fontWeight: 700, color: '#000000' }}>{label}:</span>
-                                                )}
-                                                <span style={{ 
-                                                  marginLeft: shouldHideLabel ? '0' : '0.25rem',
-                                                  fontWeight: shouldHideLabel ? 700 : 400,
-                                                  color: shouldHideLabel ? '#000000' : '#374151'
-                                                }}>
-                                                  {displayLabel}
-                                                </span>
-                                              </div>
-                                              {answerValue && (
-                                                <div style={{ 
-                                                  marginTop: '0.25rem',
-                                                  fontSize: '0.875rem',
-                                                  color: '#6b7280',
-                                                  fontWeight: 400
-                                                }}>
-                                                  {answerValue}
-                                                </div>
-                                              )}
-                                                {item.comment && (
-                                                  <div style={{ 
-                                                    fontSize: '0.875rem',
-                                                    color: '#374151',
-                                                    lineHeight: 1.6,
-                                                    marginTop: '0.5rem',
-                                                    whiteSpace: 'pre-wrap'
-                                                  }}>
-                                                    {item.comment}
-                                                  </div>
-                                                )}
-                                              {itemImages.length > 0 && (
-                                                <div className={styles.informationImages}>
-                                                  {itemImages.map((img: any, imgIdx: number) => (
-                                                    <div key={imgIdx} style={{ position: 'relative' }}>
-                                                      {img.isThreeSixty ? (
-                                                        <ThreeSixtyViewer
-                                                          imageUrl={getProxiedSrc(img.url)}
-                                                          alt={`360° view for information item`}
-                                                          height="400px"
-                                                        />
-                                                      ) : /\.(mp4|mov|webm|3gp|3gpp|m4v)(\?.*)?$/i.test(img.url) ? (
-                                                        <video
-                                                          src={getProxiedSrc(img.url)}
-                                                          controls
-                                                          onClick={() => openLightbox(img.url)}
-                                                          className={styles.informationImage}
-                                                          style={{ backgroundColor: '#000' }}
-                                                        />
-                                                      ) : (
-                                                        <img
-                                                          src={getProxiedSrc(img.url)}
-                                                          alt="Item image"
-                                                          onClick={() => openLightbox(img.url)}
-                                                          className={styles.informationImage}
-                                                          onError={handleImgError}
-                                                          loading="eager"
-                                                        />
-                                                      )}
-                                                      {img.location && (
-                                                        <div style={{ 
-                                                          textAlign: 'center', 
-                                                          fontSize: '0.75rem', 
-                                                          color: '#6b7280', 
-                                                          marginTop: '0.25rem',
-                                                          fontWeight: 500
-                                                        }}>
-                                                          {img.location}
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                    
-                                    {/* Vertical Stack for INFORMATION items (full-width) */}
-                                    {informationItems.length > 0 && (
-                                      <div style={{ 
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '1.25rem',
-                                        marginBottom: block.custom_text ? '1.5rem' : '0'
-                                      }}>
-                                        {informationItems.map((item: any) => {
-                                          const itemId = item._id || item;
-                                          const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
-                                          
-                                          return (
-                                            <div key={itemId} style={{ 
-                                              display: 'flex',
-                                              flexDirection: 'column',
-                                              gap: '0.5rem'
-                                            }}>
-                                              <div style={{ 
-                                                fontWeight: 700,
-                                                color: '#000000',
-                                                fontSize: '0.9375rem'
-                                              }}>
-                                                {item.text || item}
-                                              </div>
-                                              {item.comment && (
-                                                <div style={{ 
-                                                  marginLeft: '1rem',
-                                                  fontSize: '0.875rem',
-                                                  color: '#4a5568',
-                                                  lineHeight: '1.6',
-                                                  whiteSpace: 'pre-wrap'
-                                                }}>
-                                                  {item.comment}
-                                                </div>
-                                              )}
-                                              {itemImages.length > 0 && (
-                                                <div className={styles.informationImages} style={{ marginLeft: '1rem' }}>
-                                                  {itemImages.map((img: any, imgIdx: number) => (
-                                                    <div key={imgIdx} style={{ position: 'relative' }}>
-                                                      {img.isThreeSixty ? (
-                                                        <div style={{ 
-                                                          width: '100%', 
-                                                          minWidth: isMobile ? '300px' : '400px',
-                                                          marginBottom: '1rem' 
-                                                        }}>
-                                                          <ThreeSixtyViewer
-                                                            imageUrl={getProxiedSrc(img.url)}
-                                                            alt={`360° view for information item`}
-                                                            width="100%"
-                                                            height={isMobile ? "300px" : "400px"}
-                                                          />
-                                                        </div>
-                                                      ) : /\.(mp4|mov|webm|3gp|3gpp|m4v)(\?.*)?$/i.test(img.url) ? (
-                                                        <video
-                                                          src={getProxiedSrc(img.url)}
-                                                          controls
-                                                          onClick={() => openLightbox(img.url)}
-                                                          className={styles.informationImage}
-                                                          style={{ backgroundColor: '#000' }}
-                                                        />
-                                                      ) : (
-                                                        <img
-                                                          src={getProxiedSrc(img.url)}
-                                                          alt="Item image"
-                                                          onClick={() => openLightbox(img.url)}
-                                                          className={styles.informationImage}
-                                                          onError={handleImgError}
-                                                          loading="eager"
-                                                        />
-                                                      )}
-                                                      {img.location && (
-                                                        <div style={{ 
-                                                          textAlign: 'center', 
-                                                          fontSize: '0.75rem', 
-                                                          color: '#6b7280', 
-                                                          marginTop: '0.25rem',
-                                                          fontWeight: 500
-                                                        }}>
-                                                          {img.location}
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                              
-                              {/* Custom Notes */}
-                              {block.custom_text && (
-                                <div style={{ marginTop: 0 }}>
-                                  <div style={{
-                                    fontSize: '0.875rem',
-                                    fontWeight: 600,
-                                    color: '#1f2937',
-                                    marginBottom: '0.5rem'
-                                  }}>
-                                    Additional Notes:
-                                  </div>
-                                  <div style={{
-                                    fontSize: '0.875rem',
-                                    color: '#4a5568',
-                                    lineHeight: '1.5'
-                                  }}>
-                                    {block.custom_text}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </>
-                  )}
-                  
-                  <div className={styles.contentGridStart}>
-                    <div className={styles.descriptionSectionStart}>
-                      {/* Categories */}
-                      <h3>Inspection Categories & Summary</h3>
-
-                      <h4 className={styles.immediateAttention}>Immediate Attention</h4>
-                      <div className={styles.immediateAttention}>
-                      {/* <p> */}
-                        Major Defects: Issues that compromise the home’s structural
-                        integrity, may result in additional damage if not repaired, or are
-                        considered a safety hazard. These items are color-coded{" "}
-                        red in the report and should be corrected
-                        as soon as possible.
-                      {/* </p> */}
-                      </div>
-
-                      <h4 className={styles.itemsForRepair}>Items for Repair</h4>
-                      <div className={styles.itemsForRepair}>
-                      {/* <p className={styles.orange}> */}
-                        Defects: Items in need of repair or correction, such as
-                        plumbing or electrical concerns, damaged or improperly installed components,
-                        etc. These are color-coded orange in
-                        the report and have no strict repair timeline.
-                      {/* </p> */}
-                      </div>
-
-                      <h4 className={styles.maintenanceItems}>Maintenance Items</h4>
-                      <div className={styles.maintenanceItems}>
-                      {/* <p> */}
-                        Small DIY-type repairs and maintenance recommendations provided to increase
-                        knowledge of long-term care. While not urgent, addressing these will reduce
-                        future repair needs and costs.
-                      {/* </p> */}
-                      </div>
-
-                      <h4 className={styles.recomended}>Further Evaluation</h4>
-                      <div className={styles.recomended}>
-                      {/* <p> */}
-                        In some cases, a defect falls outside the scope of a general home inspection or requires 
-                        a more extensive level of knowledge to determine the full extent of the issue. 
-                        These items should be further evaluated by a specialist.
-                      {/* </p> */}
-                      </div>
-                      <br></br>
-
-                      <hr />
-
-                      {/* Limitations */}
-                      <h3>Important Information & Limitations</h3>
-                      <p>
-                        AGI Property Inspections performs all inspections in compliance with the{" "}
-                        Louisiana Standards of Practice. We inspect readily
-                        accessible, visually observable, permanently installed systems and
-                        components of the home. This inspection is not technically exhaustive or
-                        quantitative.
-                      </p>
-                      <p>
-                        Some comments may go beyond the minimum Standards as a courtesy to provide
-                        additional detail. Any item noted for repair, replacement, maintenance, or
-                        further evaluation should be reviewed by qualified, licensed tradespeople.
-                      </p>
-                      <p>
-                        This inspection cannot predict future conditions or reveal hidden or latent
-                        defects. The report reflects the home’s condition only at the time of
-                        inspection. Weather, occupancy, or use may reveal issues not present at the
-                        time.
-                      </p>
-                      <p>
-                        This report should be considered alongside the{" "}
-                        seller’s disclosure, pest inspection report, and contractor
-                        evaluations for a complete picture of the home’s condition.
-                      </p>
-
-                      <hr />
-
-                      {/* Repair Disclaimer */}
-                      <h3>Repair Estimates Disclaimer</h3>
-                      <p>
-                        This report may include repair recommendations and estimated costs. These
-                        are based on typical labor and material rates in our region, generated from
-                        AI image review. They are approximate and not formal quotes.
-                      </p>
-                      <p>
-                        Estimates are not formal quotes. They do not account for unique site conditions and may vary depending on
-                        contractor, materials, and methods. Final pricing must always be obtained through qualified, licensed
-                        contractors with on-site evaluation. AGI Property Inspections does not guarantee the accuracy of estimates or
-                        assume responsibility for work performed by outside contractors.
-                      </p>
-
-                      <hr />
-
-                      {/* Recommendations */}
-                      <h3>Recommendations</h3>
-                      <p>
-                        Contractors / Further Evaluation: Repairs noted should be
-                        performed by licensed professionals. Keep receipts for warranty and
-                        documentation purposes.
-                      </p>
-                      <p>
-                        Causes of Damage / Methods of Repair: Suggested repair
-                        methods are based on inspector experience and opinion. Final determination
-                        should always be made by licensed contractors.
-                      </p>
-
-                      <hr />
-
-                      {/* Exclusions */}
-                      <h3>Excluded Items</h3>
-                      <p>
-                        The following are not included in this inspection: septic systems, security
-                        systems, irrigation systems, pools, hot tubs, wells, sheds, playgrounds,
-                        saunas, outdoor lighting, central vacuums, water filters, water softeners,
-                        sound or intercom systems, generators, sport courts, sea walls, outbuildings,
-                        operating skylights, awnings, exterior BBQ grills, and firepits.
-                      </p>
-
-                      <hr />
-
-                      {/* Occupied Home Disclaimer */}
-                      <h3>Occupied Home Disclaimer</h3>
-                      <p>
-                        If the home was occupied at the time of inspection, some areas may not have
-                        been accessible (furniture, personal belongings, etc.). Every effort was
-                        made to inspect all accessible areas; however, some issues may not have been
-                        visible.
-                      </p>
-                      <p>
-                        We recommend using your final walkthrough to verify that no issues were
-                        missed and that the property remains in the same condition as at the time of
-                        inspection.
-                      </p>
-                    </div>
-
-
-                  </div>
-
-                  <br></br><br></br>
-              </>}
+              
                 {visibleSections.map((section, idx) => {
                   const defectPartsView = splitDefectText(section.defect_description || section.defect || "");
                   const defectTitle = section.defectTitle || defectPartsView.title;
@@ -3196,294 +2586,27 @@ export default function Page() {
                   // Check if this is the first defect in a new section
                   const isNewSection = idx === 0 || visibleSections[idx - 1].sectionName !== section.sectionName;
 
-                  // Skip rendering Section 1 (Inspection Overview) as it's already rendered statically above
-                  const isSection1 = section.sectionName?.toLowerCase().includes('inspection overview') || 
-                                     section.sectionHeading?.toLowerCase().includes('inspection overview');
+                  // Render all information sections dynamically; no special-case exclusions
 
                   return (
                 <div key={section.id}>
                   {/* Information-Only Section (no defects) */}
-                  {section.isInformationOnly && filterMode === 'full' && !isSection1 && (
+                  {section.isInformationOnly && filterMode === 'full' && (
                     <>
                       <div 
                         className={styles.sectionHeading}
                         style={{
                           '--selected-color': '#111827',
                           '--text-color': '#111827',
+                          // Ensure this heading spans full width even inside any grid container
+                          gridColumn: '1 / -1',
+                          width: '100%'
                         } as React.CSSProperties}
                       >
                         <h2 className={styles.sectionHeadingText} style={{ color: '#111827' }}>
                           {section.sectionHeading}
                         </h2>
                       </div>
-                      
-                      {/* Special handling: Render Section 2 (Inspection Details) AFTER Section 2 heading */}
-                      {(() => {
-                        const currentSectionName = section.sectionName || section.sectionHeading || '';
-                        const currentSectionHeading = section.sectionHeading || '';
-                        
-                        // Check if this is exactly Section 2 (avoid matching Section 12, 20, etc.)
-                        const parseLeadingSectionNumber = (str: string) => {
-                          const m = (str || '').match(/^(?:Section\s*)?(\d+)\s*-/i);
-                          return m ? parseInt(m[1], 10) : null;
-                        };
-                        const numFromName = parseLeadingSectionNumber(currentSectionName);
-                        const numFromHeading = parseLeadingSectionNumber(currentSectionHeading);
-                        const isSection2 =
-                          numFromName === 2 ||
-                          numFromHeading === 2 ||
-                          currentSectionName.toLowerCase().includes('inspection scope & limitations') ||
-                          currentSectionHeading.toLowerCase().includes('inspection scope & limitations') ||
-                          currentSectionHeading === 'Section 2 - Inspection Scope & Limitations' ||
-                          currentSectionName === 'Inspection Scope & Limitations';
-                        
-                        if (!isSection2) return null;
-                        
-                        // Find Section 2 (Inspection Details) block
-                        const section1Block = informationBlocks.find(b => {
-                          const blockSection = typeof b.section_id === 'object' ? b.section_id?.name : null;
-                          if (!blockSection) return false;
-                          const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-                          return cleanBlock.toLowerCase() === 'inspection details' || 
-                                 blockSection.toLowerCase().includes('inspection details') ||
-                                 blockSection === '2 - Inspection Details';
-                        });
-                        
-                        if (!section1Block) return null;
-                        
-                        const allItems = section1Block.selected_checklist_ids || [];
-                        const hasContent = allItems.length > 0 || section1Block.custom_text;
-                        
-                        if (!hasContent) return null;
-                        
-                        // Create selectedAnswersMap for answer choices
-                        const selectedAnswersMap = new Map();
-                        if (section1Block.selected_answers && Array.isArray(section1Block.selected_answers)) {
-                          section1Block.selected_answers.forEach((answerEntry: any) => {
-                            if (answerEntry.checklist_id && Array.isArray(answerEntry.selected_answers)) {
-                              selectedAnswersMap.set(answerEntry.checklist_id, answerEntry.selected_answers);
-                            }
-                          });
-                        }
-                        
-                        return (
-                          <div style={{ 
-                            marginTop: '1.25rem', 
-                            marginBottom: '2rem', 
-                            backgroundColor: '#f8fafc', 
-                            border: '1px solid #cbd5e1', 
-                            borderRadius: '0.5rem', 
-                            padding: '1.5rem'
-                          }}>
-                            {/* Header */}
-                            <div style={{ 
-                              display: 'flex',
-                              alignItems: 'center',
-                              marginBottom: '1.25rem',
-                              paddingBottom: '0.75rem',
-                              borderBottom: '2px solid #3b82f6'
-                            }}>
-                              <h3 style={{ 
-                                fontSize: '1rem',
-                                fontWeight: 700,
-                                letterSpacing: '0.05em',
-                                color: '#1e40af',
-                                margin: 0,
-                                textTransform: 'uppercase'
-                              }}>INSPECTION DETAILS</h3>
-                            </div>
-                            
-                            {/* Separate rendering for status vs information items */}
-                            {(() => {
-                              const statusItems = allItems.filter((item: any) => item.type === 'status');
-                              const informationItems = allItems.filter((item: any) => item.type === 'information');
-                              
-                              return (
-                                <>
-                                  {/* 3-Column Grid for STATUS items only */}
-                                  {statusItems.length > 0 && (
-                                    <div 
-                                      className={styles.informationGrid}
-                                      style={{ 
-                                        display: 'grid',
-                                        gap: '1.25rem',
-                                        marginBottom: informationItems.length > 0 || section1Block.custom_text ? '1.5rem' : '0'
-                                      }}
-                                    >
-                                      {statusItems.map((item: any) => {
-                                        const itemId = item._id || item;
-                                        const itemImages = (section1Block.images || []).filter((img: any) => img.checklist_id === itemId);
-                                        const selectedAnswers = selectedAnswersMap.get(itemId) || [];
-                                        const itemText = item.text || item;
-                                        const value = item.value || '';
-                                        
-                                        return (
-                                          <div key={itemId} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                            <div style={{ 
-                                              fontWeight: 700,
-                                              color: '#000000',
-                                              fontSize: '0.9375rem'
-                                            }}>
-                                              {itemText}
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                              {value && (
-                                                <span style={{ 
-                                                  fontSize: '0.875rem', 
-                                                  fontWeight: 600,
-                                                  color: '#1f2937'
-                                                }}>
-                                                  {value}
-                                                </span>
-                                              )}
-                                              {selectedAnswers.length > 0 && (
-                                                <div style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280', fontSize: '0.875rem' }}>
-                                                  {selectedAnswers.join(', ')}
-                                                </div>
-                                              )}
-                                            </div>
-                                            {itemImages.length > 0 && (
-                                              <div className={styles.informationImages}>
-                                                {itemImages.map((img: any, imgIdx: number) => (
-                                                  <div key={imgIdx} style={{ position: 'relative' }}>
-                                                    <img
-                                                      src={getProxiedSrc(img.url)}
-                                                      alt="Item image"
-                                                      onClick={() => openLightbox(img.url)}
-                                                      className={styles.informationImage}
-                                                      onError={handleImgError}
-                                                      loading="eager"
-                                                    />
-                                                    {img.location && (
-                                                      <div style={{ 
-                                                        textAlign: 'center', 
-                                                        fontSize: '0.75rem', 
-                                                        color: '#6b7280', 
-                                                        marginTop: '0.25rem',
-                                                        fontWeight: 500
-                                                      }}>
-                                                        {img.location}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                  
-                                  {/* Vertical Stack for INFORMATION items (full-width) */}
-                                  {informationItems.length > 0 && (
-                                    <div style={{ 
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      gap: '1.75rem',
-                                      marginBottom: section1Block.custom_text ? '1.5rem' : '0'
-                                    }}>
-                                      {informationItems.map((item: any) => {
-                                        const itemId = item._id || item;
-                                        const itemImages = (section1Block.images || []).filter((img: any) => img.checklist_id === itemId);
-                                        const selectedAnswers = selectedAnswersMap.get(itemId) || [];
-                                        const itemText = item.text || item;
-                                        const itemComment = item.comment || '';
-                                        
-                                        return (
-                                          <div key={itemId} style={{ 
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '0.5rem'
-                                          }}>
-                                            <div style={{ 
-                                              fontWeight: 700,
-                                              color: '#000000',
-                                              fontSize: '0.9375rem'
-                                            }}>
-                                              {itemText}
-                                            </div>
-                                            {itemComment && (
-                                              <div style={{ 
-                                                fontSize: '0.875rem',
-                                                color: '#374151',
-                                                lineHeight: '1.6'
-                                              }}>
-                                                {itemComment}
-                                              </div>
-                                            )}
-                                            {selectedAnswers.length > 0 && (
-                                              <div style={{ 
-                                                marginLeft: '0.75rem',
-                                                fontSize: '0.8125rem',
-                                                color: '#6b7280',
-                                                lineHeight: '1.4'
-                                              }}>
-                                                {selectedAnswers.join(', ')}
-                                              </div>
-                                            )}
-                                            {itemImages.length > 0 && (
-                                              <div className={styles.informationImages} style={{ marginLeft: '0.75rem', marginTop: '0.75rem' }}>
-                                                {itemImages.map((img: any, imgIdx: number) => (
-                                                  <div key={imgIdx} style={{ position: 'relative' }}>
-                                                    <img
-                                                      src={getProxiedSrc(img.url)}
-                                                      alt="Item image"
-                                                      onClick={() => openLightbox(img.url)}
-                                                      className={styles.informationImage}
-                                                      onError={handleImgError}
-                                                      loading="eager"
-                                                    />
-                                                    {img.location && (
-                                                      <div style={{ 
-                                                        textAlign: 'center', 
-                                                        fontSize: '0.75rem', 
-                                                        color: '#6b7280', 
-                                                        marginTop: '0.25rem',
-                                                        fontWeight: 500
-                                                      }}>
-                                                        {img.location}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            })()}
-                            
-                            {section1Block.custom_text && (
-                              <div style={{ 
-                                borderTop: allItems.length > 0 ? '1px solid #e2e8f0' : 'none',
-                                paddingTop: allItems.length > 0 ? '1rem' : '0'
-                              }}>
-                                <div style={{ 
-                                  fontSize: '0.875rem', 
-                                  fontWeight: 600,
-                                  color: '#475569',
-                                  marginBottom: '0.5rem',
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.025em'
-                                }}>Custom Notes</div>
-                                <div style={{ 
-                                  fontSize: '0.875rem', 
-                                  lineHeight: '1.6',
-                                  color: '#1f2937',
-                                  whiteSpace: 'pre-wrap'
-                                }}>
-                                  {section1Block.custom_text}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
                       
                       {(() => {
                         const sectionName = section.sectionName || section.sectionHeading || '';
@@ -3492,10 +2615,6 @@ export default function Page() {
                           if (!blockSection || !sectionName) return false;
                           const cleanSection = sectionName.replace(/^\d+\s*-\s*/, '');
                           const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-                          // EXCLUDE Section 1 (Inspection Details) - it only appears after Section 2
-                          if (cleanBlock.toLowerCase() === 'inspection details' || blockSection.toLowerCase().includes('inspection details')) {
-                            return false;
-                          }
                           return cleanBlock === cleanSection;
                         });
                         
@@ -3523,7 +2642,10 @@ export default function Page() {
                             backgroundColor: '#f8fafc', 
                             border: '1px solid #cbd5e1', 
                             borderRadius: '0.5rem', 
-                            padding: '1.5rem'
+                            padding: '1.5rem',
+                            // Force info card to span full row in any parent grid
+                            gridColumn: '1 / -1',
+                            width: '100%'
                           }}>
                             <div style={{ 
                               display: 'flex',
@@ -3545,6 +2667,14 @@ export default function Page() {
                             {(() => {
                               const statusItems = allItems.filter((item: any) => item.type === 'status');
                               const informationItems = allItems.filter((item: any) => item.type === 'information');
+                              // If there's a single STATUS item with a long comment, render it full-width (1 column)
+                              const longStatusCommentLen = (() => {
+                                if (statusItems.length !== 1) return 0;
+                                const only = statusItems[0];
+                                const c = (only && (only.comment || only.value || '')).toString();
+                                return c.length;
+                              })();
+                              const useFullWidthStatusLayout = statusItems.length === 1 && longStatusCommentLen > 140;
                               
                               return (
                                 <>
@@ -3552,7 +2682,9 @@ export default function Page() {
                                     <div 
                                       className={styles.informationGrid}
                                       style={{ 
-                                        marginBottom: (informationItems.length > 0 || block.custom_text) ? '1.5rem' : '0'
+                                        marginBottom: (informationItems.length > 0 || block.custom_text) ? '1.5rem' : '0',
+                                        gridTemplateColumns: useFullWidthStatusLayout ? '1fr' : undefined,
+                                        width: '100%'
                                       }}>
                                       {statusItems.map((item: any) => {
                                         const itemId = item._id || item;
@@ -3563,7 +2695,7 @@ export default function Page() {
                                         const value = parts.slice(1).join(':').trim() || '';
                                         
                                         return (
-                                          <div key={itemId} className={styles.informationGridItem}>
+                                          <div key={itemId} className={styles.informationGridItem} style={{ width: '100%' }}>
                                             <div>
                                               <span style={{ fontWeight: 700, color: '#000000' }}>{label}:</span>
                                               {value && (
@@ -3811,7 +2943,9 @@ export default function Page() {
                             backgroundColor: '#f8fafc', 
                             border: '1px solid #cbd5e1', 
                             borderRadius: '0.5rem', 
-                            padding: '1.5rem'
+                            padding: '1.5rem',
+                            gridColumn: '1 / -1',
+                            width: '100%'
                           }}>
                             {/* Header */}
                             <div style={{ 

@@ -5,12 +5,18 @@ interface FileUploadProps {
   onFilesSelect: (files: File[]) => void;
   accept?: string;
   id?: string;
+  labels?: { upload?: string; photo?: string; video?: string };
+  layoutColumns?: number; // e.g., 2 to force two columns (2x2 when 4 buttons)
+  extraButtons?: React.ReactNode[]; // optional extra buttons appended to the grid
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({ 
   onFilesSelect, 
   accept = "image/*,.heic,.heif", 
-  id = "file-upload" 
+  id = "file-upload",
+  labels,
+  layoutColumns,
+  extraButtons = []
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -79,12 +85,18 @@ const FileUpload: React.FC<FileUploadProps> = ({
       {/* Upload buttons in a clean grid layout */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+        gridTemplateColumns: layoutColumns ? `repeat(${layoutColumns}, minmax(140px, 1fr))` : 'repeat(auto-fit, minmax(140px, 1fr))', 
         gap: '0.5rem',
         maxWidth: '500px',
         width: '100%',
         margin: '0 auto'
       }}>
+        {/* Optional extra buttons (e.g., 360° Pic) can be prepended for custom layouts */}
+        {extraButtons && extraButtons.length > 0 && extraButtons.map((node, idx) => (
+          <div key={`extra-${idx}`} style={{ display: 'contents' }}>
+            {node}
+          </div>
+        ))}
         <label 
           htmlFor={id}
           style={{
@@ -106,7 +118,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#8230c9')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#3b82f6')}
         >
-          📷 Upload Image
+          📷 {labels?.upload ?? 'Upload Image'}
         </label>
         
         <label
@@ -130,7 +142,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#059669')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
         >
-          📸 Take Photo
+          📸 {labels?.photo ?? 'Take Photo'}
         </label>
         
         <label
@@ -154,7 +166,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#7c3aed')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#8b5cf6')}
         >
-          🎥 Take Video
+          🎥 {labels?.video ?? 'Take Video'}
         </label>
       </div>
     </div>

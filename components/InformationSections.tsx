@@ -410,6 +410,134 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }
   );
 
+  // --- Touch/Pointer fallback for item reordering (iOS Safari) ---
+  const itemTouchStateRef = useRef<{
+    isDragging: boolean;
+    kind: 'status' | 'limitations' | null;
+    draggingId: string | null;
+  }>({ isDragging: false, kind: null, draggingId: null });
+
+  const lockModalScroll = () => {
+    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
+    if (el) {
+      el.style.touchAction = 'none';
+      // Prevent scroll chaining to the page
+      // @ts-ignore
+      el.style.overscrollBehavior = 'contain';
+    }
+  };
+  const unlockModalScroll = () => {
+    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
+    if (el) {
+      el.style.touchAction = '';
+      // @ts-ignore
+      el.style.overscrollBehavior = '';
+    }
+  };
+
+  const onItemTouchStart = (kind: 'status' | 'limitations', id: string) => (
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      itemTouchStateRef.current = { isDragging: true, kind, draggingId: id };
+      setDragVisual({ kind, draggingId: id, overId: null, position: null });
+      (e.currentTarget as HTMLElement).style.opacity = '0.9';
+      lockModalScroll();
+    }
+  );
+
+  const onItemTouchMove = (kind: 'status' | 'limitations') => (
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      if (!itemTouchStateRef.current.isDragging) return;
+      const touch = e.touches[0];
+      // Find target item under finger
+      const el = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
+      const itemEl = el ? el.closest('[data-item-id]') as HTMLElement | null : null;
+      const overId = itemEl?.getAttribute('data-item-id') || null;
+      if (overId) {
+        const rect = itemEl!.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        const position: 'before' | 'after' = touch.clientY < mid ? 'before' : 'after';
+        setDragVisual(prev => ({ ...prev, kind, overId, position }));
+      }
+      // Auto-scroll near edges of modal scroll container
+      const container = modalScrollContainerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const scrollZone = 64;
+        const speed = 16;
+        if (scrollIntervalRef.current) {
+          clearInterval(scrollIntervalRef.current);
+          scrollIntervalRef.current = null;
+        }
+        if (touch.clientY < rect.top + scrollZone && touch.clientY > rect.top) {
+          scrollIntervalRef.current = setInterval(() => {
+            if (container.scrollTop > 0) container.scrollTop -= speed;
+          }, 16);
+        } else if (touch.clientY > rect.bottom - scrollZone && touch.clientY < rect.bottom) {
+          scrollIntervalRef.current = setInterval(() => {
+            if (container.scrollTop < container.scrollHeight - container.clientHeight) container.scrollTop += speed;
+          }, 16);
+        }
+      }
+    }
+  );
+
+  const onItemTouchEnd = (kind: 'status' | 'limitations') => (
+    (_e: React.TouchEvent<HTMLDivElement>) => {
+      if (!itemTouchStateRef.current.isDragging) return;
+      const draggingId = itemTouchStateRef.current.draggingId;
+      const overId = dragVisual.overId;
+      const insertPosition = dragVisual.position || 'after';
+      if (draggingId && overId && draggingId !== overId) {
+        setReorderIds(prev => {
+          const list = [...prev[kind]];
+          const fromIndex = list.indexOf(draggingId);
+          let insertIndex = list.indexOf(overId);
+          if (fromIndex === -1 || insertIndex === -1) return prev;
+          const [dragged] = list.splice(fromIndex, 1);
+          insertIndex = list.indexOf(overId);
+          if (insertPosition === 'after') insertIndex += 1;
+          list.splice(insertIndex, 0, dragged);
+          setTimeout(async () => {
+            if (activeSection) await persistChecklistOrder(kind, activeSection._id, list);
+          }, 50);
+          return { ...prev, [kind]: list };
+        });
+      }
+      itemTouchStateRef.current = { isDragging: false, kind: null, draggingId: null };
+      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
+      if (scrollIntervalRef.current) { clearInterval(scrollIntervalRef.current); scrollIntervalRef.current = null; }
+      unlockModalScroll();
+    }
+  );
+
+  const onItemTouchCancel = () => (
+    () => {
+      if (!itemTouchStateRef.current.isDragging) return;
+      itemTouchStateRef.current = { isDragging: false, kind: null, draggingId: null };
+      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
+      if (scrollIntervalRef.current) { clearInterval(scrollIntervalRef.current); scrollIntervalRef.current = null; }
+      unlockModalScroll();
+    }
+  );
+
+  const onItemPointerDown = (kind: 'status' | 'limitations', id: string) => (
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== 'touch') return;
+      itemTouchStateRef.current = { isDragging: true, kind, draggingId: id };
+      setDragVisual({ kind, draggingId: id, overId: null, position: null });
+      (e.currentTarget as HTMLElement).style.opacity = '0.9';
+      lockModalScroll();
+    }
+  );
+  const onItemPointerUp = (kind: 'status' | 'limitations') => (
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== 'touch') return;
+      if (!itemTouchStateRef.current.isDragging) return;
+      onItemTouchEnd(kind)({} as any);
+      (e.currentTarget as HTMLElement).style.opacity = '1';
+    }
+  );
+
   const onDragOverItem = (kind: 'status' | 'limitations', targetId: string) => (
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
@@ -723,15 +851,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     (e: React.TouchEvent<HTMLDivElement>) => {
       const touchState = optionTouchStateRef.current;
       if (!touchState.isDragging) return;
-      
-      e.preventDefault(); // Prevent scroll
+      // Do NOT call preventDefault here: React may attach touch listeners as passive on mobile
+      // Instead we rely on CSS touch-action:none to disable scrolling during drag
       
       const touch = e.touches[0];
       touchState.currentY = touch.clientY;
       touchState.currentX = touch.clientX;
       
       // Find element under touch point
-      const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+  const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
       if (!elementUnderTouch) return;
       
       // Find closest label with data-choice attribute
@@ -791,6 +919,79 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       }
       
       // Reset state
+      optionTouchStateRef.current = {
+        isDragging: false,
+        checklistId: null,
+        draggingChoice: null,
+        startY: 0,
+        startX: 0,
+        currentY: 0,
+        currentX: 0,
+      };
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+    }
+  );
+
+  // Touch cancel safety for iOS (e.g., interruption, scroll bounce)
+  const onOptionTouchCancel = () => (
+    (_e: React.TouchEvent<any>) => {
+      if (!optionTouchStateRef.current.isDragging) return;
+      optionTouchStateRef.current = {
+        isDragging: false,
+        checklistId: null,
+        draggingChoice: null,
+        startY: 0,
+        startX: 0,
+        currentY: 0,
+        currentX: 0,
+      };
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+    }
+  );
+
+  // Pointer events fallback (iOS supports PointerEvents) – treat touch pointer as drag
+  const onOptionPointerDown = (checklistId: string, choice: string, isCustom: boolean) => (
+    (e: React.PointerEvent<HTMLLabelElement>) => {
+      if (e.pointerType !== 'touch') return; // only handle touch via pointer events
+      // Delegate to touch-start logic
+      // Build a faux TouchEvent-like structure
+      if (isCustom) return;
+      optionTouchStateRef.current = {
+        isDragging: true,
+        checklistId,
+        draggingChoice: choice,
+        startY: e.clientY,
+        startX: e.clientX,
+        currentY: e.clientY,
+        currentX: e.clientX,
+      };
+      optionDragStateRef.current = { checklistId, draggingChoice: choice };
+      setOptionDragVisual({ checklistId, draggingChoice: choice, overChoice: null, position: null, axis: null });
+      (e.currentTarget as HTMLElement).style.opacity = '0.5';
+    }
+  );
+
+  const onOptionPointerUp = (checklistId: string, templateChoices: string[]) => (
+    async (e: React.PointerEvent<HTMLElement>) => {
+      if (e.pointerType !== 'touch') return;
+      if (!optionTouchStateRef.current.isDragging) return;
+      (e.currentTarget as HTMLElement).style.opacity = '1';
+      const draggingChoice = optionTouchStateRef.current.draggingChoice;
+      const { overChoice, position } = optionDragVisual;
+      if (draggingChoice && overChoice && draggingChoice !== overChoice) {
+        const list = [...templateChoices];
+        const fromIndex = list.indexOf(draggingChoice);
+        let toIndex = list.indexOf(overChoice);
+        if (fromIndex !== -1 && toIndex !== -1) {
+          list.splice(fromIndex, 1);
+          toIndex = list.indexOf(overChoice);
+          if (position === 'after') toIndex += 1;
+          list.splice(toIndex, 0, draggingChoice);
+          await persistOptionOrder(checklistId, list);
+        }
+      }
       optionTouchStateRef.current = {
         isDragging: false,
         checklistId: null,
@@ -2953,21 +3154,43 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const sectionBlocks = (sectionId: string) =>
     blocks.filter(b => (typeof b.section_id === 'string' ? b.section_id === sectionId : (b.section_id as ISection)._id === sectionId));
 
-  // Helper function to check if a section is complete
-  // A section is complete when it has at least one block with selected checklist items
+  // Helper: Section is complete ONLY when ALL Status fields for that section
+  // (template + inspection-only) are either selected in some block OR hidden.
+  // Limitations/Information do NOT affect completion.
   const isSectionComplete = useCallback((sectionId: string): boolean => {
     const sectionBlocksList = sectionBlocks(sectionId);
     if (sectionBlocksList.length === 0) return false;
 
-    // Completion now depends ONLY on Status Fields being selected in any block of this section.
-    return sectionBlocksList.some(block => {
-      const secId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
+    // Build the complete set of Status checklist IDs for this section
+    const sectionObj = sections.find(s => s._id === sectionId);
+    const templateStatusIds = (sectionObj?.checklists || [])
+      .filter(cl => cl.type === 'status')
+      .map(cl => cl._id);
+    const inspectionStatusIds = (inspectionChecklists.get(sectionId) || [])
+      .filter(cl => cl.type === 'status')
+      .map(cl => cl._id);
+    const allStatusIds = Array.from(new Set([...
+      templateStatusIds, ...inspectionStatusIds
+    ]));
+
+    // If there are no status fields in the section, treat as incomplete
+    if (allStatusIds.length === 0) return false;
+
+    // Union of all selected checklist IDs across all blocks in this section
+    const selectedIds = new Set<string>();
+    for (const block of sectionBlocksList) {
       const raw = getBlockChecklists(block);
-      const resolved = raw
-        .map((cl: any) => resolveChecklist(secId, cl))
-        .filter(Boolean) as ISectionChecklist[];
-      return resolved.some(item => item.type === 'status');
-    });
+      for (const entry of raw) {
+        const id = typeof entry === 'string' ? entry : entry?._id;
+        if (id) selectedIds.add(id);
+      }
+    }
+
+    // Hidden items for this inspection (count as satisfied)
+    const hiddenIds = new Set<string>(getHiddenIdsForSection(sectionId) || []);
+
+    // Completion rule: every Status ID must be either selected somewhere or hidden
+    return allStatusIds.every(id => selectedIds.has(id) || hiddenIds.has(id));
   }, [blocks, inspectionChecklists, sections]);
 
   return (
@@ -3222,8 +3445,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   lineHeight: 1.6,
                                   whiteSpace: 'normal',
                                   wordBreak: 'break-word'
-                                }}>
-                                  {item.comment}
+                                }} title={item.comment}>
+                                  {item.comment.length > 150? item.comment.slice(0, 150) + '…' : item.comment}
                                 </div>
                               )}
                             </div>
@@ -3408,6 +3631,12 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                           onDragOver={onDragOverItem('status', cl._id)}
                           onDrop={onDropItem('status', cl._id)}
                           onDragEnd={onDragEndItem()}
+                          onTouchStart={onItemTouchStart('status', cl._id)}
+                          onTouchMove={onItemTouchMove('status')}
+                          onTouchEnd={onItemTouchEnd('status')}
+                          onTouchCancel={onItemTouchCancel()}
+                          onPointerDown={onItemPointerDown('status', cl._id)}
+                          onPointerUp={onItemPointerUp('status')}
                           style={{
                             padding: '0.5rem',
                             borderRadius: '0.25rem',
@@ -3416,8 +3645,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                             boxShadow: dragVisual.draggingId === cl._id ? '0 2px 8px rgba(59,130,246,0.20)' : 'none',
                             cursor: dragVisual.draggingId === cl._id ? 'grabbing' : 'grab',
                             transition: 'box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
-                            position: 'relative'
+                            position: 'relative',
+                            touchAction: 'manipulation'
                           }}
+                          data-item-id={cl._id}
                         >
                           {/* Insertion line indicator - BEFORE */}
                           {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'before' && (
@@ -3606,12 +3837,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>Delete Options</div>
                                   <div style={{ fontSize: '0.75rem', color: '#374151', marginBottom: '0.5rem' }}>Choose how to remove this item:</div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    <button
-                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); hideChecklistForInspection(activeSection._id, cl._id); setDeleteMenuForId(null); }}
-                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#f59e0b', color: 'white', border: 'none', cursor: 'pointer' }}
-                                    >
-                                      Hide in this inspection
-                                    </button>
+                                    {activeSection && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          if (!activeSection) return;
+                                          hideChecklistForInspection(activeSection._id, cl._id);
+                                          setDeleteMenuForId(null);
+                                        }}
+                                        style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#f59e0b', color: 'white', border: 'none', cursor: 'pointer' }}
+                                      >
+                                        Hide in this inspection
+                                      </button>
+                                    )}
                                     <button
                                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); performGlobalChecklistDelete(cl._id); }}
                                       style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer' }}
@@ -3643,7 +3882,13 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
                                               Select Options:
                                             </div>
-                                            <div className="checklist-options-grid" onTouchMove={onOptionTouchMove(cl._id, templateChoices)}>
+                                            <div
+                                              className="checklist-options-grid"
+                                              onTouchMove={onOptionTouchMove(cl._id, templateChoices)}
+                                              onTouchCancel={onOptionTouchCancel()}
+                                              onPointerUp={onOptionPointerUp(cl._id, templateChoices)}
+                                              style={{ touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'manipulation', overscrollBehavior: 'contain' }}
+                                            >
                                               {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
                                                 const selectedAnswers = getSelectedAnswers(cl._id);
                                                 const isAnswerSelected = selectedAnswers.has(choice);
@@ -3685,6 +3930,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                     onDragEnd={onOptionDragEnd()}
                                                     onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
                                                     onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
+                                                    onPointerDown={onOptionPointerDown(cl._id, choice, isCustom)}
                                                   >
                                                     {/* Insertion line indicators for options */}
                                                     {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
@@ -3807,96 +4053,74 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                           {/* Image upload section - show only when item is selected and expanded */}
                           {isSelected && isStatusExpanded(cl._id) && (
                             <div style={{ marginTop: '0.75rem', marginLeft: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                              {/* 360° Photo Checkbox */}
-                              <div 
-                                onPointerDown={(e) => {
-                                  e.preventDefault();
-                                  console.log('🎯 360° checkbox clicked/touched:', cl._id);
-                                  setIsThreeSixtyMap(prev => {
-                                    const newValue = !prev[cl._id];
-                                    console.log('✅ Setting 360° to:', newValue);
-                                    return {
-                                      ...prev,
-                                      [cl._id]: newValue
-                                    };
-                                  });
-                                }}
-                                style={{
-                                  background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
-                                  padding: '10px 16px',
-                                  borderRadius: '8px',
-                                  marginBottom: '12px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '10px',
-                                  boxShadow: '0 2px 8px rgba(124, 58, 237, 0.2)',
-                                  cursor: 'pointer',
-                                  WebkitTapHighlightColor: 'rgba(124, 58, 237, 0.1)',
-                                  touchAction: 'manipulation',
-                                  userSelect: 'none'
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  id={`isThreeSixty-info-${cl._id}`}
-                                  checked={isThreeSixtyMap[cl._id] || false}
-                                  onChange={() => {}}
-                                  readOnly
-                                  tabIndex={-1}
-                                  style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    cursor: 'pointer',
-                                    // Use a visible accent color on mobile so the checkmark is clearly visible
-                                    accentColor: '#10b981',
-                                    flexShrink: 0,
-                                    pointerEvents: 'none',
-                                    margin: 0
-                                  }}
-                                />
-                                <div 
-                                  style={{
-                                    color: 'white',
-                                    fontSize: '14px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    flex: 1,
-                                    pointerEvents: 'none'
-                                  }}
-                                >
-                                  <i className="fas fa-sync" style={{ fontSize: '16px' }}></i>
-                                  This is a 360° photo
-                                </div>
-                              </div>
-
-                              {/* Help text for 360° photos - Always visible on mobile */}
-                              <div style={{
-                                backgroundColor: '#fef3c7',
-                                border: '1px solid #fbbf24',
-                                borderRadius: '6px',
-                                padding: '8px 12px',
-                                marginBottom: '12px',
-                                fontSize: '12px',
-                                color: '#92400e'
-                              }}>
-                                <strong>📸 360° Photo Tips:</strong>
-                                <ul style={{ margin: '4px 0 0 20px', paddingLeft: 0 }}>
-                                  <li>File size limit: <strong>200 MB</strong></li>
-                                  <li><strong>⚠️ Recommended dimensions: 8192×4096 (33 MP max)</strong></li>
-                                  <li>Optimal: <strong>4096×2048</strong> at <strong>85% quality</strong> (~5-10 MB)</li>
-                                  <li>Images larger than 50 MP may fail to load in browser</li>
-                                  <li>Compress large files using: TinyPNG, Squoosh, or IrfanView</li>
-                                </ul>
-                              </div>
-                              
+                              {/* Replaced 360° banner and tips with a compact button + upload actions in a 2x2 grid */}
                               <div style={{ marginBottom: '0.5rem' }}>
                                 <FileUpload
                                   onFilesSelect={(files) => handleImagesSelect(cl._id, files)}
                                   id={`file-upload-${cl._id}`}
+                                  labels={{ upload: 'Upload', photo: 'Photo', video: 'Video' }}
+                                  layoutColumns={2}
+                                  extraButtons={[
+                                    (
+                                      <button
+                                        key={`btn-360-${cl._id}`}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          setIsThreeSixtyMap(prev => ({ ...prev, [cl._id]: !prev[cl._id] }));
+                                        }}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: '0.5rem',
+                                          padding: '0.55rem 0.75rem',
+                                          backgroundColor: isThreeSixtyMap[cl._id] ? '#ef4444' : 'transparent',
+                                          color: isThreeSixtyMap[cl._id] ? '#ffffff' : '#ef4444',
+                                          borderRadius: '0.375rem',
+                                          cursor: 'pointer',
+                                          fontSize: '0.85rem',
+                                          fontWeight: 700,
+                                          border: `1px solid #ef4444`,
+                                          transition: 'background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s',
+                                          whiteSpace: 'nowrap',
+                                          width: '100%',
+                                          minHeight: '42px',
+                                          boxShadow: isThreeSixtyMap[cl._id] ? '0 1px 2px rgba(0,0,0,0.08)' : '0 1px 2px rgba(0,0,0,0.04)'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isThreeSixtyMap[cl._id]) {
+                                            e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.06)';
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.backgroundColor = isThreeSixtyMap[cl._id] ? '#ef4444' : 'transparent';
+                                        }}
+                                        aria-pressed={isThreeSixtyMap[cl._id] ? 'true' : 'false'}
+                                        title="Toggle 360° picture"
+                                      >
+                                        <span
+                                          aria-hidden
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '16px',
+                                            height: '16px',
+                                            borderRadius: '9999px',
+                                            border: isThreeSixtyMap[cl._id] ? '2px solid #ffffff' : '2px solid #ef4444',
+                                            backgroundColor: isThreeSixtyMap[cl._id] ? '#ffffff' : 'transparent',
+                                            color: '#ef4444',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 900,
+                                            lineHeight: 1
+                                          }}
+                                        >
+                                          {isThreeSixtyMap[cl._id] ? '✓' : ''}
+                                        </span>
+                                        <span>360° Picture</span>
+                                      </button>
+                                    )
+                                  ]}
                                 />
                               </div>
 
@@ -4113,6 +4337,12 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                           onDragOver={onDragOverItem('limitations', cl._id)}
                           onDrop={onDropItem('limitations', cl._id)}
                           onDragEnd={onDragEndItem()}
+                          onTouchStart={onItemTouchStart('limitations', cl._id)}
+                          onTouchMove={onItemTouchMove('limitations')}
+                          onTouchEnd={onItemTouchEnd('limitations')}
+                          onTouchCancel={onItemTouchCancel()}
+                          onPointerDown={onItemPointerDown('limitations', cl._id)}
+                          onPointerUp={onItemPointerUp('limitations')}
                           style={{
                             padding: '0.5rem',
                             borderRadius: '0.25rem',
@@ -4121,8 +4351,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                             boxShadow: dragVisual.draggingId === cl._id ? '0 2px 8px rgba(16,185,129,0.18)' : 'none',
                             cursor: dragVisual.draggingId === cl._id ? 'grabbing' : 'grab',
                             transition: 'box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
-                            position: 'relative'
+                            position: 'relative',
+                            touchAction: 'manipulation'
                           }}
+                          data-item-id={cl._id}
                         >
                           {/* Insertion line indicator - BEFORE */}
                           {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'before' && (
@@ -4313,12 +4545,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   <div style={{ fontSize: '0.75rem', color: '#374151', marginBottom: '0.5rem' }}>Choose how to remove this item:</div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                     <button
-                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); hideChecklistForInspection(activeSection._id, cl._id); setDeleteMenuForId(null); }}
-                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#f59e0b', color: 'white', border: 'none', cursor: 'pointer' }}
-                                    >
-                                      Hide in this inspection
-                                    </button>
-                                    <button
                                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); performGlobalChecklistDelete(cl._id); }}
                                       style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer' }}
                                     >
@@ -4345,7 +4571,13 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
                                       Select Options:
                                     </div>
-                                    <div className="checklist-options-grid" onTouchMove={onOptionTouchMove(cl._id, cl.answer_choices || [])}>
+                                    <div
+                                      className="checklist-options-grid"
+                                      onTouchMove={onOptionTouchMove(cl._id, cl.answer_choices || [])}
+                                      onTouchCancel={onOptionTouchCancel()}
+                                      onPointerUp={onOptionPointerUp(cl._id, cl.answer_choices || [])}
+                                      style={{ touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'manipulation', overscrollBehavior: 'contain' }}
+                                    >
                                       {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
                                         const selectedAnswers = getSelectedAnswers(cl._id);
                                         const isAnswerSelected = selectedAnswers.has(choice);
@@ -4390,6 +4622,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                             onDragEnd={onOptionDragEnd()}
                                             onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
                                             onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
+                                            onPointerDown={onOptionPointerDown(cl._id, choice, isCustom)}
                                           >
                                             {/* Insertion line indicators for options */}
                                             {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
@@ -4508,96 +4741,73 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                           {/* Image upload section - show only when item is selected and expanded */}
                           {isSelected && isLimitExpanded(cl._id) && (
                             <div style={{ marginTop: '0.75rem', marginLeft: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                              {/* 360° Photo Checkbox */}
-                              <div 
-                                onPointerDown={(e) => {
-                                  e.preventDefault();
-                                  console.log('🎯 360° checkbox clicked/touched (Limitations):', cl._id);
-                                  setIsThreeSixtyMap(prev => {
-                                    const newValue = !prev[cl._id];
-                                    console.log('✅ Setting 360° to:', newValue);
-                                    return {
-                                      ...prev,
-                                      [cl._id]: newValue
-                                    };
-                                  });
-                                }}
-                                style={{
-                                  background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
-                                  padding: '10px 16px',
-                                  borderRadius: '8px',
-                                  marginBottom: '12px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '10px',
-                                  boxShadow: '0 2px 8px rgba(124, 58, 237, 0.2)',
-                                  cursor: 'pointer',
-                                  WebkitTapHighlightColor: 'rgba(124, 58, 237, 0.1)',
-                                  touchAction: 'manipulation',
-                                  userSelect: 'none'
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  id={`isThreeSixty-limit-${cl._id}`}
-                                  checked={isThreeSixtyMap[cl._id] || false}
-                                  onChange={() => {}}
-                                  readOnly
-                                  tabIndex={-1}
-                                  style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    cursor: 'pointer',
-                                    // Use a visible accent color on mobile so the checkmark is clearly visible
-                                    accentColor: '#10b981',
-                                    flexShrink: 0,
-                                    pointerEvents: 'none',
-                                    margin: 0
-                                  }}
-                                />
-                                <div 
-                                  style={{
-                                    color: 'white',
-                                    fontSize: '14px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    flex: 1,
-                                    pointerEvents: 'none'
-                                  }}
-                                >
-                                  <i className="fas fa-sync" style={{ fontSize: '16px' }}></i>
-                                  This is a 360° photo
-                                </div>
-                              </div>
-
-                              {/* Help text for 360° photos - Always visible on mobile */}
-                              <div style={{
-                                backgroundColor: '#fef3c7',
-                                border: '1px solid #fbbf24',
-                                borderRadius: '6px',
-                                padding: '8px 12px',
-                                marginBottom: '12px',
-                                fontSize: '12px',
-                                color: '#92400e'
-                              }}>
-                                <strong>📸 360° Photo Tips:</strong>
-                                <ul style={{ margin: '4px 0 0 20px', paddingLeft: 0 }}>
-                                  <li>File size limit: <strong>200 MB</strong></li>
-                                  <li><strong>⚠️ Recommended dimensions: 8192×4096 (33 MP max)</strong></li>
-                                  <li>Optimal: <strong>4096×2048</strong> at <strong>85% quality</strong> (~5-10 MB)</li>
-                                  <li>Images larger than 50 MP may fail to load in browser</li>
-                                  <li>Compress large files using: TinyPNG, Squoosh, or IrfanView</li>
-                                </ul>
-                              </div>
-                              
                               <div style={{ marginBottom: '0.5rem' }}>
                                 <FileUpload
                                   onFilesSelect={(files) => handleImagesSelect(cl._id, files)}
                                   id={`file-upload-${cl._id}`}
+                                  labels={{ upload: 'Upload', photo: 'Photo', video: 'Video' }}
+                                  layoutColumns={2}
+                                  extraButtons={[
+                                    (
+                                      <button
+                                        key={`btn-360-limit-${cl._id}`}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          setIsThreeSixtyMap(prev => ({ ...prev, [cl._id]: !prev[cl._id] }));
+                                        }}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: '0.5rem',
+                                          padding: '0.55rem 0.75rem',
+                                          backgroundColor: isThreeSixtyMap[cl._id] ? '#ef4444' : 'transparent',
+                                          color: isThreeSixtyMap[cl._id] ? '#ffffff' : '#ef4444',
+                                          borderRadius: '0.375rem',
+                                          cursor: 'pointer',
+                                          fontSize: '0.85rem',
+                                          fontWeight: 700,
+                                          border: `1px solid #ef4444`,
+                                          transition: 'background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s',
+                                          whiteSpace: 'nowrap',
+                                          width: '100%',
+                                          minHeight: '42px',
+                                          boxShadow: isThreeSixtyMap[cl._id] ? '0 1px 2px rgba(0,0,0,0.08)' : '0 1px 2px rgba(0,0,0,0.04)'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isThreeSixtyMap[cl._id]) {
+                                            e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.06)';
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.backgroundColor = isThreeSixtyMap[cl._id] ? '#ef4444' : 'transparent';
+                                        }}
+                                        aria-pressed={isThreeSixtyMap[cl._id] ? 'true' : 'false'}
+                                        title="Toggle 360° picture"
+                                      >
+                                        <span
+                                          aria-hidden
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '16px',
+                                            height: '16px',
+                                            borderRadius: '9999px',
+                                            border: isThreeSixtyMap[cl._id] ? '2px solid #ffffff' : '2px solid #ef4444',
+                                            backgroundColor: isThreeSixtyMap[cl._id] ? '#ffffff' : 'transparent',
+                                            color: '#ef4444',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 900,
+                                            lineHeight: 1
+                                          }}
+                                        >
+                                          {isThreeSixtyMap[cl._id] ? '✓' : ''}
+                                        </span>
+                                        <span>360° Pic</span>
+                                      </button>
+                                    )
+                                  ]}
                                 />
                               </div>
 
@@ -4733,30 +4943,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   {activeSection.checklists.filter(cl => cl.type === 'information').length === 0 && (
                     <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>No information items available</div>
                   )}
-                  {/* Hidden manager for Limitations/Information */}
-                  {showHiddenManagerLimits && (
-                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '0.375rem' }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Hidden items (this inspection only)</div>
-                      {(() => {
-                        const hiddenIds = getHiddenIdsForSection(activeSection._id);
-                        const hiddenItems = activeSection.checklists.filter(cl => cl.tab === 'limitations' && hiddenIds.includes(cl._id));
-                        if (hiddenItems.length === 0) return <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>No hidden limitation/information items.</div>;
-                        return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                            {hiddenItems.map(item => (
-                              <div key={item._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem', borderRadius: '0.25rem', backgroundColor: 'white', border: '1px solid #e5e7eb' }}>
-                                <span style={{ fontSize: '0.85rem', color: '#374151' }}>{item.text}</span>
-                                <button
-                                  onClick={() => unhideChecklistForInspection(activeSection._id, item._id)}
-                                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#10b981', color: 'white', border: 'none', cursor: 'pointer' }}
-                                >Unhide</button>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
+                  {/* Hidden manager for Limitations/Information removed: Limitations do not affect completion, so hiding UI is unnecessary */}
                 </div>
               </div>
             </div>
@@ -4770,33 +4957,35 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               flexShrink: 0,
               backgroundColor: 'white'
             }}>
-              {/* Auto-save status indicator */}
-              <div style={{ 
-                fontSize: '13px',
-                color: autoSaving ? '#f59e0b' : '#10b981',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}>
-                {autoSaving ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin"></i>
-                    <span>Saving...</span>
-                  </>
-                ) : lastSaved ? (
-                  <>
-                    <i className="fas fa-check-circle"></i>
-                    <span>Saved at {lastSaved}</span>
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-info-circle"></i>
-                    <span>Changes auto-save</span>
-                  </>
-                )}
-              </div>
-              
-              <button
+              {/* Left group: status + Done button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {/* Auto-save status indicator */}
+                <div style={{ 
+                  fontSize: '13px',
+                  color: autoSaving ? '#f59e0b' : '#10b981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}>
+                  {autoSaving ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin"></i>
+                      <span>Saving...</span>
+                    </>
+                  ) : lastSaved ? (
+                    <>
+                      <i className="fas fa-check-circle"></i>
+                      <span>Saved at {lastSaved}</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-info-circle"></i>
+                      <span>Changes auto-save</span>
+                    </>
+                  )}
+                </div>
+
+                <button
                 onClick={async () => { 
                   // Save before closing
                   if (formState && (formState.selected_checklist_ids.size > 0 || formState.custom_text || formState.images.length > 0)) {
@@ -4828,6 +5017,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 onMouseOver={(e) => !saving && (e.currentTarget.style.backgroundColor = '#059669')}
                 onMouseOut={(e) => !saving && (e.currentTarget.style.backgroundColor = '#10b981')}
               >{saving ? 'Saving...' : '✓ Done'}</button>
+              </div>
               {/* Manage hidden toggles when modal open */}
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
@@ -4835,11 +5025,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', cursor: 'pointer' }}
                   title="Manage hidden Status items for this inspection"
                 >{showHiddenManagerStatus ? 'Hide Status Manager' : 'Manage Hidden Status'}</button>
-                <button
-                  onClick={() => setShowHiddenManagerLimits(v => !v)}
-                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', cursor: 'pointer' }}
-                  title="Manage hidden Limitation/Information items for this inspection"
-                >{showHiddenManagerLimits ? 'Hide Limitations Manager' : 'Manage Hidden Limitations'}</button>
               </div>
             </div>
           </div>

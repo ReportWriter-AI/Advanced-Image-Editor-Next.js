@@ -16,9 +16,9 @@ Key codepaths
 API route conventions
 
 ```ts
-export const runtime = "nodejs";      // needed for Puppeteer, R2 SDK, Mongo
+export const runtime = "nodejs"; // needed for Puppeteer, R2 SDK, Mongo
 export const dynamic = "force-dynamic"; // disable caching for APIs
-export const maxDuration = 60;          // heavy routes (PDF, uploads)
+export const maxDuration = 60; // heavy routes (PDF, uploads)
 ```
 
 Storage and proxying

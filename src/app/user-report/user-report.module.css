@@ -469,6 +469,8 @@
   border-radius: 1rem;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   margin-top: 2rem;
+  /* Add a little breathing room below the table before Section 1 heading */
+  margin-bottom: 1.25rem;
 }
 
 .summaryHeader {

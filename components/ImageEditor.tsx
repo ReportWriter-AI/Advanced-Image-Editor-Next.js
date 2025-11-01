@@ -630,9 +630,13 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         Math.round(image.naturalHeight || image.height || displayCanvas.height)
       );
 
+      // If rotated by 90/270, swap canvas dimensions to avoid cropping or stretching
+      const normalizedRotation = ((imageRotation % 360) + 360) % 360;
+      const quarterTurn = normalizedRotation === 90 || normalizedRotation === 270;
+
       const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = naturalWidth;
-      exportCanvas.height = naturalHeight;
+      exportCanvas.width = quarterTurn ? naturalHeight : naturalWidth;
+      exportCanvas.height = quarterTurn ? naturalWidth : naturalHeight;
 
       const ctx = exportCanvas.getContext('2d', {
         willReadFrequently: false,
@@ -650,12 +654,14 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
 
       if (imageRotation !== 0) {
         ctx.save();
-        ctx.translate(naturalWidth / 2, naturalHeight / 2);
+        // rotate around the center of the export canvas
+        ctx.translate(exportCanvas.width / 2, exportCanvas.height / 2);
         ctx.rotate((imageRotation * Math.PI) / 180);
-        ctx.translate(-naturalWidth / 2, -naturalHeight / 2);
-        ctx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
+        // draw the image centered at natural size (no distortion)
+        ctx.drawImage(image, -naturalWidth / 2, -naturalHeight / 2, naturalWidth, naturalHeight);
         ctx.restore();
       } else {
+        // no rotation, draw at natural size, top-left
         ctx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
       }
 
@@ -681,6 +687,14 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         x: Number.isFinite(point.x) ? point.x : 0,
         y: Number.isFinite(point.y) ? point.y : 0,
       });
+
+      // Draw annotations – rotate context with the image so positions match what user saw
+      ctx.save();
+      if (imageRotation !== 0) {
+        ctx.translate(exportCanvas.width / 2, exportCanvas.height / 2);
+        ctx.rotate((imageRotation * Math.PI) / 180);
+        ctx.translate(-exportCanvas.width / 2, -exportCanvas.height / 2);
+      }
 
       lines.forEach((line) => {
         const scaledPoints = line.points.map((pt) => sanitizePoint(transformPoint(pt)));
@@ -753,6 +767,8 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
           );
         }
       });
+
+      ctx.restore();
 
       const quality = 0.98;
       const dataUrl = exportCanvas.toDataURL('image/jpeg', quality);
@@ -2484,52 +2500,47 @@ const drawSquare = (
       ctx.fillStyle = '#f0f0f0';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Apply rotation if needed
-      if (imageRotation !== 0) {
-        console.log('✅ Drawing rotated image at', imageRotation, '°');
+      // Aspect-fit drawing with correct behavior for 0/180 and 90/270 rotations
+      const normalizedRotation = ((imageRotation % 360) + 360) % 360;
+      const isQuarterTurn = normalizedRotation === 90 || normalizedRotation === 270;
+      const imgW = image.width;
+      const imgH = image.height;
+      const effectiveImgAspect = isQuarterTurn ? imgH / imgW : imgW / imgH;
+      const canvasAspect = canvas.width / canvas.height;
+
+      let drawWidth: number, drawHeight: number, offsetX: number, offsetY: number;
+      if (effectiveImgAspect > canvasAspect) {
+        // image (considering rotation) is wider
+        drawWidth = canvas.width;
+        drawHeight = canvas.width / effectiveImgAspect;
+        offsetX = 0;
+        offsetY = (canvas.height - drawHeight) / 2;
+      } else {
+        // image is taller
+        drawHeight = canvas.height;
+        drawWidth = canvas.height * effectiveImgAspect;
+        offsetX = (canvas.width - drawWidth) / 2;
+        offsetY = 0;
+      }
+
+      if (normalizedRotation !== 0) {
+        // Rotate around canvas center, then draw aspect-fitted image
         ctx.save();
         ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate((imageRotation * Math.PI) / 180);
+        ctx.rotate((normalizedRotation * Math.PI) / 180);
         ctx.translate(-canvas.width / 2, -canvas.height / 2);
-        
-        // For rotated images, fill the entire canvas
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        
-        ctx.restore();
-        currentMetrics = {
-          offsetX: 0,
-          offsetY: 0,
-          drawWidth: canvas.width,
-          drawHeight: canvas.height,
-        };
-      } else {
-        // For non-rotated images, use aspect ratio fitting
-        const imgAspect = image.width / image.height;
-        const canvasAspect = canvas.width / canvas.height;
-        
-        let drawWidth, drawHeight, offsetX, offsetY;
-        
-        if (imgAspect > canvasAspect) {
-          drawWidth = canvas.width;
-          drawHeight = canvas.width / imgAspect;
-          offsetX = 0;
-          offsetY = (canvas.height - drawHeight) / 2;
-        } else {
-          drawHeight = canvas.height;
-          drawWidth = canvas.height * imgAspect;
-          offsetX = (canvas.width - drawWidth) / 2;
-          offsetY = 0;
-        }
-        
         ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
-
-        currentMetrics = {
-          offsetX,
-          offsetY,
-          drawWidth,
-          drawHeight,
-        };
+        ctx.restore();
+      } else {
+        ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
       }
+
+      currentMetrics = {
+        offsetX,
+        offsetY,
+        drawWidth,
+        drawHeight,
+      };
     } else {
       ctx.fillStyle = '#f0f0f0';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
