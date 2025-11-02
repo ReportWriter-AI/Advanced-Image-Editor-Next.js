@@ -22,7 +22,7 @@ export async function PUT(
     }
 
   const body = await req.json();
-  const { text, comment, type, tab, answer_choices, default_checked } = body || {};
+  const { text, comment, type, tab, answer_choices, default_checked, default_selected_answers } = body || {};
 
     const updateData: any = {};
     const unsetData: any = {};
@@ -55,6 +55,15 @@ export async function PUT(
     }
     if (default_checked !== undefined) {
       updateData.default_checked = Boolean(default_checked);
+    }
+    if (default_selected_answers !== undefined) {
+      if (Array.isArray(default_selected_answers)) {
+        if (default_selected_answers.length > 0) {
+          updateData.default_selected_answers = default_selected_answers;
+        } else {
+          unsetData.default_selected_answers = '';
+        }
+      }
     }
 
     // Build the update object with both $set and $unset operations

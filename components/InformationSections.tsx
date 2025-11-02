@@ -1758,10 +1758,18 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           .map(cl => cl._id)
       );
 
+      // Build default selected answers map from template defaults
+      const defaultAnswers = new Map<string, Set<string>>();
+      mergedSection.checklists.forEach((cl) => {
+        if (cl.default_checked && Array.isArray((cl as any).default_selected_answers) && (cl as any).default_selected_answers.length > 0) {
+          defaultAnswers.set(cl._id, new Set((cl as any).default_selected_answers));
+        }
+      });
+
       setFormState({
         section_id: section._id,
         selected_checklist_ids: defaultSelectedIds,
-        selected_answers: new Map(), // Empty for new blocks
+        selected_answers: defaultAnswers,
         custom_answers: new Map(), // Empty for new blocks
         custom_text: '',
         images: [],
@@ -2796,10 +2804,22 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
     // Persist to server for template items
     try {
+      // If turning default ON, capture current selected template answers for this checklist
+      let default_selected_answers: string[] | undefined = undefined;
+      if (checked && formState && activeSection) {
+        const answers = Array.from(formState.selected_answers.get(checklistId) || []);
+        const templateChoices = activeSection.checklists.find(cl => cl._id === checklistId)?.answer_choices || [];
+        default_selected_answers = answers.filter(a => templateChoices.includes(a));
+      }
+      // If turning default OFF, clear any stored default_selected_answers
+      if (!checked) {
+        default_selected_answers = [];
+      }
+
       const res = await fetch(`/api/checklists/${checklistId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ default_checked: checked }),
+        body: JSON.stringify({ default_checked: checked, default_selected_answers }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Failed to update');
