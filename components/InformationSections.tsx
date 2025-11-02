@@ -97,6 +97,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     startX: number;
     currentY: number;
     currentX: number;
+    allowDrag?: boolean; // do not start drag if touch began on a checkbox or non-draggable control
+    dragEl?: HTMLElement | null; // the label element being dragged for visual feedback
   }>({
     isDragging: false,
     checklistId: null,
@@ -105,11 +107,86 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     startX: 0,
     currentY: 0,
     currentX: 0,
+    allowDrag: true,
+    dragEl: null,
   });
+  // Movement threshold in pixels before initiating an option drag on touch
+  const OPTION_TOUCH_DRAG_THRESHOLD = 10;
   
   // Auto-scroll during drag
-  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null); // legacy interval (kept for options if ever needed)
   const modalScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Smooth auto-scroll with requestAnimationFrame for item dragging
+  const scrollRafRef = useRef<number | null>(null);
+  const autoScrollStateRef = useRef<{ active: boolean; dir: 'up' | 'down' | null; speed: number }>({ active: false, dir: null, speed: 0 });
+
+  const stopAutoScroll = () => {
+    autoScrollStateRef.current = { active: false, dir: null, speed: 0 };
+    if (scrollRafRef.current) {
+      cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = null;
+    }
+    // Also clear legacy interval if any
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+  };
+
+  const runAutoScrollLoop = () => {
+    if (scrollRafRef.current) return; // already running
+    const tick = () => {
+      scrollRafRef.current = requestAnimationFrame(() => {
+        const state = autoScrollStateRef.current;
+        const container = modalScrollContainerRef.current;
+        if (!state.active || !state.dir || !container) {
+          // stop loop
+          if (scrollRafRef.current) {
+            cancelAnimationFrame(scrollRafRef.current);
+            scrollRafRef.current = null;
+          }
+          return;
+        }
+        const maxScroll = container.scrollHeight - container.clientHeight;
+        if (state.dir === 'up') {
+          container.scrollTop = Math.max(0, container.scrollTop - state.speed);
+        } else {
+          container.scrollTop = Math.min(maxScroll, container.scrollTop + state.speed);
+        }
+        // continue loop
+        tick();
+      });
+    };
+    tick();
+  };
+
+  // Update auto-scroll speed/direction based on pointer Y
+  const updateItemAutoScroll = (clientY: number) => {
+    const container = modalScrollContainerRef.current;
+    if (!container) return stopAutoScroll();
+    const rect = container.getBoundingClientRect();
+    const zone = Math.max(48, Math.min(120, Math.floor(rect.height * 0.18))); // 18% of height, clamped
+
+    if (clientY < rect.top + zone && clientY > rect.top) {
+      const dist = rect.top + zone - clientY; // 0..zone
+      const t = Math.max(0, Math.min(1, dist / zone));
+      const max = 28; // px per frame
+      const min = 4;
+      const speed = min + Math.pow(t, 1.6) * (max - min); // ease-in
+      autoScrollStateRef.current = { active: true, dir: 'up', speed };
+      runAutoScrollLoop();
+    } else if (clientY > rect.bottom - zone && clientY < rect.bottom) {
+      const dist = clientY - (rect.bottom - zone); // 0..zone
+      const t = Math.max(0, Math.min(1, dist / zone));
+      const max = 28;
+      const min = 4;
+      const speed = min + Math.pow(t, 1.6) * (max - min);
+      autoScrollStateRef.current = { active: true, dir: 'down', speed };
+      runAutoScrollLoop();
+    } else {
+      stopAutoScroll();
+    }
+  };
 
   // Track inspection-specific checklists (not saved to template)
   // Key: sectionId, Value: array of inspection-only checklists for that section
@@ -363,40 +440,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }
   };
 
-  // Auto-scroll logic during drag
+  // Auto-scroll logic during drag (desktop pointer) using smooth RAF
   const handleDragMove = (e: React.DragEvent<HTMLDivElement>) => {
-    if (!modalScrollContainerRef.current) return;
-    
-    const container = modalScrollContainerRef.current;
-    const rect = container.getBoundingClientRect();
-    const mouseY = e.clientY;
-    
-    // Define scroll zones (100px from top/bottom of modal)
-    const scrollZone = 100;
-    const scrollSpeed = 10; // pixels per interval
-    
-    // Clear existing interval
-    if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
-    }
-    
-    // Scroll up when near top
-    if (mouseY < rect.top + scrollZone && mouseY > rect.top) {
-      scrollIntervalRef.current = setInterval(() => {
-        if (container.scrollTop > 0) {
-          container.scrollTop -= scrollSpeed;
-        }
-      }, 16); // ~60fps
-    }
-    // Scroll down when near bottom
-    else if (mouseY > rect.bottom - scrollZone && mouseY < rect.bottom) {
-      scrollIntervalRef.current = setInterval(() => {
-        if (container.scrollTop < container.scrollHeight - container.clientHeight) {
-          container.scrollTop += scrollSpeed;
-        }
-      }, 16); // ~60fps
-    }
+    updateItemAutoScroll(e.clientY);
   };
 
   const onDragStartItem = (kind: 'status' | 'limitations', id: string) => (
@@ -424,23 +470,109 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       // Prevent scroll chaining to the page
       // @ts-ignore
       el.style.overscrollBehavior = 'contain';
+      // Keep overflowY as auto for item dragging; we don't want to hide scrollbar here
     }
   };
   const unlockModalScroll = () => {
     const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
     if (el) {
-      el.style.touchAction = '';
+      // Restore to default modal values
+      el.style.touchAction = 'pan-y';
       // @ts-ignore
-      el.style.overscrollBehavior = '';
+      el.style.overscrollBehavior = 'contain';
+      el.style.overflowY = 'auto';
     }
   };
+
+  // Stronger scroll lock for option dragging (also disables wheel scrolling)
+  const optionWheelBlockerRef = useRef<((ev: WheelEvent) => void) | null>(null);
+  const itemTouchBlockerRef = useRef<((ev: TouchEvent) => void) | null>(null);
+  const prevDocOverscrollRef = useRef<{ html: string; body: string } | null>(null);
+  const lockModalScrollForOptions = () => {
+    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
+    if (el) {
+      el.style.touchAction = 'none';
+      // @ts-ignore
+      el.style.overscrollBehavior = 'contain';
+      el.style.overflowY = 'hidden';
+    }
+    if (typeof window !== 'undefined' && !optionWheelBlockerRef.current) {
+      const handler = (ev: WheelEvent) => { ev.preventDefault(); };
+      window.addEventListener('wheel', handler, { passive: false });
+      optionWheelBlockerRef.current = handler;
+    }
+  };
+  const unlockModalScrollForOptions = () => {
+    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
+    if (el) {
+      // Restore to modal defaults so scrollbar returns
+      el.style.overflowY = 'auto';
+      el.style.touchAction = 'pan-y';
+      // @ts-ignore
+      el.style.overscrollBehavior = 'contain';
+    }
+    if (typeof window !== 'undefined' && optionWheelBlockerRef.current) {
+      window.removeEventListener('wheel', optionWheelBlockerRef.current as any);
+      optionWheelBlockerRef.current = null;
+    }
+  };
+
+  // Block global touchmove during item drag to prevent page scroll/bounce
+  const lockGlobalScrollDuringItemDrag = () => {
+    if (typeof window !== 'undefined' && !itemTouchBlockerRef.current) {
+      const handler = (ev: TouchEvent) => { ev.preventDefault(); };
+      window.addEventListener('touchmove', handler, { passive: false });
+      itemTouchBlockerRef.current = handler;
+    }
+    // Save previous overscrollBehavior and then disable
+    if (typeof document !== 'undefined') {
+      const html = (document.documentElement as HTMLElement);
+      const body = (document.body as HTMLElement);
+      prevDocOverscrollRef.current = {
+        html: (html.style as any).overscrollBehavior || '',
+        body: (body.style as any).overscrollBehavior || ''
+      };
+      (html.style as any).overscrollBehavior = 'none';
+      (body.style as any).overscrollBehavior = 'none';
+    }
+  };
+  const unlockGlobalScrollDuringItemDrag = () => {
+    if (typeof window !== 'undefined' && itemTouchBlockerRef.current) {
+      window.removeEventListener('touchmove', itemTouchBlockerRef.current as any);
+      itemTouchBlockerRef.current = null;
+    }
+    if (typeof document !== 'undefined') {
+      const html = (document.documentElement as HTMLElement);
+      const body = (document.body as HTMLElement);
+      const prev = prevDocOverscrollRef.current;
+      (html.style as any).overscrollBehavior = prev ? prev.html : '';
+      (body.style as any).overscrollBehavior = prev ? prev.body : '';
+      prevDocOverscrollRef.current = null;
+    }
+  };
+
+  // Ensure no locks linger when modal closes or component unmounts
+  useEffect(() => {
+    if (!modalOpen) {
+      unlockModalScrollForOptions();
+      unlockModalScroll();
+    }
+  }, [modalOpen]);
+  useEffect(() => {
+    return () => {
+      unlockModalScrollForOptions();
+      unlockModalScroll();
+    };
+  }, []);
 
   const onItemTouchStart = (kind: 'status' | 'limitations', id: string) => (
     (e: React.TouchEvent<HTMLDivElement>) => {
       itemTouchStateRef.current = { isDragging: true, kind, draggingId: id };
       setDragVisual({ kind, draggingId: id, overId: null, position: null });
       (e.currentTarget as HTMLElement).style.opacity = '0.9';
+      // Mobile: lock native scrolling while dragging items; we'll auto-scroll programmatically near edges
       lockModalScroll();
+      lockGlobalScrollDuringItemDrag();
     }
   );
 
@@ -458,26 +590,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         const position: 'before' | 'after' = touch.clientY < mid ? 'before' : 'after';
         setDragVisual(prev => ({ ...prev, kind, overId, position }));
       }
-      // Auto-scroll near edges of modal scroll container
-      const container = modalScrollContainerRef.current;
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const scrollZone = 64;
-        const speed = 16;
-        if (scrollIntervalRef.current) {
-          clearInterval(scrollIntervalRef.current);
-          scrollIntervalRef.current = null;
-        }
-        if (touch.clientY < rect.top + scrollZone && touch.clientY > rect.top) {
-          scrollIntervalRef.current = setInterval(() => {
-            if (container.scrollTop > 0) container.scrollTop -= speed;
-          }, 16);
-        } else if (touch.clientY > rect.bottom - scrollZone && touch.clientY < rect.bottom) {
-          scrollIntervalRef.current = setInterval(() => {
-            if (container.scrollTop < container.scrollHeight - container.clientHeight) container.scrollTop += speed;
-          }, 16);
-        }
-      }
+      // Smooth auto-scroll near edges using RAF with acceleration
+      updateItemAutoScroll(touch.clientY);
     }
   );
 
@@ -505,8 +619,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       }
       itemTouchStateRef.current = { isDragging: false, kind: null, draggingId: null };
       setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
-      if (scrollIntervalRef.current) { clearInterval(scrollIntervalRef.current); scrollIntervalRef.current = null; }
+      stopAutoScroll();
       unlockModalScroll();
+      unlockGlobalScrollDuringItemDrag();
     }
   );
 
@@ -515,8 +630,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       if (!itemTouchStateRef.current.isDragging) return;
       itemTouchStateRef.current = { isDragging: false, kind: null, draggingId: null };
       setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
-      if (scrollIntervalRef.current) { clearInterval(scrollIntervalRef.current); scrollIntervalRef.current = null; }
+      stopAutoScroll();
       unlockModalScroll();
+      unlockGlobalScrollDuringItemDrag();
     }
   );
 
@@ -526,7 +642,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       itemTouchStateRef.current = { isDragging: true, kind, draggingId: id };
       setDragVisual({ kind, draggingId: id, overId: null, position: null });
       (e.currentTarget as HTMLElement).style.opacity = '0.9';
+      // Touch: lock native scroll; rely on auto-scroll near edges while dragging items
       lockModalScroll();
+      lockGlobalScrollDuringItemDrag();
     }
   );
   const onItemPointerUp = (kind: 'status' | 'limitations') => (
@@ -535,6 +653,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       if (!itemTouchStateRef.current.isDragging) return;
       onItemTouchEnd(kind)({} as any);
       (e.currentTarget as HTMLElement).style.opacity = '1';
+      unlockGlobalScrollDuringItemDrag();
     }
   );
 
@@ -610,7 +729,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       // Clear visual state
       dragStateRef.current = { kind: null, draggingId: null };
       setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
-      // Clear auto-scroll interval
+        // Stop any auto-scroll after drop
+        stopAutoScroll();
       if (scrollIntervalRef.current) {
         clearInterval(scrollIntervalRef.current);
         scrollIntervalRef.current = null;
@@ -748,8 +868,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     (e: React.DragEvent<HTMLLabelElement>) => {
       // Only allow dragging template choices
       if (isCustom) return;
+      // Don't start drag if initiated on checkbox or interactive control
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.closest('input[type="checkbox"]'))) {
+        return;
+      }
       // Prevent parent checklist drag handlers
       e.stopPropagation();
+      // Hard lock modal/page scroll while dragging options (desktop)
+      lockModalScrollForOptions();
       optionDragStateRef.current = { checklistId, draggingChoice: choice };
       setOptionDragVisual({ checklistId, draggingChoice: choice, overChoice: null, position: null, axis: null });
       e.dataTransfer.effectAllowed = 'move';
@@ -813,6 +940,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       // Clear visuals
       optionDragStateRef.current = { checklistId: null, draggingChoice: null };
       setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+      unlockModalScrollForOptions();
     }
   );
 
@@ -820,6 +948,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     (_e: React.DragEvent<HTMLLabelElement>) => {
       optionDragStateRef.current = { checklistId: null, draggingChoice: null };
       setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+      unlockModalScrollForOptions();
     }
   );
 
@@ -827,36 +956,51 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const onOptionTouchStart = (checklistId: string, choice: string, isCustom: boolean) => (
     (e: React.TouchEvent<HTMLLabelElement>) => {
       if (isCustom) return;
-      
+      // Do not allow drag to begin from checkbox taps
+      const target = e.target as HTMLElement;
+      const beganOnCheckbox = target?.tagName === 'INPUT' || !!target.closest('input[type="checkbox"]');
       const touch = e.touches[0];
       optionTouchStateRef.current = {
-        isDragging: true,
+        isDragging: false, // start as not dragging; wait for threshold
         checklistId,
         draggingChoice: choice,
         startY: touch.clientY,
         startX: touch.clientX,
         currentY: touch.clientY,
         currentX: touch.clientX,
+        allowDrag: !beganOnCheckbox,
+        dragEl: e.currentTarget as unknown as HTMLElement,
       };
-      
-      optionDragStateRef.current = { checklistId, draggingChoice: choice };
-      setOptionDragVisual({ checklistId, draggingChoice: choice, overChoice: null, position: null, axis: null });
-      
-      // Prevent scrolling while dragging
-      e.currentTarget.style.opacity = '0.5';
     }
   );
 
   const onOptionTouchMove = (checklistId: string, templateChoices: string[]) => (
     (e: React.TouchEvent<HTMLDivElement>) => {
       const touchState = optionTouchStateRef.current;
-      if (!touchState.isDragging) return;
-      // Do NOT call preventDefault here: React may attach touch listeners as passive on mobile
-      // Instead we rely on CSS touch-action:none to disable scrolling during drag
-      
+      // Update current coords
       const touch = e.touches[0];
       touchState.currentY = touch.clientY;
       touchState.currentX = touch.clientX;
+
+      // If not yet dragging, check if we crossed the threshold and are allowed to drag
+      if (!touchState.isDragging) {
+        const dx = Math.abs(touchState.currentX - touchState.startX);
+        const dy = Math.abs(touchState.currentY - touchState.startY);
+        const movedEnough = Math.max(dx, dy) >= OPTION_TOUCH_DRAG_THRESHOLD;
+        if (!movedEnough || !touchState.allowDrag) {
+          return; // still a tap/scroll gesture, do nothing
+        }
+        // Start drag officially
+        touchState.isDragging = true;
+        optionDragStateRef.current = { checklistId: touchState.checklistId, draggingChoice: touchState.draggingChoice };
+        setOptionDragVisual({ checklistId, draggingChoice: touchState.draggingChoice!, overChoice: null, position: null, axis: null });
+        // Lock modal scroll hard (also blocks wheel) and set visual
+        lockModalScrollForOptions();
+        if (touchState.dragEl) {
+          try { touchState.dragEl.style.opacity = '0.5'; } catch {}
+        }
+      }
+      // We're dragging now: prevent page scroll via CSS lock and continue
       
       // Find element under touch point
   const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -896,27 +1040,36 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const onOptionTouchEnd = (checklistId: string, templateChoices: string[]) => (
     async (e: React.TouchEvent<HTMLLabelElement>) => {
       const touchState = optionTouchStateRef.current;
-      if (!touchState.isDragging) return;
-      
-      e.currentTarget.style.opacity = '1';
-      
-      const { draggingChoice } = touchState;
-      const { overChoice, position } = optionDragVisual;
-      
-      if (draggingChoice && overChoice && draggingChoice !== overChoice) {
-        const list = [...templateChoices];
-        const fromIndex = list.indexOf(draggingChoice);
-        let toIndex = list.indexOf(overChoice);
+      // Always cleanup visual if we had a reference
+      try { if (touchState.dragEl) touchState.dragEl.style.opacity = '1'; } catch {}
+      if (!touchState.isDragging) {
+        // Not a drag, just a tap – nothing to reorder
+        // Ensure scroll is unlocked in case it was changed elsewhere
+  unlockModalScrollForOptions();
+        // Reset state below
+      } else {
+        // Perform drop logic
+        const { draggingChoice } = touchState;
+        const { overChoice, position } = optionDragVisual;
         
-        if (fromIndex !== -1 && toIndex !== -1) {
-          list.splice(fromIndex, 1);
-          toIndex = list.indexOf(overChoice);
-          if (position === 'after') toIndex += 1;
-          list.splice(toIndex, 0, draggingChoice);
+        if (draggingChoice && overChoice && draggingChoice !== overChoice) {
+          const list = [...templateChoices];
+          const fromIndex = list.indexOf(draggingChoice);
+          let toIndex = list.indexOf(overChoice);
           
-          await persistOptionOrder(checklistId, list);
+          if (fromIndex !== -1 && toIndex !== -1) {
+            list.splice(fromIndex, 1);
+            toIndex = list.indexOf(overChoice);
+            if (position === 'after') toIndex += 1;
+            list.splice(toIndex, 0, draggingChoice);
+            
+            await persistOptionOrder(checklistId, list);
+          }
         }
       }
+      
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
       
       // Reset state
       optionTouchStateRef.current = {
@@ -927,6 +1080,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         startX: 0,
         currentY: 0,
         currentX: 0,
+        allowDrag: true,
+        dragEl: null,
       };
       optionDragStateRef.current = { checklistId: null, draggingChoice: null };
       setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
@@ -937,6 +1092,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const onOptionTouchCancel = () => (
     (_e: React.TouchEvent<any>) => {
       if (!optionTouchStateRef.current.isDragging) return;
+      // Restore visual and unlock scroll
+      try { if (optionTouchStateRef.current.dragEl) optionTouchStateRef.current.dragEl.style.opacity = '1'; } catch {}
+  unlockModalScrollForOptions();
+      // Reset state
       optionTouchStateRef.current = {
         isDragging: false,
         checklistId: null,
@@ -945,6 +1104,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         startX: 0,
         currentY: 0,
         currentX: 0,
+        allowDrag: true,
+        dragEl: null,
       };
       optionDragStateRef.current = { checklistId: null, draggingChoice: null };
       setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
@@ -955,21 +1116,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const onOptionPointerDown = (checklistId: string, choice: string, isCustom: boolean) => (
     (e: React.PointerEvent<HTMLLabelElement>) => {
       if (e.pointerType !== 'touch') return; // only handle touch via pointer events
-      // Delegate to touch-start logic
-      // Build a faux TouchEvent-like structure
       if (isCustom) return;
+      const target = e.target as HTMLElement;
+      const beganOnCheckbox = target?.tagName === 'INPUT' || !!target.closest('input[type="checkbox"]');
       optionTouchStateRef.current = {
-        isDragging: true,
+        isDragging: false, // wait for threshold like touch logic
         checklistId,
         draggingChoice: choice,
         startY: e.clientY,
         startX: e.clientX,
         currentY: e.clientY,
         currentX: e.clientX,
+        allowDrag: !beganOnCheckbox,
+        dragEl: e.currentTarget as unknown as HTMLElement,
       };
-      optionDragStateRef.current = { checklistId, draggingChoice: choice };
-      setOptionDragVisual({ checklistId, draggingChoice: choice, overChoice: null, position: null, axis: null });
-      (e.currentTarget as HTMLElement).style.opacity = '0.5';
     }
   );
 
@@ -992,6 +1152,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           await persistOptionOrder(checklistId, list);
         }
       }
+      // Unlock scroll and reset state
+  unlockModalScrollForOptions();
       optionTouchStateRef.current = {
         isDragging: false,
         checklistId: null,
@@ -1000,6 +1162,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         startX: 0,
         currentY: 0,
         currentX: 0,
+        allowDrag: true,
+        dragEl: null,
       };
       optionDragStateRef.current = { checklistId: null, draggingChoice: null };
       setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
@@ -3937,7 +4101,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                       fontSize: '0.75rem',
                                                       transition: 'all 0.15s ease',
                                                       position: 'relative',
-                                                      touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto'
+                                                      touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto',
+                                                      WebkitTapHighlightColor: 'transparent',
+                                                      color: isAnswerSelected ? '#111827' : '#374151'
                                                     }}
                                                     onMouseEnter={(e) => {
                                                       if (!isAnswerSelected) {
@@ -3980,7 +4146,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                       style={{ cursor: 'pointer' }}
                                                       onClick={(e) => e.stopPropagation()}
                                                     />
-                                                    <span style={{ color: '#374151', userSelect: 'none', flex: 1 }}>
+                                                    <span style={{ color: isAnswerSelected ? '#111827' : '#374151', userSelect: 'none', flex: 1 }}>
                                                       {choice}
                                                     </span>
                                                     {isCustom && (
@@ -4629,7 +4795,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                               fontSize: '0.75rem',
                                               transition: 'all 0.15s ease',
                                               position: 'relative',
-                                              touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto'
+                                              touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto',
+                                              WebkitTapHighlightColor: 'transparent',
+                                              color: isAnswerSelected ? '#111827' : '#374151'
                                             }}
                                             onMouseEnter={(e) => {
                                               if (!isAnswerSelected) {
@@ -4672,7 +4840,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                               style={{ cursor: 'pointer' }}
                                               onClick={(e) => e.stopPropagation()}
                                             />
-                                            <span style={{ color: '#374151', userSelect: 'none', flex: 1 }}>
+                                            <span style={{ color: isAnswerSelected ? '#111827' : '#374151', userSelect: 'none', flex: 1 }}>
                                               {choice}
                                             </span>
                                             {isCustom && (
@@ -5160,9 +5328,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                     width: '100%',
                     border: '1px solid #d1d5db',
                     borderRadius: '0.375rem',
-                    padding: '0.5rem 0.75rem',
-                    fontSize: '0.875rem',
-                    minHeight: '100px',
+                    padding: '0.6rem 0.8rem',
+                    fontSize: isMobile ? '0.95rem' : '0.875rem',
+                    minHeight: isMobile ? '200px' : '100px',
+                    lineHeight: isMobile ? 1.6 : 1.5,
                     outline: 'none',
                     resize: 'vertical'
                   }}

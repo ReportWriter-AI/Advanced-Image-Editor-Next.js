@@ -566,10 +566,10 @@
 
 /* Defect category coloring for Inspection Sections table rows */
 /* Make the color cue slightly more pronounced without being heavy */
-.summaryRowCatRed { border-left: 8px solid #dc2626; background: rgba(220,38,38,0.12); box-shadow: inset 0 0 0 1px rgba(220,38,38,0.06); }
-.summaryRowCatOrange { border-left: 8px solid #f59e0b; background: rgba(245,158,11,0.14); box-shadow: inset 0 0 0 1px rgba(245,158,11,0.08); }
-.summaryRowCatBlue { border-left: 8px solid #3b82f6; background: rgba(59,130,246,0.12); box-shadow: inset 0 0 0 1px rgba(59,130,246,0.06); }
-.summaryRowCatPurple { border-left: 8px solid #7c3aed; background: rgba(124,58,237,0.12); box-shadow: inset 0 0 0 1px rgba(124,58,237,0.06); }
+.summaryRowCatRed { border-left: 8px solid #94a3b8; background: rgba(220,38,38,0.12); box-shadow: inset 0 0 0 1px rgba(220,38,38,0.06); }
+.summaryRowCatOrange { border-left: 8px solid #94a3b8; background: rgba(245,158,11,0.14); box-shadow: inset 0 0 0 1px rgba(245,158,11,0.08); }
+.summaryRowCatBlue { border-left: 8px solid #94a3b8; background: rgba(59,130,246,0.12); box-shadow: inset 0 0 0 1px rgba(59,130,246,0.06); }
+.summaryRowCatPurple { border-left: 8px solid #94a3b8; background: rgba(124,58,237,0.12); box-shadow: inset 0 0 0 1px rgba(124,58,237,0.06); }
 .summaryRowCatRed td:first-child,
 .summaryRowCatOrange td:first-child,
 .summaryRowCatBlue td:first-child,

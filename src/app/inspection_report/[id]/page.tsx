@@ -1166,10 +1166,10 @@ export default function Page() {
   /* Summary rows are always color-filled (no hover fade) */
   .rpt-summary-row{cursor:pointer}
   .rpt-summary-row:focus{outline:2px solid #3b82f6;outline-offset:-2px}
-  .rpt-row-cat-red{border-left:6px solid #dc2626;background:rgba(220,38,38,0.14)}
-  .rpt-row-cat-orange{border-left:6px solid #f59e0b;background:rgba(245,158,11,0.16)}
-  .rpt-row-cat-blue{border-left:6px solid #3b82f6;background:rgba(59,130,246,0.16)}
-  .rpt-row-cat-purple{border-left:6px solid #7c3aed;background:rgba(124,58,237,0.16)}
+  .rpt-row-cat-red{border-left:6px solid #94a3b8;background:rgba(220,38,38,0.14)}
+  .rpt-row-cat-orange{border-left:6px solid #94a3b8;background:rgba(245,158,11,0.16)}
+  .rpt-row-cat-blue{border-left:6px solid #94a3b8;background:rgba(59,130,246,0.16)}
+  .rpt-row-cat-purple{border-left:6px solid #94a3b8;background:rgba(124,58,237,0.16)}
     .rpt-section{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 8px 32px rgba(15,23,42,0.12);padding:32px;margin:32px 0 0 0}
     .rpt-section:first-of-type{margin-top:0}
   .rpt-section-heading{margin:56px 0 24px 0;padding-bottom:16px;border-bottom:2px solid var(--selected-color,#dc2626)}
@@ -1211,7 +1211,7 @@ export default function Page() {
     .rpt-detail-card:hover{background:#f8fafc;transform:translateX(2px)}
     .rpt-detail-card:last-child{margin-bottom:0}
     .rpt-subsection-title{font-size:1rem;font-weight:600;margin-bottom:8px;color:#1f2937;letter-spacing:-0.01em}
-    .rpt-subsection-content{font-size:0.9rem;color:#374151;line-height:1.55}
+    .rpt-subsection-content{font-size:0.9rem;color:#374151;line-height:1.55;white-space:pre-line}
     .rpt-defect-title{font-weight:700;font-size:1rem;margin:0 0 8px 0;color:var(--selected-color,#dc2626)}
     .rpt-defect-body{font-size:0.9rem;color:#374151;line-height:1.6;margin:0 0 10px 0}
     .rpt-defect-body:last-child{margin-bottom:0}
@@ -1608,7 +1608,7 @@ export default function Page() {
               'blue': '#1976d2',
               'purple': '#6a1b9a'
             }[cat] || '#d32f2f';
-            rows += '<tr class="rpt-summary-row" data-target="'+sec.id+'" tabindex="0" role="link" aria-label="Jump to '+num+': '+title+'" style="border-left:6px solid '+colorHex+';">'+
+            rows += '<tr class="rpt-summary-row" data-target="'+sec.id+'" tabindex="0" role="link" aria-label="Jump to '+num+': '+title+'" style="border-left:6px solid #94a3b8;">'+
               '<td>'+num+'</td><td>'+label+'</td><td>'+title+'</td>' + (includeSummary ? '<td>'+summary+'</td>' : '') + '</tr>';
           });
           summaryBody.innerHTML = rows || '<tr><td colspan="'+(includeSummary?4:3)+'">No defects match this view.</td></tr>';
@@ -2734,7 +2734,8 @@ export default function Page() {
                                               <div style={{ 
                                                 fontSize: '0.875rem',
                                                 color: '#374151',
-                                                lineHeight: '1.6'
+                                                lineHeight: '1.6',
+                                                whiteSpace: 'pre-wrap'
                                               }}>
                                                 {itemComment}
                                               </div>
@@ -2955,7 +2956,8 @@ export default function Page() {
                                                   fontSize: '0.875rem', 
                                                   color: '#374151', 
                                                   lineHeight: 1.6, 
-                                                  marginTop: '0.5rem' 
+                                                  marginTop: '0.5rem',
+                                                  whiteSpace: 'pre-wrap'
                                                 }}>
                                                   {item.comment}
                                                 </div>
