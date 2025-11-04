@@ -10,7 +10,7 @@ export interface IUser extends Document {
   smsOptIn: boolean;
   isEmailVerified: boolean;
   isActive: boolean;
-  role: 'admin' | 'member' | 'viewer';
+  role: 'inspector' | 'staff';
   company?: mongoose.Types.ObjectId;
   numberOfInspectors?: number;
   yearsOfExperience?: number;
@@ -23,6 +23,23 @@ export interface IUser extends Document {
   resetPasswordExpires?: Date;
   rememberMeToken?: string;
   rememberMeExpires?: Date;
+  createdBy?: mongoose.Types.ObjectId;
+  
+  // Inspector permissions
+  can_schedule_self?: boolean;
+  can_schedule?: boolean;
+  can_publish?: boolean;
+  can_add_to_template?: boolean;
+  can_edit_template?: boolean;
+  can_manage_contacts?: boolean;
+  can_access_conversations?: boolean;
+  can_access_financial_data?: boolean;
+  is_company_admin?: boolean;
+  
+  // Staff permissions
+  can_edit_inspections?: boolean;
+  can_delete_inspections?: boolean;
+  
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -73,13 +90,63 @@ const UserSchema = new Schema<IUser>(
     },
     role: {
       type: String,
-      enum: ['admin', 'member', 'viewer'],
-      default: 'member',
+      enum: ['inspector', 'staff'],
+      default: 'inspector',
     },
     company: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Company',
       index: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    // Inspector permissions
+    can_schedule_self: {
+      type: Boolean,
+      default: false,
+    },
+    can_schedule: {
+      type: Boolean,
+      default: false,
+    },
+    can_publish: {
+      type: Boolean,
+      default: false,
+    },
+    can_add_to_template: {
+      type: Boolean,
+      default: false,
+    },
+    can_edit_template: {
+      type: Boolean,
+      default: false,
+    },
+    can_manage_contacts: {
+      type: Boolean,
+      default: false,
+    },
+    can_access_conversations: {
+      type: Boolean,
+      default: false,
+    },
+    can_access_financial_data: {
+      type: Boolean,
+      default: false,
+    },
+    is_company_admin: {
+      type: Boolean,
+      default: false,
+    },
+    // Staff permissions
+    can_edit_inspections: {
+      type: Boolean,
+      default: false,
+    },
+    can_delete_inspections: {
+      type: Boolean,
+      default: false,
     },
     numberOfInspectors: {
       type: Number,

@@ -34,3 +34,15 @@ export function hasCookie(name: string): boolean {
   return getCookie(name) !== null;
 }
 
+/**
+ * Server-side: Get token from request cookies
+ */
+export function getToken(request: any): string | null {
+  try {
+    const token = request.cookies.get('authToken');
+    return token ? token.value : null;
+  } catch (error) {
+    return null;
+  }
+}
+

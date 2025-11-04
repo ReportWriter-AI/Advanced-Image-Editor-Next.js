@@ -96,8 +96,18 @@ export async function POST(request: NextRequest) {
       agreedToTerms,
       emailVerificationToken,
       emailVerificationExpires,
-      role: 'admin', // First user gets admin role
+      role: 'inspector', // Default role is inspector
       company: company._id,
+      // Give new users full inspector permissions
+      can_schedule_self: true,
+      can_schedule: true,
+      can_publish: true,
+      can_add_to_template: true,
+      can_edit_template: true,
+      can_manage_contacts: true,
+      can_access_conversations: true,
+      can_access_financial_data: true,
+      is_company_admin: true,
     });
 
     // Send verification email

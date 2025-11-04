@@ -2,40 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '../contexts/AuthContext';
 import InspectionsTable from '../../components/InspectionsTable';
 import DefectEditModal from '../../components/DefectEditModal';
 
 export default function Home() {
-  const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
   const [defectModalOpen, setDefectModalOpen] = useState(false);
   const [selectedInspectionId, setSelectedInspectionId] = useState<string>('');
   const [selectedInspectionName, setSelectedInspectionName] = useState<string>('');
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.push('/login');
-    }
-  }, [isAuthenticated, loading, router]);
-
-  // Show loading while checking authentication
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Don't render if not authenticated (will redirect)
-  if (!isAuthenticated) {
-    return null;
-  }
 
   // Handle row click to open ImageEditor
   const handleRowClick = (inspectionId: string) => {
@@ -69,7 +43,7 @@ export default function Home() {
         try {
           const annotation = JSON.parse(pending);
           console.log('🔍 Main page detected pending annotation:', annotation);
-          
+
           // If we have an inspectionId, auto-open the modal
           if (annotation.inspectionId) {
             console.log('🚀 Auto-opening modal for inspection:', annotation.inspectionId);
@@ -101,13 +75,13 @@ export default function Home() {
   // Handle delete click to delete inspection
   const handleDeleteClick = async (inspectionId: string) => {
     if (!confirm('Are you sure you want to delete this inspection?')) {
-          return;
-        }
-      
+      return;
+    }
+
     try {
       console.log('inspection_id', inspectionId);
       // setDeletingId(inspectionId);
-      
+
       const response = await fetch(`/api/inspections/${inspectionId}`, {
         method: 'DELETE',
       });
@@ -122,7 +96,7 @@ export default function Home() {
       // Refresh the inspections list or update state
       // alert('Inspection deleted successfully!');
       window.location.href = '/';
-      
+
     } catch (error: any) {
       console.error('Error deleting inspection:', error);
       alert(`Error: ${error.message}`);
@@ -132,15 +106,15 @@ export default function Home() {
   };
 
   // Show table page
-    return (
+  return (
     <>
-      <InspectionsTable 
+      <InspectionsTable
         onRowClick={handleRowClick}
         onDocumentClick={handleDocumentClick}
         onEditClick={handleEditClick}
         onDeleteClick={handleDeleteClick}
       />
-      
+
       <DefectEditModal
         isOpen={defectModalOpen}
         onClose={handleCloseDefectModal}

@@ -12,7 +12,8 @@ import {
 	Users,
 	FolderOpen,
 	Camera,
-	Shield
+	Shield,
+	UserCog
 } from "lucide-react";
 
 import {
@@ -74,6 +75,11 @@ const data = {
 		{
 			title: "Settings",
 			items: [
+				{
+					title: "Team",
+					url: "/team",
+					icon: UserCog,
+				},
 				{
 					title: "Profile",
 					url: "/profile",
