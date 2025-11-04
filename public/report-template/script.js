@@ -5,7 +5,7 @@ const reportData = {
     cityState: 'Iowa, LA 70647',
     time: '09/19/2025 11:00 pm',
     image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1600&auto=format&fit=crop',
-    inspector: { name: 'Aaron Gott', meta: 'LA license #11034', avatar: 'https://i.pravatar.cc/80?img=12' }
+    inspector: { name: 'ReportWriter AI', meta: 'LA license #11034', avatar: 'https://i.pravatar.cc/80?img=12' }
   },
   sections: [
     {
@@ -56,7 +56,7 @@ function buildCover(cover) {
   document.getElementById('inspectionTime').textContent = cover.time;
   const coverImage = document.getElementById('coverImage');
   coverImage.style.backgroundImage = `url(${cover.image})`;
-  const avatar = document.getElementById('inspectorAvatar');
+  const avatar = document.getElementById('inReportWriter AIvatar');
   avatar.src = cover.inspector.avatar;
   document.getElementById('inspectorName').textContent = cover.inspector.name;
   document.getElementById('inspectorMeta').textContent = cover.inspector.meta;

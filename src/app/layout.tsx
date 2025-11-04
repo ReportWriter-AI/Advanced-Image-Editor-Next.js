@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import ClientLayout from '../components/ClientLayout'
 
 export const metadata: Metadata = {
   title: 'Image Editor - Edit Your Images Online',
@@ -23,7 +24,11 @@ export default function RootLayout({
         />
         <link rel="stylesheet" href="/shared-report-styles.css" />
       </head>
-      <body>{children}</body>
+      <body>
+        <ClientLayout>
+          {children}
+        </ClientLayout>
+      </body>
     </html>
   )
 }
