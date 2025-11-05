@@ -1172,6 +1172,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                             </div>
                                             <button
                                               onClick={() => setBulkItems((prev) => prev.filter((_, idx) => idx !== i))}
+                                              className="remove-btn"
                                               style={{ padding: '0.4rem 0.8rem', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
                                             >
                                               Remove
@@ -1250,6 +1251,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                         </div>
                                         <button
                                           onClick={() => handleRemoveLocationPhoto(idx)}
+                                          className="remove-btn"
                                           style={{
                                             padding: '0.4rem 0.8rem',
                                             backgroundColor: '#dc3545',

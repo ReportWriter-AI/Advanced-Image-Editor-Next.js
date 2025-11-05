@@ -1735,12 +1735,13 @@
 .bulk-item-row,
 .additional-item-row {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) auto; /* thumbnail | controls | remove */
+  grid-template-columns: 80px 1fr auto; /* thumbnail | controls | remove */
   column-gap: 12px;
   align-items: center;
   max-width: 100%;
   overflow-x: hidden;
   box-sizing: border-box;
+  row-gap: 8px;
 }
 
 .bulk-items-actions {
@@ -1752,10 +1753,10 @@
   box-sizing: border-box;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
   .bulk-item-row,
   .additional-item-row {
-    grid-template-columns: 64px minmax(0, 1fr) auto;
+    grid-template-columns: 64px 1fr; /* move remove button to its own row */
     column-gap: 10px;
   }
   .bulk-item-row img,
@@ -1770,8 +1771,10 @@
     min-width: 0; /* Allow shrinking below min-content */
     overflow: hidden;
   }
-  .bulk-item-row > button,
-  .additional-item-row > button {
+  /* Place the Remove button on a new row spanning full width and align it to the right */
+  .bulk-item-row .remove-btn,
+  .additional-item-row .remove-btn {
+    grid-column: 1 / -1;
     justify-self: end;
   }
 }
@@ -1786,24 +1789,10 @@
   .additional-item-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    box-sizing: border-box;
-    max-width: 100%;
-    overflow-x: hidden;
   }
   .bulk-item-row > * + *,
   .additional-item-row > * + * {
     margin-left: 12px;
-  }
-  .bulk-item-row > div,
-  .additional-item-row > div {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .bulk-item-row > button,
-  .additional-item-row > button {
-    flex: 0 0 auto;
-    white-space: nowrap;
   }
 }
 
