@@ -1713,3 +1713,58 @@
     touch-action: manipulation;
   }
 }
+
+/* Safari/iOS-friendly layout for Manage Defects edit lists */
+/* Use CSS Grid to avoid relying on flex gap (older Safari versions lacked flex-gap support) */
+.bulk-items-list,
+.additional-items-list {
+  display: grid;
+  row-gap: 12px;
+  width: 100%;
+}
+
+.bulk-item-row,
+.additional-item-row {
+  display: grid;
+  grid-template-columns: 80px 1fr auto; /* thumbnail | controls | remove */
+  column-gap: 12px;
+  align-items: center;
+}
+
+@media (max-width: 480px) {
+  .bulk-item-row,
+  .additional-item-row {
+    grid-template-columns: 64px 1fr auto;
+    column-gap: 10px;
+  }
+  .bulk-item-row img,
+  .additional-item-row img {
+    width: 64px !important;
+    height: 64px !important;
+  }
+  /* Make the middle column stretch fully so inputs don't overflow horizontally */
+  .bulk-item-row > div,
+  .additional-item-row > div {
+    width: 100%;
+  }
+}
+
+/* Fallback spacing for browsers without grid support (very old) */
+@supports not (display: grid) {
+  .bulk-items-list,
+  .additional-items-list {
+    display: block;
+  }
+  .bulk-item-row,
+  .additional-item-row {
+    display: flex;
+    align-items: center;
+  }
+  .bulk-item-row > * + *,
+  .additional-item-row > * + * {
+    margin-left: 12px;
+  }
+}
+
+/* Prevent iOS Safari auto-zoom on inputs and keep consistent font scaling */
+html { -webkit-text-size-adjust: 100%; }

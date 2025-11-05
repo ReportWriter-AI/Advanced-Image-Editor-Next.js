@@ -1142,11 +1142,11 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                       }}
                                     />
                                     {bulkItems.length > 0 && (
-                                      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+                                      <div className="bulk-items-list" style={{ marginTop: 12, width: '100%' }}>
                                         {bulkItems.map((item, i) => (
-                                          <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10, flexWrap: 'wrap' }}>
+                                          <div key={i} className="bulk-item-row" style={{ alignItems: 'center', background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
                                             <img src={item.preview} alt={`bulk-${i}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
-                                            <div style={{ flex: '1 1 240px', minWidth: 220 }}>
+                                            <div style={{ minWidth: 220 }}>
                                               <label style={{ display: 'block', fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Location</label>
                                               <LocationSearch
                                                 options={LOCATION_OPTIONS}
@@ -1176,7 +1176,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                             </button>
                                           </div>
                                         ))}
-                                        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <div className="bulk-items-actions" style={{ justifyContent: 'center' }}>
                                           <button
                                             disabled={bulkSaving || bulkItems.length === 0}
                                             onClick={async () => {
@@ -1225,16 +1225,16 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                 )}
                                 
                                 {displayDefect.additional_images && displayDefect.additional_images.length > 0 && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                  <div className="additional-items-list">
                                     {displayDefect.additional_images.map((img, idx) => (
-                                      <div key={idx} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e9ecef' }}>
+                                      <div key={idx} className="additional-item-row" style={{ alignItems: 'center', padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e9ecef' }}>
                                         <img 
                                           src={getProxiedSrc(img.url)} 
                                           alt={`Location ${idx + 2}`}
                                           onError={handleImgError}
                                           style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px' }}
                                         />
-                                        <div style={{ flex: 1 }}>
+                                        <div>
                                           <label style={{ display: 'block', fontSize: '0.8rem', color: '#6c757d', marginBottom: '0.25rem' }}>
                                             Location:
                                           </label>
