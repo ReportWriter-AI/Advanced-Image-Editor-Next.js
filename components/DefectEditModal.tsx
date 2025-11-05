@@ -1122,14 +1122,16 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                     background: '#f8fafc',
                                     border: '1px solid #e5e7eb',
                                     borderRadius: 8,
-                                    maxWidth: 720,
+                                    maxWidth: '100%',
+                                    width: '100%',
                                     marginLeft: 'auto',
                                     marginRight: 'auto',
                                     display: 'flex',
                                     flexDirection: 'column',
-                                    alignItems: 'center'
+                                    alignItems: 'center',
+                                    boxSizing: 'border-box'
                                   }}>
-                                    <p style={{ margin: '0 0 8px 0', color: '#374151', fontWeight: 600 }}>Select multiple photos and set a location for each:</p>
+                                    <p style={{ margin: '0 0 8px 0', color: '#374151', fontWeight: 600, textAlign: 'center', width: '100%' }}>Select multiple photos and set a location for each:</p>
                                     <FileUpload
                                       onFilesSelect={(files) => {
                                         const mapped = files.map((file) => ({
@@ -1144,9 +1146,9 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                     {bulkItems.length > 0 && (
                                       <div className="bulk-items-list" style={{ marginTop: 12, width: '100%' }}>
                                         {bulkItems.map((item, i) => (
-                                          <div key={i} className="bulk-item-row" style={{ alignItems: 'center', background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
-                                            <img src={item.preview} alt={`bulk-${i}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
-                                            <div style={{ minWidth: 220 }}>
+                                          <div key={i} className="bulk-item-row" style={{ alignItems: 'center', background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10, boxSizing: 'border-box' }}>
+                                            <img src={item.preview} alt={`bulk-${i}`} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+                                            <div style={{ minWidth: 0, flex: 1 }}>
                                               <label style={{ display: 'block', fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Location</label>
                                               <LocationSearch
                                                 options={LOCATION_OPTIONS}
@@ -1157,7 +1159,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                                   return copy;
                                                 })}
                                                 placeholder="Type to search…"
-                                                width={240}
+                                                width="100%"
                                               />
                                               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#374151' }}>
                                                 <input type="checkbox" checked={item.isThreeSixty} onChange={(e) => setBulkItems((prev) => {
@@ -1170,13 +1172,13 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                             </div>
                                             <button
                                               onClick={() => setBulkItems((prev) => prev.filter((_, idx) => idx !== i))}
-                                              style={{ padding: '0.4rem 0.8rem', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+                                              style={{ padding: '0.4rem 0.8rem', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
                                             >
                                               Remove
                                             </button>
                                           </div>
                                         ))}
-                                        <div className="bulk-items-actions" style={{ justifyContent: 'center' }}>
+                                        <div className="bulk-items-actions" style={{ justifyContent: 'center', width: '100%', marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                           <button
                                             disabled={bulkSaving || bulkItems.length === 0}
                                             onClick={async () => {
@@ -1227,14 +1229,14 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                 {displayDefect.additional_images && displayDefect.additional_images.length > 0 && (
                                   <div className="additional-items-list">
                                     {displayDefect.additional_images.map((img, idx) => (
-                                      <div key={idx} className="additional-item-row" style={{ alignItems: 'center', padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e9ecef' }}>
+                                      <div key={idx} className="additional-item-row" style={{ alignItems: 'center', padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e9ecef', boxSizing: 'border-box' }}>
                                         <img 
                                           src={getProxiedSrc(img.url)} 
                                           alt={`Location ${idx + 2}`}
                                           onError={handleImgError}
-                                          style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px' }}
+                                          style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }}
                                         />
-                                        <div>
+                                        <div style={{ minWidth: 0, flex: 1 }}>
                                           <label style={{ display: 'block', fontSize: '0.8rem', color: '#6c757d', marginBottom: '0.25rem' }}>
                                             Location:
                                           </label>
@@ -1243,7 +1245,7 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                             value={img.location}
                                             onChangeAction={(val) => handleUpdateLocationForImage(idx, val)}
                                             placeholder="Type to search…"
-                                            width={260}
+                                            width="100%"
                                           />
                                         </div>
                                         <button
@@ -1256,6 +1258,8 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
                                             borderRadius: '4px',
                                             cursor: 'pointer',
                                             fontSize: '0.8rem',
+                                            flexShrink: 0,
+                                            whiteSpace: 'nowrap'
                                           }}
                                         >
                                           Remove

@@ -1721,6 +1721,8 @@
   display: grid;
   row-gap: 12px;
   width: 100%;
+  max-width: 100%;
+  overflow-x: hidden; /* Prevent horizontal scroll on narrow screens */
 }
 
 .bulk-item-row,
@@ -1729,6 +1731,18 @@
   grid-template-columns: 80px 1fr auto; /* thumbnail | controls | remove */
   column-gap: 12px;
   align-items: center;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.bulk-items-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 480px) {
@@ -1746,6 +1760,8 @@
   .bulk-item-row > div,
   .additional-item-row > div {
     width: 100%;
+    min-width: 0; /* Allow shrinking below min-content */
+    overflow: hidden;
   }
 }
 
