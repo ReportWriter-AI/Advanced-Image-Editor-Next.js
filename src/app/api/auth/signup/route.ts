@@ -110,6 +110,11 @@ export async function POST(request: NextRequest) {
       is_company_admin: true,
     });
 
+    // Step 3: Track the company creator
+    await Company.findByIdAndUpdate(company._id, {
+      createdBy: user._id,
+    });
+
     // Send verification email
     await sendVerificationEmail(email, emailVerificationToken);
 

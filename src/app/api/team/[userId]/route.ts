@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/db';
 import User from '../../../../../src/models/User';
+import Company from '../../../../../src/models/Company';
+import Availability from '../../../../../src/models/Availability';
 import { getCurrentUser } from '../../../../../lib/auth-helpers';
 
 // PUT - Update a team member
@@ -134,6 +136,18 @@ export async function DELETE(
       );
     }
 
+    const company =
+      currentUser.company
+        ? await Company.findById(currentUser.company).select('createdBy')
+        : null;
+
+    if (company?.createdBy && String(company.createdBy) === userId) {
+      return NextResponse.json(
+        { error: 'You cannot delete the company owner' },
+        { status: 400 }
+      );
+    }
+
     // Find the team member to delete
     const teamMember = await User.findOne({
       _id: userId,
@@ -147,10 +161,12 @@ export async function DELETE(
       );
     }
 
-    // Soft delete by setting isActive to false
-    await User.findByIdAndUpdate(userId, {
-      isActive: false,
+    await Availability.deleteMany({
+      inspector: teamMember._id,
+      company: teamMember.company,
     });
+
+    await teamMember.deleteOne();
 
     return NextResponse.json({
       message: 'Team member deleted successfully',

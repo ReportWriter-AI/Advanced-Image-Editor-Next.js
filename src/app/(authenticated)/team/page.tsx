@@ -122,6 +122,7 @@ export default function TeamPage() {
   const [addType, setAddType] = useState<'inspector' | 'staff'>('inspector');
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [companyCreatorId, setCompanyCreatorId] = useState<string | null>(null);
 
   const addForm = useForm<TeamMemberFormData>({
     resolver: zodResolver(teamMemberSchema),
@@ -173,6 +174,7 @@ export default function TeamPage() {
       const data = await response.json();
       setInspectors(data.inspectors || []);
       setStaff(data.staff || []);
+      setCompanyCreatorId(data.companyCreatorId || null);
     } catch (error: any) {
       console.error('Error fetching team members:', error);
       setMessage({ type: 'error', text: error.message });
@@ -351,6 +353,7 @@ export default function TeamPage() {
 
   const renderTeamMember = (member: TeamMember) => {
     const isCurrentUser = user?.id === member._id;
+    const isCompanyCreator = companyCreatorId === member._id;
     
     return (
       <Card key={member._id} className="mb-3">
@@ -367,6 +370,9 @@ export default function TeamPage() {
                     <span title="Company Admin" className="inline-block ml-2">
                       <Shield className="inline-block w-4 h-4 text-blue-600" />
                     </span>
+                  )}
+                  {isCompanyCreator && (
+                    <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">Company Owner</span>
                   )}
                   {isCurrentUser && (
                     <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">You</span>
@@ -400,10 +406,16 @@ export default function TeamPage() {
                 variant="ghost"
                 size="icon"
                 onClick={() => openDeleteDialog(member)}
-                disabled={isCurrentUser}
-                title={isCurrentUser ? "You cannot delete your own account" : "Delete team member"}
+                disabled={isCurrentUser || isCompanyCreator}
+                title={
+                  isCurrentUser
+                    ? "You cannot delete your own account"
+                    : isCompanyCreator
+                      ? "You cannot delete the company owner"
+                      : "Delete team member"
+                }
               >
-                <Trash2 className={`w-4 h-4 ${isCurrentUser ? 'text-gray-400' : 'text-red-600'}`} />
+                <Trash2 className={`w-4 h-4 ${(isCurrentUser || isCompanyCreator) ? 'text-gray-400' : 'text-red-600'}`} />
               </Button>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/db';
 import User from '../../../../src/models/User';
+import Company from '../../../../src/models/Company';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '../../../../lib/email';
 import { getCurrentUser } from '../../../../lib/auth-helpers';
@@ -27,6 +28,13 @@ export async function GET(request: NextRequest) {
       .select('-password -emailVerificationToken -resetPasswordToken -rememberMeToken')
       .sort({ createdAt: -1 });
 
+    const company =
+      currentUser.company
+        ? await Company.findById(currentUser.company).select('createdBy')
+        : null;
+
+    const companyCreatorId = company?.createdBy ? String(company.createdBy) : null;
+
     // Separate inspectors and staff
     const inspectors = teamMembers.filter(member => member.role === 'inspector');
     const staff = teamMembers.filter(member => member.role === 'staff');
@@ -34,6 +42,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       inspectors,
       staff,
+      companyCreatorId,
     });
 
   } catch (error: any) {

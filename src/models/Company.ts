@@ -3,6 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface ICompany extends Document {
   name: string;
   plan: 'free' | 'pro' | 'enterprise';
+  createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,6 +19,10 @@ const CompanySchema = new Schema<ICompany>(
       type: String,
       enum: ['free', 'pro', 'enterprise'],
       default: 'free',
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
     },
   },
   {
