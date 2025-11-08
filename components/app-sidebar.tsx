@@ -7,14 +7,15 @@ import {
 	LayoutDashboard,
 	FileText,
 	ImageIcon,
-  ClipboardList,
+	ClipboardList,
 	Settings,
 	Users,
 	FolderOpen,
 	Camera,
 	Shield,
-  UserCog,
-  Wrench
+	UserCog,
+	Wrench,
+	CalendarClock
 } from "lucide-react";
 
 import {
@@ -55,6 +56,11 @@ const data = {
 					title: "Services",
 					url: "/services",
 					icon: Wrench,
+				},
+				{
+					title: "Availability",
+					url: "/availability",
+					icon: CalendarClock,
 				},
 			],
 		},

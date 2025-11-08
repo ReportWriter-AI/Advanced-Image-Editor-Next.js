@@ -3,6 +3,7 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
+import { Toaster } from "@/components/ui/sonner";
 import { withAuth } from "../../contexts/AuthContext";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -20,6 +21,7 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
         <main className="flex flex-1 flex-col gap-4 p-4">
           {children}
         </main>
+        <Toaster />
       </SidebarInset>
     </SidebarProvider>
   );
