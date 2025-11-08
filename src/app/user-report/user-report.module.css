@@ -102,8 +102,9 @@
 
 .sectionHeading {
   /* Uses shared-report-styles.css .section-heading for consistent styling */
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  padding-top: 1rem;
   /* NO border-bottom on main section headings - only subsection headings have underlines */
 }
 
@@ -1792,9 +1793,45 @@
 }
 
 @media (max-width: 640px) {
-  .defectCompactCard { padding: 10px 12px; }
-  .defectCompactBody { grid-template-columns: 120px 1fr; gap: 10px; }
-  .defectThumb, .compactPanoramaWrapper, .compactVideoWrapper { width: 120px; height: 120px; }
+  .defectCompactCard { 
+    padding: 10px 12px; 
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Header stays at top, full width */
+  .defectInlineHeader {
+    order: 1;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  
+  /* Body becomes vertical stack: image first, then text */
+  .defectCompactBody { 
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    order: 2;
+  }
+  
+  /* Image full width */
+  .defectCompactMedia {
+    width: 100%;
+    order: 1;
+  }
+  
+  .defectThumb, .compactPanoramaWrapper, .compactVideoWrapper { 
+    width: 100%; 
+    height: auto;
+    min-height: 200px;
+    max-height: 300px;
+  }
+  
+  /* Text content below image */
+  .defectCompactInfo {
+    order: 2;
+    width: 100%;
+  }
 }
 
 /* Additional text styling for Aaron layout */

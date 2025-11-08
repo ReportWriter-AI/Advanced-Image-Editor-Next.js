@@ -27,9 +27,14 @@ function decodeBase64Image(dataString: string) {
 
 async function handler(request: Request) {
   try {
+    console.log("🔥 PROCESS-ANALYSIS ENDPOINT HIT!");
+    console.log("📨 Request received at:", new Date().toISOString());
+    
     // const raw = await request.text();
     // console.log("Raw body:", raw);
     const body = await request.json();
+    console.log("📦 Request body keys:", Object.keys(body));
+    
     const {
       imageUrl,
       description,
@@ -48,6 +53,8 @@ async function handler(request: Request) {
     } = body;
 
     console.log("🔄 Processing job", analysisId);
+    console.log("📍 Inspection ID:", inspectionId);
+    console.log("📝 Section:", section, "Subsection:", subSection);
 
   let finalImageUrl: string | undefined = imageUrl;
   let finalThumbnailUrl: string | null = null;
@@ -113,10 +120,14 @@ async function handler(request: Request) {
       content,
     });
 
+    console.log("🤖 Creating OpenAI run with Assistant ID:", process.env.OPENAI_ASSISTANT_ID);
+    
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: process.env.OPENAI_ASSISTANT_ID!,
     });
 
+    console.log("⏳ Polling OpenAI run...", run.id);
+    
     // Poll until done
     let runStatus = run.status;
     while (!["completed", "failed", "cancelled"].includes(runStatus)) {
@@ -127,8 +138,10 @@ async function handler(request: Request) {
       runStatus = currentRun.status;
     }
 
+    console.log("✅ OpenAI run completed with status:", runStatus);
+    
     if (runStatus !== "completed") {
-      console.error("Run failed:", runStatus);
+      console.error("❌ Run failed:", runStatus);
       return NextResponse.json({ error: "Run failed" }, { status: 500 });
     }
 
@@ -149,11 +162,18 @@ async function handler(request: Request) {
 
     const jsonMatch = assistantResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error("Assistant response not JSON:", assistantResponse);
+      console.error("❌ Assistant response not JSON:", assistantResponse);
       return NextResponse.json({ error: "Invalid AI response" }, { status: 500 });
     }
 
+    console.log("📄 Parsing AI response...");
     const parsed = JSON.parse(jsonMatch[0]);
+    console.log("✅ Parsed defect data:", {
+      defect: parsed.defect?.substring(0, 50),
+      materials: parsed.materials_names,
+      labor_rate: parsed.labor_rate,
+      hours: parsed.hours_required
+    });
 
     // Calculate total cost from AI analysis
     const totalCost = (parsed.materials_total_cost || 0) + ((parsed.labor_rate || 0) * (parsed.hours_required || 0));

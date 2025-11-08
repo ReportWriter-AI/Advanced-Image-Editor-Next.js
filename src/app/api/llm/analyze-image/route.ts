@@ -171,6 +171,8 @@ export async function POST(request: Request) {
   const analysisId = `${inspectionId}-${Date.now()}`;
 
   console.log('enquing jobbbbbb');
+  console.log('🎯 QStash target URL:', `${baseUrl}/api/process-analysis`);
+  console.log('📦 Job payload:', { analysisId, inspectionId, section, subSection });
 
   // Publish job to QStash -> will call /api/process-analysis
   await client.publishJSON({
