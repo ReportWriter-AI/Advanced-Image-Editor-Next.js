@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ImageUpload } from '@/components/ui/image-upload';
 import { 
   Users, 
   UserPlus, 
@@ -69,6 +70,7 @@ const teamMemberSchema = z.object({
   phoneNumber: z.string().optional(),
   password: z.string().optional(),
   sendConfirmation: z.boolean(),
+  profileImageUrl: z.string().optional(),
 }).refine((data) => {
   // If sendConfirmation is false, password is required
   if (!data.sendConfirmation && !data.password) {
@@ -84,6 +86,7 @@ const editTeamMemberSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   phoneNumber: z.string().optional(),
+  profileImageUrl: z.string().optional(),
 });
 
 type TeamMemberFormData = z.infer<typeof teamMemberSchema>;
@@ -107,6 +110,7 @@ interface TeamMember {
   is_company_admin?: boolean;
   can_edit_inspections?: boolean;
   can_delete_inspections?: boolean;
+  profileImageUrl?: string;
 }
 
 export default function TeamPage() {
@@ -133,6 +137,7 @@ export default function TeamPage() {
       phoneNumber: '',
       password: '',
       sendConfirmation: true,
+      profileImageUrl: '',
     },
   });
 
@@ -142,6 +147,7 @@ export default function TeamPage() {
       firstName: '',
       lastName: '',
       phoneNumber: '',
+      profileImageUrl: '',
     },
   });
 
@@ -289,6 +295,7 @@ export default function TeamPage() {
       firstName: member.firstName,
       lastName: member.lastName,
       phoneNumber: member.phoneNumber || '',
+      profileImageUrl: member.profileImageUrl || '',
     });
 
     // Set permissions from member
@@ -360,8 +367,19 @@ export default function TeamPage() {
         <CardContent className="p-4">
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-3 flex-1">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white font-semibold flex-shrink-0">
-                {member.firstName[0]}{member.lastName[0]}
+              <div className="w-12 h-12 flex-shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white font-semibold">
+                {member.profileImageUrl ? (
+                  <img
+                    src={member.profileImageUrl}
+                    alt={`${member.firstName} ${member.lastName}`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-base">
+                    {member.firstName[0]}
+                    {member.lastName[0]}
+                  </span>
+                )}
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-lg">
@@ -537,29 +555,39 @@ export default function TeamPage() {
             <CardContent className="max-h-[70vh] overflow-y-auto">
               <form onSubmit={addForm.handleSubmit(handleAddTeamMember)} className="space-y-4">
                 {/* Basic Information */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name *</Label>
-                    <Input
-                      id="firstName"
-                      {...addForm.register('firstName')}
-                      placeholder="John"
+                    <ImageUpload
+                      label="Profile Photo"
+                      description="Used on team lists and assignments"
+                      value={addForm.watch('profileImageUrl') || ''}
+                      onChange={(url) => addForm.setValue('profileImageUrl', url ?? '')}
                     />
-                    {addForm.formState.errors.firstName && (
-                      <p className="text-sm text-red-600">{addForm.formState.errors.firstName.message}</p>
-                    )}
                   </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name *</Label>
+                      <Input
+                        id="firstName"
+                        {...addForm.register('firstName')}
+                        placeholder="John"
+                      />
+                      {addForm.formState.errors.firstName && (
+                        <p className="text-sm text-red-600">{addForm.formState.errors.firstName.message}</p>
+                      )}
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name *</Label>
-                    <Input
-                      id="lastName"
-                      {...addForm.register('lastName')}
-                      placeholder="Doe"
-                    />
-                    {addForm.formState.errors.lastName && (
-                      <p className="text-sm text-red-600">{addForm.formState.errors.lastName.message}</p>
-                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name *</Label>
+                      <Input
+                        id="lastName"
+                        {...addForm.register('lastName')}
+                        placeholder="Doe"
+                      />
+                      {addForm.formState.errors.lastName && (
+                        <p className="text-sm text-red-600">{addForm.formState.errors.lastName.message}</p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -709,7 +737,7 @@ export default function TeamPage() {
                       <p className="text-sm text-red-600">{editForm.formState.errors.firstName.message}</p>
                     )}
                   </div>
-
+ 
                   <div className="space-y-2">
                     <Label htmlFor="edit-lastName">Last Name *</Label>
                     <Input
@@ -751,6 +779,13 @@ export default function TeamPage() {
                     />
                   </div>
                 </div>
+
+                <ImageUpload
+                  label="Profile Photo"
+                  description="Used on team lists and assignments"
+                  value={editForm.watch('profileImageUrl') || ''}
+                  onChange={(url) => editForm.setValue('profileImageUrl', url ?? '')}
+                />
 
                 {/* Permissions */}
                 <div className="space-y-3 pt-4 border-t">

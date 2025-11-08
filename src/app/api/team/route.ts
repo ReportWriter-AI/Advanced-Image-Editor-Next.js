@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
       password,
       role,
       sendConfirmation,
+      profileImageUrl,
       // Permissions
       can_schedule_self,
       can_schedule,
@@ -147,12 +148,18 @@ export async function POST(request: NextRequest) {
       isEmailVerified = false;
     }
 
+    const normalizedProfileImage =
+      typeof profileImageUrl === 'string'
+        ? profileImageUrl.trim() || null
+        : undefined;
+
     // Create the user
     const newUser = await User.create({
       firstName,
       lastName,
       email: email.toLowerCase(),
       phoneNumber: phoneNumber || undefined,
+      profileImageUrl: normalizedProfileImage ?? undefined,
       password: userPassword,
       role,
       company: currentUser.company,

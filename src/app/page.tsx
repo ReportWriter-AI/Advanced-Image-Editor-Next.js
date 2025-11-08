@@ -1,126 +1,63 @@
-"use client";
+import Link from 'next/link';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import InspectionsTable from '../../components/InspectionsTable';
-import DefectEditModal from '../../components/DefectEditModal';
+import { Button } from '@/components/ui/button';
 
 export default function Home() {
-  const router = useRouter();
-  const [defectModalOpen, setDefectModalOpen] = useState(false);
-  const [selectedInspectionId, setSelectedInspectionId] = useState<string>('');
-  const [selectedInspectionName, setSelectedInspectionName] = useState<string>('');
-
-  // Handle row click to open ImageEditor
-  const handleRowClick = (inspectionId: string) => {
-    router.push(`/image-editor?inspectionId=${inspectionId}`);
-  };
-
-  // Handle document click to view inspection report
-  const handleDocumentClick = (inspectionId: string) => {
-    router.push(`/inspection_report/${inspectionId}`);
-  };
-
-  // Handle edit click to edit inspection defects
-  const handleEditClick = (inspectionId: string) => {
-    setSelectedInspectionId(inspectionId);
-    setSelectedInspectionName(`Inspection ${inspectionId.slice(-4)}`);
-    setDefectModalOpen(true);
-  };
-
-  // Handle close defect modal
-  const handleCloseDefectModal = () => {
-    setDefectModalOpen(false);
-    setSelectedInspectionId('');
-    setSelectedInspectionName('');
-  };
-
-  // Check for pending annotations when page loads or receives focus
-  useEffect(() => {
-    const checkPendingAnnotation = () => {
-      const pending = localStorage.getItem('pendingAnnotation');
-      if (pending) {
-        try {
-          const annotation = JSON.parse(pending);
-          console.log('🔍 Main page detected pending annotation:', annotation);
-
-          // If we have an inspectionId, auto-open the modal
-          if (annotation.inspectionId) {
-            console.log('🚀 Auto-opening modal for inspection:', annotation.inspectionId);
-            setSelectedInspectionId(annotation.inspectionId);
-            setSelectedInspectionName(`Inspection ${annotation.inspectionId.slice(-4)}`);
-            setDefectModalOpen(true);
-            // Note: Don't clear localStorage here - let InformationSections handle it
-          }
-        } catch (e) {
-          console.error('Error parsing pending annotation:', e);
-        }
-      }
-    };
-
-    // Check immediately on mount
-    checkPendingAnnotation();
-
-    // Also check when window regains focus
-    const handleFocus = () => {
-      checkPendingAnnotation();
-    };
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
-
-  // Handle delete click to delete inspection
-  const handleDeleteClick = async (inspectionId: string) => {
-    if (!confirm('Are you sure you want to delete this inspection?')) {
-      return;
-    }
-
-    try {
-      console.log('inspection_id', inspectionId);
-      // setDeletingId(inspectionId);
-
-      const response = await fetch(`/api/inspections/${inspectionId}`, {
-        method: 'DELETE',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete inspection');
-      }
-
-      console.log('Success:', data.message);
-      // Refresh the inspections list or update state
-      // alert('Inspection deleted successfully!');
-      window.location.href = '/';
-
-    } catch (error: any) {
-      console.error('Error deleting inspection:', error);
-      alert(`Error: ${error.message}`);
-    } finally {
-      // setDeletingId(null);
-    }
-  };
-
-  // Show table page
   return (
-    <>
-      <InspectionsTable
-        onRowClick={handleRowClick}
-        onDocumentClick={handleDocumentClick}
-        onEditClick={handleEditClick}
-        onDeleteClick={handleDeleteClick}
-      />
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted">
+      <header className="border-b bg-background/70 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+          <div className="text-xl font-semibold tracking-tight">Advanced Image Editor</div>
+          <Button asChild>
+            <Link href="/dashboard">Go to Dashboard</Link>
+          </Button>
+        </div>
+      </header>
 
-      <DefectEditModal
-        isOpen={defectModalOpen}
-        onClose={handleCloseDefectModal}
-        inspectionId={selectedInspectionId}
-        inspectionName={selectedInspectionName}
-      />
-    </>
+      <main className="mx-auto flex max-w-6xl flex-col px-4 py-20">
+        <section className="max-w-2xl space-y-6">
+          <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+            Next‑gen inspection workflows
+          </span>
+          <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+            Elevate your inspection reports with powerful editing and automation tools.
+          </h1>
+          <p className="text-lg text-muted-foreground">
+            Manage inspectors, streamline scheduling, and deliver pixel-perfect reports in minutes.
+            Our AI-assisted editor and collaboration suite help teams stay efficient and impress clients.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button size="lg" asChild>
+              <Link href="/dashboard">Explore the Dashboard</Link>
+            </Button>
+            <Button size="lg" variant="outline">
+              Learn More
+            </Button>
+          </div>
+        </section>
+
+        <section className="mt-16 grid gap-6 rounded-xl border bg-background/60 p-8 shadow-sm sm:grid-cols-3">
+          {[
+            {
+              title: 'Smart Image Editing',
+              description: 'Annotate, enhance, and deliver inspection visuals without leaving the browser.',
+            },
+            {
+              title: 'Team Collaboration',
+              description: 'Assign inspections, track progress, and keep your staff aligned in real time.',
+            },
+            {
+              title: 'Automated Workflows',
+              description: 'Generate professional reports and share them instantly with homeowners and partners.',
+            },
+          ].map((feature) => (
+            <div key={feature.title} className="space-y-2">
+              <h3 className="text-lg font-semibold text-foreground">{feature.title}</h3>
+              <p className="text-sm text-muted-foreground">{feature.description}</p>
+            </div>
+          ))}
+        </section>
+      </main>
+    </div>
   );
 }

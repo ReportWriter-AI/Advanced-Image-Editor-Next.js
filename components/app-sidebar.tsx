@@ -93,14 +93,9 @@ const data = {
 					icon: UserCog,
 				},
 				{
-					title: "Profile",
-					url: "/profile",
+					title: "Company",
+					url: "/company",
 					icon: Users,
-				},
-				{
-					title: "Preferences",
-					url: "/settings",
-					icon: Settings,
 				},
 			],
 		},
