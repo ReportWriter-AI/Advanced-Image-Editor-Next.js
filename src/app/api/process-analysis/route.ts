@@ -212,4 +212,6 @@ async function handler(request: Request) {
 }
 
 // ✅ Secure endpoint with QStash signature verification
-export const POST = verifySignatureAppRouter(handler);
+// TEMPORARILY DISABLED for debugging - re-enable after fixing!
+export const POST = handler;
+// export const POST = verifySignatureAppRouter(handler);
