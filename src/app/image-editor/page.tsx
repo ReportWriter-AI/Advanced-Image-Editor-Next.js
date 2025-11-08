@@ -824,6 +824,7 @@ export default function ImageEditorPage() {
       }
 
       // 2) Send only JSON metadata and URLs to the analysis endpoint
+      console.log('🚀 Sending to analyze-image API...');
       const response = await fetch('/api/llm/analyze-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -842,22 +843,29 @@ export default function ImageEditorPage() {
         }),
       });
       
+      console.log('📡 Response status:', response.status);
+      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('API Error:', errorText);
+        console.error('❌ API Error:', errorText);
         alert(`Analysis request failed: ${errorText}`);
         return; // ❌ stop here
       }
       
       const result = await response.json();
-      console.log('API response:', result);
+      console.log('✅ API response:', result);
       
       // Check if the analysis was accepted and started
       if (response.status === 202) {
         // Analysis is processing in the background
-        console.log('Analysis started with ID:', result.analysisId);
+        console.log('✅ Analysis started with ID:', result.analysisId);
+        console.log('⏳ Waiting 3 seconds before redirect to see defect appear...');
+        
+        // Wait 3 seconds to let QStash process
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
       } else if (!result.analysisId) {
+        console.error('❌ No analysisId in response!', result);
         alert('Analysis did not start correctly. Please try again.');
         return; // ❌ stop here
       }
@@ -865,9 +873,10 @@ export default function ImageEditorPage() {
 
   
   // ✅ Navigate only if job started successfully
+      console.log('🔄 Redirecting to image editor...');
       window.location.href = `/image-editor/?inspectionId=${selectedInspectionId}`;
     } catch (error: any) {
-      console.error('Submission error:', error);
+      console.error('❌ Submission error:', error);
       alert('Unexpected error occurred while submitting. Please try again.');
     } finally {
       setIsSubmitting(false);
