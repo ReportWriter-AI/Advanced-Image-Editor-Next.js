@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { uploadToR2 } from "@/lib/r2";
-// Direct-call fallback to avoid external fetch/CORS
-import { POST as processAnalysisPOST } from "../../process-analysis/route";
 import { createDefect } from "@/lib/defect";
 
 const openai = new OpenAI({
@@ -50,7 +48,6 @@ const decodeBase64Image = (dataString: string) => {
 export async function POST(request: Request) {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-    console.log('🌐 NEXT_PUBLIC_BASE_URL:', baseUrl);
     if (!baseUrl) {
       throw new Error("Missing NEXT_PUBLIC_BASE_URL environment variable");
     }
@@ -173,13 +170,8 @@ export async function POST(request: Request) {
   // Unique ID for job
   const analysisId = `${inspectionId}-${Date.now()}`;
 
-  console.log('enquing jobbbbbb');
-  console.log('🎯 QStash target URL:', `${baseUrl}/api/process-analysis`);
-  console.log('📦 Job payload:', { analysisId, inspectionId, section, subSection });
-
   // Publish job to QStash -> will call /api/process-analysis
   try {
-    console.log('🚀 About to publish to QStash...');
     const qstashResponse = await client.publishJSON({
       url: `${baseUrl}/api/process-analysis`,
       body: {
@@ -197,49 +189,9 @@ export async function POST(request: Request) {
         isThreeSixty
       },
     });
-    console.log('✅ QStash publish successful! Response:', qstashResponse);
   } catch (qstashError) {
     console.error('❌ QStash publish failed:', qstashError);
     throw qstashError;
-  }
-
-  // Secondary lightweight ping to verify QStash can reach our domain
-  try {
-    console.log('🛰️ Publishing QStash ping...');
-    const pingRes = await client.publishJSON({
-      url: `${baseUrl}/api/ping`,
-      body: { analysisId, t: Date.now(), note: 'qstash-connectivity-check' },
-    });
-    console.log('✅ QStash ping publish successful:', pingRes);
-  } catch (err) {
-    console.error('❌ QStash ping publish failed:', err);
-  }
-
-  // TEMP FALLBACK: Direct in-process call to process-analysis (no network)
-  try {
-    const payload = {
-      imageUrl: finalImageUrl,
-      description,
-      location,
-      inspectionId,
-      section,
-      subSection,
-      selectedColor,
-      analysisId,
-      finalVideoUrl,
-      thumbnail: finalThumbnailUrl,
-      type,
-      isThreeSixty
-    };
-    const req = new Request("http://internal/api/process-analysis", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const res = await processAnalysisPOST(req as any);
-    console.log('🚨 Fallback in-process response status:', (res as any)?.status);
-  } catch (fallbackErr) {
-    console.error('❌ Fallback dispatch exception:', fallbackErr);
   }
 
   return NextResponse.json(
@@ -261,30 +213,4 @@ export async function POST(request: Request) {
     { status: 500 }
   );
 }
-}
-
-
-
-// Optional: Add GET method for testing or documentation
-export async function GET() {
-  return NextResponse.json({
-    message: 'Use POST method to analyze images',
-    endpoint: '/api/llm/analyze-image',
-    required_fields: ['imageUrl', 'description']
-  });
-}
-
-// Optional: Add other HTTP methods if needed
-export async function PUT() {
-  return NextResponse.json(
-    { error: 'Method not allowed', message: 'Only POST requests are accepted' },
-    { status: 405 }
-  );
-}
-
-export async function DELETE() {
-  return NextResponse.json(
-    { error: 'Method not allowed', message: 'Only POST requests are accepted' },
-    { status: 405 }
-  );
 }

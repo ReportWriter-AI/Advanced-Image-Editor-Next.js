@@ -1,7 +1,5 @@
 // /app/api/process-analysis/route.ts
 import { NextResponse } from "next/server";
-// Debug: file loaded (helps confirm the route is deployed and bundle evaluated)
-console.log("🧩 process-analysis route module loaded at", new Date().toISOString());
 import { verifySignature } from "@upstash/qstash/nextjs";
 import OpenAI from 'openai';
 import { uploadToR2 } from "@/lib/r2";
@@ -29,13 +27,7 @@ function decodeBase64Image(dataString: string) {
 
 async function handler(request: Request) {
   try {
-    console.log("🔥 PROCESS-ANALYSIS ENDPOINT HIT!");
-    console.log("📨 Request received at:", new Date().toISOString());
-    
-    // const raw = await request.text();
-    // console.log("Raw body:", raw);
-    const body = await request.json();
-    console.log("📦 Request body keys:", Object.keys(body));
+  const body = await request.json();
     
     const {
       imageUrl,
@@ -54,9 +46,6 @@ async function handler(request: Request) {
       isThreeSixty
     } = body;
 
-    console.log("🔄 Processing job", analysisId);
-    console.log("📍 Inspection ID:", inspectionId);
-    console.log("📝 Section:", section, "Subsection:", subSection);
 
   let finalImageUrl: string | undefined = imageUrl;
   let finalThumbnailUrl: string | null = null;
@@ -87,7 +76,7 @@ async function handler(request: Request) {
           finalThumbnailUrl = thumbnail;
         }
       } else {
-        console.log('no thumbnail found')
+  // no thumbnail
       }
 
       // if (videoFile) {
@@ -122,13 +111,10 @@ async function handler(request: Request) {
       content,
     });
 
-    console.log("🤖 Creating OpenAI run with Assistant ID:", process.env.OPENAI_ASSISTANT_ID);
     
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: process.env.OPENAI_ASSISTANT_ID!,
     });
-
-    console.log("⏳ Polling OpenAI run...", run.id);
     
     // Poll until done
     let runStatus = run.status;
@@ -140,10 +126,9 @@ async function handler(request: Request) {
       runStatus = currentRun.status;
     }
 
-    console.log("✅ OpenAI run completed with status:", runStatus);
     
     if (runStatus !== "completed") {
-      console.error("❌ Run failed:", runStatus);
+  console.error("Run failed:", runStatus);
       return NextResponse.json({ error: "Run failed" }, { status: 500 });
     }
 
@@ -164,18 +149,11 @@ async function handler(request: Request) {
 
     const jsonMatch = assistantResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error("❌ Assistant response not JSON:", assistantResponse);
+  console.error("Assistant response not JSON:", assistantResponse);
       return NextResponse.json({ error: "Invalid AI response" }, { status: 500 });
     }
 
-    console.log("📄 Parsing AI response...");
     const parsed = JSON.parse(jsonMatch[0]);
-    console.log("✅ Parsed defect data:", {
-      defect: parsed.defect?.substring(0, 50),
-      materials: parsed.materials_names,
-      labor_rate: parsed.labor_rate,
-      hours: parsed.hours_required
-    });
 
     // Calculate total cost from AI analysis
     const totalCost = (parsed.materials_total_cost || 0) + ((parsed.labor_rate || 0) * (parsed.hours_required || 0));
@@ -203,42 +181,14 @@ async function handler(request: Request) {
       additional_images: [], // Initialize empty array for additional location photos
     };
 
-    await createDefect(defectData);
-    console.log("✅ Defect saved", defectData);
+  await createDefect(defectData);
 
-    return NextResponse.json({ success: true }, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      }
-    });
+    return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("Process-analysis error:", err);
-    return NextResponse.json({ error: err.message }, { 
-      status: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      }
-    });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// ✅ Secure endpoint with QStash signature verification
-// TEMPORARILY DISABLED for debugging - re-enable after fixing!
-export const POST = handler;
-// export const POST = verifySignatureAppRouter(handler);
-
-// Handle CORS preflight requests
-export async function OPTIONS(request: Request) {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
-  });
-}
+// Secure endpoint with QStash signature verification
+export const POST = verifySignatureAppRouter(handler);
