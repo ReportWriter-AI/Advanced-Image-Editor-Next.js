@@ -213,6 +213,32 @@ export async function POST(request: Request) {
     console.error('❌ QStash ping publish failed:', err);
   }
 
+  // TEMP FALLBACK: Direct server-side fire-and-forget call to process-analysis
+  try {
+    fetch(`${baseUrl}/api/process-analysis`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageUrl: finalImageUrl,
+        description,
+        location,
+        inspectionId,
+        section,
+        subSection,
+        selectedColor,
+        analysisId,
+        finalVideoUrl,
+        thumbnail: finalThumbnailUrl,
+        type,
+        isThreeSixty
+      })
+    }).then(r => console.log('🚨 Fallback process-analysis response status:', r.status))
+      .catch(e => console.error('❌ Fallback process-analysis fetch error:', e));
+    console.log('🚨 Fallback direct process-analysis call fired');
+  } catch (fallbackErr) {
+    console.error('❌ Fallback dispatch exception:', fallbackErr);
+  }
+
   return NextResponse.json(
     {
       message: "Analysis started. Defect will be saved when ready.",
