@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 
 interface Inspection {
-  id: number;
+  id: string;
   inspectionName: string;
   date: string;
   status: string;
@@ -16,7 +16,23 @@ interface InspectionsTableProps {
   onDeleteClick?: (inspectionId: string) => void;
 }
 
-export default function InspectionsTable({ onRowClick, onDocumentClick, onEditClick, onDeleteClick }: InspectionsTableProps) {
+const mapInspection = (item: any): Inspection => ({
+  id:
+    (item && (item.id || item._id))?.toString?.() ||
+    Math.random().toString(36).slice(2, 9),
+  inspectionName: item?.name || item?.inspectionName || "Unnamed Inspection",
+  date: item?.date
+    ? new Date(item.date).toLocaleDateString()
+    : new Date().toLocaleDateString(),
+  status: item?.status || "Pending",
+});
+
+export default function InspectionsTable({
+  onRowClick,
+  onDocumentClick,
+  onEditClick,
+  onDeleteClick,
+}: InspectionsTableProps) {
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [showAddInspectionPopup, setShowAddInspectionPopup] = useState(false);
   const [newInspectionName, setNewInspectionName] = useState('');
@@ -27,16 +43,15 @@ export default function InspectionsTable({ onRowClick, onDocumentClick, onEditCl
     const fetchInspections = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/inspections');
+        const response = await fetch('/api/inspections', {
+          credentials: 'include',
+        });
         if (response.ok) {
           const data = await response.json();
           // Map API data to expected interface structure
-          const mappedInspections: Inspection[] = data.map((item: any) => ({
-            id: item._id || item.id || Math.random().toString(36).substr(2, 9),
-            inspectionName: item.name || item.inspectionName || 'Unnamed Inspection',
-            date: item.date || new Date().toLocaleDateString(),
-            status: item.status || 'Pending'
-          }));
+          const mappedInspections: Inspection[] = Array.isArray(data)
+            ? data.map(mapInspection)
+            : [];
           setInspections(mappedInspections);
         } else {
           console.error('Failed to fetch inspections');
@@ -69,14 +84,15 @@ export default function InspectionsTable({ onRowClick, onDocumentClick, onEditCl
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           inspectionName: newInspectionName.trim(),
         }),
       });
 
       if (response.ok) {
-        const newInspection = await response.json();
-        setInspections(prev => [...prev, newInspection]);
+        const createdInspection = await response.json();
+        setInspections(prev => [...prev, mapInspection(createdInspection)]);
         setShowAddInspectionPopup(false);
         setNewInspectionName('');
       } else {

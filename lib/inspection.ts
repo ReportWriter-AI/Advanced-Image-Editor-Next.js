@@ -4,23 +4,82 @@ import { ObjectId } from "mongodb";
 
 const DB_NAME = "agi_inspections_db"; // change this
 
-// 1. Create inspection
-export async function createInspection(data: {
+const COLLECTION_NAME = "inspections";
+
+type CreateInspectionParams = {
   name: string;
-  status: string;
-  date: string; // or Date
-}) {
+  companyId: string;
+  status?: string;
+  date?: string | Date;
+  createdBy?: string;
+};
+
+const formatInspection = (doc: any) => {
+  if (!doc) return null;
+  return {
+    _id: doc._id?.toString(),
+    id: doc._id?.toString(),
+    name: doc.name ?? "",
+    status: doc.status ?? "Pending",
+    date: doc.date ? new Date(doc.date).toISOString() : null,
+    companyId: doc.companyId ? doc.companyId.toString() : null,
+    createdBy: doc.createdBy ? doc.createdBy.toString() : null,
+    createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : null,
+    updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : null,
+  };
+};
+
+// 1. Create inspection scoped to a company
+export async function createInspection({
+  name,
+  companyId,
+  status,
+  date,
+  createdBy,
+}: CreateInspectionParams) {
+  if (!name || !companyId) {
+    throw new Error("Missing required inspection fields");
+  }
+
   const client = await clientPromise;
   const db = client.db(DB_NAME);
-  const result = await db.collection("inspections").insertOne(data);
-  return result.insertedId.toString();
+
+  const now = new Date();
+  const document: Record<string, any> = {
+    name,
+    status: status ?? "Pending",
+    date: date ? new Date(date) : now,
+    companyId: new ObjectId(companyId),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  if (createdBy) {
+    document.createdBy = ObjectId.isValid(createdBy)
+      ? new ObjectId(createdBy)
+      : createdBy;
+  }
+
+  const result = await db.collection(COLLECTION_NAME).insertOne(document);
+  return formatInspection({ ...document, _id: result.insertedId });
 }
 
-// 2. Get all inspections
-export async function getAllInspections() {
+// 2. Get all inspections for a company
+export async function getAllInspections(companyId: string) {
+  if (!companyId) {
+    return [];
+  }
+
   const client = await clientPromise;
   const db = client.db(DB_NAME);
-  return await db.collection("inspections").find({}).toArray();
+
+  const cursor = db
+    .collection(COLLECTION_NAME)
+    .find({ companyId: new ObjectId(companyId) })
+    .sort({ updatedAt: -1 });
+
+  const results = await cursor.toArray();
+  return results.map(formatInspection).filter(Boolean);
 }
 
 
@@ -33,7 +92,7 @@ export async function deleteInspection(inspectionId: string) {
     throw new Error('Invalid inspection ID format');
   }
 
-  const result = await db.collection("inspections").deleteOne({
+  const result = await db.collection(COLLECTION_NAME).deleteOne({
     _id: new ObjectId(inspectionId)
   });
 
@@ -70,7 +129,13 @@ export async function updateInspection(inspectionId: string, data: Partial<{
     return acc;
   }, {} as Record<string, any>);
 
-  const result = await db.collection("inspections").updateOne(
+  if (Object.keys(updateData).length === 0) {
+    return { matchedCount: 0, modifiedCount: 0 };
+  }
+
+  updateData.updatedAt = new Date();
+
+  const result = await db.collection(COLLECTION_NAME).updateOne(
     { _id: new ObjectId(inspectionId) },
     { $set: updateData }
   );

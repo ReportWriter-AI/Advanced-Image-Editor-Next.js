@@ -1,11 +1,22 @@
 "use client";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import styles from "../../user-report/user-report.module.css";
-import { useRef } from "react";
 import Button from "@/components/Button";
 import PermanentReportLinks from "@/components/PermanentReportLinks";
 import dynamic from 'next/dynamic';
+import { Button as UiButton } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 // Dynamic import of ThreeSixtyViewer to avoid SSR issues
 const ThreeSixtyViewer = dynamic(() => import('@/components/ThreeSixtyViewer'), {
@@ -112,10 +123,73 @@ const splitDefectText = (raw?: string): DefectTextParts => {
   return { title: normalized, body: "", paragraphs: [] };
 };
 
+const normalizeCompanyId = (value: any): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "bigint") {
+    const normalized = String(value).trim();
+    return normalized.length ? normalized : null;
+  }
+
+  if (typeof value === "object") {
+    if ("$oid" in value && value.$oid) {
+      const nested = normalizeCompanyId(value.$oid);
+      if (nested) return nested;
+    }
+    if ("_id" in value && value._id) {
+      const nested = normalizeCompanyId(value._id);
+      if (nested) return nested;
+    }
+    if ("id" in value && value.id) {
+      const nested = normalizeCompanyId(value.id);
+      if (nested) return nested;
+    }
+    if ("$id" in value && value.$id) {
+      const nested = normalizeCompanyId(value.$id);
+      if (nested) return nested;
+    }
+  }
+
+  return null;
+};
+
+const extractInspectionCompanyId = (inspection: any): string | null => {
+  if (!inspection) return null;
+
+  const candidates = [
+    inspection.companyId,
+    inspection.company_id,
+    inspection.companyID,
+    inspection.company,
+    inspection.organizationId,
+    inspection.organization_id,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeCompanyId(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  if (inspection.company && typeof inspection.company === "object") {
+    const nested =
+      normalizeCompanyId(inspection.company.id) ?? normalizeCompanyId(inspection.company._id);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
+};
+
 
 export default function InspectionReportPage() {
   const params = useParams();
   const { id } = params; // this is inspection_id
+  const resolvedInspectionId = Array.isArray(id) ? id[0] : id;
   const [defects, setDefects] = useState<any[]>([]);
   const [informationBlocks, setInformationBlocks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,6 +198,116 @@ export default function InspectionReportPage() {
   const [startingNumber, setStartingNumber] = useState(3) // Store initial number for PDF generation
   const [currentSubNumber, setCurrentSubNumber] = useState(1)
   const [inspection, setInspection] = useState<any>(null)
+  const [profileData, setProfileData] = useState<{ user?: any; company?: any } | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [sampleModalOpen, setSampleModalOpen] = useState(false);
+  const [sampleName, setSampleName] = useState("");
+  const [sampleDescription, setSampleDescription] = useState("");
+  const [sampleSaving, setSampleSaving] = useState(false);
+  const [sampleError, setSampleError] = useState<string | null>(null);
+
+  const profileCompanyId = useMemo(() => {
+    if (!profileData?.company) return null;
+    const company = profileData.company as Record<string, unknown>;
+    return (
+      normalizeCompanyId((company as any).id) ??
+      normalizeCompanyId((company as any)._id) ??
+      normalizeCompanyId(company)
+    );
+  }, [profileData]);
+
+  const inspectionCompanyId = useMemo(
+    () => extractInspectionCompanyId(inspection),
+    [inspection]
+  );
+
+  const isAuthenticated = Boolean(profileData?.user?.id);
+  const canShowMakeSampleButton = Boolean(
+    profileLoaded &&
+      isAuthenticated &&
+      resolvedInspectionId &&
+      inspectionCompanyId &&
+      profileCompanyId &&
+      inspectionCompanyId === profileCompanyId
+  );
+
+  const handleSampleModalChange = useCallback((open: boolean) => {
+    setSampleModalOpen(open);
+    if (!open) {
+      setSampleError(null);
+      setSampleSaving(false);
+    }
+  }, []);
+
+  const handleOpenSampleModal = useCallback(() => {
+    setSampleError(null);
+    setSampleName(inspection?.name || "");
+    setSampleDescription("");
+    setSampleModalOpen(true);
+  }, [inspection]);
+
+  const handleSampleReportSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!sampleName.trim()) {
+      setSampleError("Name is required.");
+      return;
+    }
+
+    if (!resolvedInspectionId) {
+      setSampleError("Invalid inspection identifier.");
+      return;
+    }
+
+    const trimmedDescription = sampleDescription.trim();
+    const payload: Record<string, any> = {
+      title: sampleName.trim(),
+      description: trimmedDescription ? trimmedDescription : undefined,
+      inspectionId: resolvedInspectionId,
+    };
+
+    const preferredUrl =
+      (typeof inspection?.htmlReportUrl === "string" && inspection.htmlReportUrl.trim()) ||
+      (typeof window !== "undefined"
+        ? `${window.location.origin}/inspection_report/${resolvedInspectionId}`
+        : "");
+
+    if (!preferredUrl) {
+      setSampleError("Unable to determine report URL.");
+      return;
+    }
+
+    payload.url = preferredUrl;
+
+    try {
+      setSampleSaving(true);
+      setSampleError(null);
+
+      const response = await fetch("/api/sample-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save sample report");
+      }
+
+      setSampleModalOpen(false);
+      setSampleName("");
+      setSampleDescription("");
+      if (typeof window !== "undefined") {
+        window.alert("Sample report saved successfully.");
+      }
+    } catch (error: any) {
+      console.error("Error saving sample report:", error);
+      setSampleError(error?.message || "Failed to save sample report");
+    } finally {
+      setSampleSaving(false);
+    }
+  };
 
   // Mobile detection hook
   const [isMobile, setIsMobile] = useState(false);
@@ -132,6 +316,56 @@ export default function InspectionReportPage() {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    const loadProfile = async () => {
+      try {
+        const response = await fetch('/api/profile', {
+          credentials: 'include',
+          signal: controller.signal,
+        });
+
+        if (response.status === 401) {
+          if (isMounted) {
+            setProfileData(null);
+          }
+          return;
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to load profile data');
+        }
+
+        const data = await response.json();
+        if (isMounted) {
+          setProfileData(data);
+        }
+      } catch (error: any) {
+        if (error?.name === 'AbortError') {
+          return;
+        }
+        console.error('Error fetching profile data:', error);
+        if (isMounted) {
+          setProfileData(null);
+        }
+      } finally {
+        if (isMounted) {
+          setProfileLoaded(true);
+        }
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
 
   const reportRef = useRef<HTMLDivElement>(null);
@@ -366,10 +600,10 @@ export default function InspectionReportPage() {
   
   // Fetch inspection data including header image
   useEffect(() => {
-    if (id) {
+    if (resolvedInspectionId) {
       const fetchInspection = async () => {
         try {
-          const response = await fetch(`/api/inspections/${id}`);
+          const response = await fetch(`/api/inspections/${resolvedInspectionId}`);
           if (response.ok) {
             const data = await response.json();
             setInspection(data);
@@ -390,14 +624,14 @@ export default function InspectionReportPage() {
       
       fetchInspection();
     }
-  }, [id]);
+  }, [resolvedInspectionId]);
 
   // Load inspection-only checklists from localStorage and merge into informationBlocks
   useEffect(() => {
-    if (!id || !informationBlocks || informationBlocks.length === 0) return;
+    if (!resolvedInspectionId || !informationBlocks || informationBlocks.length === 0) return;
 
     try {
-      const storageKey = `inspection_checklists_${id}`;
+      const storageKey = `inspection_checklists_${resolvedInspectionId}`;
       const stored = localStorage.getItem(storageKey);
       
       if (!stored) return; // No inspection-only checklists
@@ -428,7 +662,7 @@ export default function InspectionReportPage() {
     } catch (error) {
       console.error('Error loading inspection-only checklists:', error);
     }
-  }, [id, informationBlocks.length]); // Only re-run when id changes or informationBlocks initially loads
+  }, [resolvedInspectionId, informationBlocks.length]); // Only re-run when id changes or informationBlocks initially loads
 
   const handleDownloadPDF = async (reportType: 'full' | 'summary' = 'full') => {
     try {
@@ -483,7 +717,7 @@ export default function InspectionReportPage() {
         body: JSON.stringify({ 
           defects: defectsPayload, 
           meta,
-          inspectionId: id, // Pass inspection ID
+          inspectionId: resolvedInspectionId, // Pass inspection ID
           reportMode: reportType // Pass report mode (full/summary)
         }),
       });
@@ -498,7 +732,7 @@ export default function InspectionReportPage() {
       if (permanentUrl) {
         console.log(`✅ PDF uploaded to: ${permanentUrl}`);
         // Refresh inspection data to get the new permanent URL
-        const inspectionRes = await fetch(`/api/inspections/${id}`);
+        const inspectionRes = await fetch(`/api/inspections/${resolvedInspectionId}`);
         if (inspectionRes.ok) {
           const updatedInspection = await inspectionRes.json();
           setInspection(updatedInspection); // Update state with new URLs
@@ -525,7 +759,7 @@ export default function InspectionReportPage() {
   const handleDownloadHTML = async (reportType: 'full' | 'summary' = 'full') => {
     // Build a minimal standalone HTML using current reportSections
     try {
-      const title = `inspection-${id}-${reportType}-report`;
+      const title = `inspection-${resolvedInspectionId}-${reportType}-report`;
       
       // Use header image from inspection data or UI selection
       // This is the same logic as in handleDownloadPDF
@@ -1614,7 +1848,7 @@ export default function InspectionReportPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             htmlContent: doc,
-            inspectionId: id,
+            inspectionId: resolvedInspectionId,
             reportMode: reportType
           })
         });
@@ -1624,7 +1858,7 @@ export default function InspectionReportPage() {
           console.log(`✅ HTML uploaded to: ${permanentUrl}`);
           
           // Refresh inspection data to get the new permanent URL
-          const inspectionRes = await fetch(`/api/inspections/${id}`);
+        const inspectionRes = await fetch(`/api/inspections/${resolvedInspectionId}`);
           if (inspectionRes.ok) {
             const updatedInspection = await inspectionRes.json();
             setInspection(updatedInspection); // Update state with new URLs
@@ -1649,7 +1883,7 @@ export default function InspectionReportPage() {
     async function fetchDefects() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/defects/${id}`);
+        const res = await fetch(`/api/defects/${resolvedInspectionId}`);
         if (!res.ok) throw new Error("Failed to fetch defects");
         const data = await res.json();
         console.log(data);
@@ -1663,7 +1897,7 @@ export default function InspectionReportPage() {
 
     async function fetchInformationBlocks() {
       try {
-        const res = await fetch(`/api/information-sections/${id}`);
+        const res = await fetch(`/api/information-sections/${resolvedInspectionId}`);
         if (res.ok) {
           const json = await res.json();
           if (json.success) {
@@ -1675,14 +1909,14 @@ export default function InspectionReportPage() {
       }
     }
 
-    if (id) {
+    if (resolvedInspectionId) {
       fetchDefects();
       fetchInformationBlocks();
     }
     
     // Refetch information blocks when window regains focus (e.g., returning from image editor)
     const handleFocus = () => {
-      if (id) {
+      if (resolvedInspectionId) {
         console.log('🔄 Window regained focus, refetching information blocks...');
         fetchInformationBlocks();
       }
@@ -1690,7 +1924,7 @@ export default function InspectionReportPage() {
     
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [id]);
+  }, [resolvedInspectionId]);
 
   const [reportSections, setReportSections] = useState<any[]>([]);
 
@@ -2208,6 +2442,17 @@ export default function InspectionReportPage() {
                   )}
                 </div>
                 <div className={styles.toolbarRightGroup}>
+                  {canShowMakeSampleButton && (
+                    <button
+                      type="button"
+                      className={styles.toolbarBtn}
+                      onClick={handleOpenSampleModal}
+                      disabled={sampleSaving}
+                      style={sampleSaving ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+                    >
+                      Make A Sample Report
+                    </button>
+                  )}
                   {/* HTML Dropdown */}
                   <div ref={htmlDropdownRef} className={styles.htmlDropdownContainer}>
                     <button 
@@ -4424,6 +4669,64 @@ export default function InspectionReportPage() {
             </div>
         </div>
       </main>
+      <Dialog open={sampleModalOpen} onOpenChange={handleSampleModalChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Make A Sample Report</DialogTitle>
+            <DialogDescription>
+              Give this report a name and description to feature it on your Sample Reports page.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            id="make-sample-report-form"
+            className="space-y-4"
+            onSubmit={handleSampleReportSubmit}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="sample-report-name">Name</Label>
+              <Input
+                id="sample-report-name"
+                value={sampleName}
+                onChange={(event) => setSampleName(event.target.value)}
+                placeholder="e.g. Premium Home Inspection"
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sample-report-description">Description</Label>
+              <Textarea
+                id="sample-report-description"
+                value={sampleDescription}
+                onChange={(event) => setSampleDescription(event.target.value)}
+                rows={4}
+                placeholder="Add context that highlights what this sample showcases."
+              />
+              <p className="text-xs text-muted-foreground">
+                This description appears alongside the sample on your Sample Reports page.
+              </p>
+            </div>
+            {sampleError && <p className="text-sm text-red-600">{sampleError}</p>}
+          </form>
+          <DialogFooter>
+            <UiButton
+              type="button"
+              variant="outline"
+              onClick={() => handleSampleModalChange(false)}
+              disabled={sampleSaving}
+            >
+              Cancel
+            </UiButton>
+            <UiButton
+              type="submit"
+              form="make-sample-report-form"
+              disabled={sampleSaving}
+            >
+              {sampleSaving ? "Saving..." : "Save Sample Report"}
+            </UiButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
 
   );

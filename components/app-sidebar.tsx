@@ -15,7 +15,8 @@ import {
 	Shield,
 	UserCog,
 	Wrench,
-	CalendarClock
+	CalendarClock,
+	BookMarked,
 } from "lucide-react";
 
 import {
@@ -51,6 +52,11 @@ const data = {
 					title: "Reports",
 					url: "/reports",
 					icon: FileText,
+				},
+				{
+					title: "Sample Reports",
+					url: "/sample-report",
+					icon: BookMarked,
 				},
 				{
 					title: "Services",

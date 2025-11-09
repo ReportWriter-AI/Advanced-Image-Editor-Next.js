@@ -16,6 +16,11 @@ export interface DayScheduleLike {
   timeSlots: string[];
 }
 
+const createDefaultSchedule = (): DayScheduleLike => ({
+  openSchedule: [],
+  timeSlots: [],
+});
+
 export const ALLOWED_TIMES = generateTimes(
   SCHEDULE_START_TIME,
   SCHEDULE_END_TIME,
@@ -110,10 +115,7 @@ export function normalizeDaysRecord<T extends DayScheduleLike>(
     const dayValue = days?.[day];
     acc[day] =
       dayValue ??
-      ({
-        openSchedule: [],
-        timeSlots: [],
-      } as T);
+      (createDefaultSchedule() as unknown as T);
     return acc;
   }, {} as Record<DayKey, T>);
 }

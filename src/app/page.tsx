@@ -8,9 +8,14 @@ export default function Home() {
       <header className="border-b bg-background/70 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-3 px-4 py-4 sm:flex-row sm:items-center">
           <div className="text-xl font-semibold tracking-tight sm:text-2xl">Advanced Image Editor</div>
-          <Button asChild className="w-full sm:w-auto">
-            <Link href="/dashboard">Go to Dashboard</Link>
-          </Button>
+          <div className="flex w-full gap-3 sm:w-auto">
+            <Button asChild className="w-full sm:w-auto">
+              <Link href="/dashboard">Go to Dashboard</Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full sm:w-auto">
+              <Link href="/sample-report">Make A Sample Report</Link>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -32,6 +37,9 @@ export default function Home() {
             </Button>
             <Button size="lg" variant="outline" className="w-full sm:w-auto">
               Learn More
+            </Button>
+            <Button size="lg" variant="secondary" asChild className="w-full sm:w-auto">
+              <Link href="/sample-report">Make A Sample Report</Link>
             </Button>
           </div>
         </section>
