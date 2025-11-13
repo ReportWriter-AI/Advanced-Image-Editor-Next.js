@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import type { UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,18 +29,8 @@ import {
   fieldSupportsType,
   type ModifierFieldKey,
 } from "@/constants/modifierOptions";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-  SelectGroup,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Check, ChevronsUpDown, GripVertical, Info, Loader2, PlusCircle, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronsUpDown, GripVertical, Info, Loader2, PlusCircle, Trash2 } from "lucide-react";
 import { DndContext, DragEndEvent, closestCenter } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -197,6 +187,131 @@ const DEFAULT_MODIFIER_VALUE = {
   addHours: "",
 } as const;
 
+const getModifierFieldLabel = (fieldKey: string) => {
+  const option = MODIFIER_FIELDS.find((opt) => opt.key === fieldKey);
+  return option?.label ?? fieldKey;
+};
+
+interface SearchableSelectOption {
+  value: string;
+  label: string;
+}
+
+interface SearchableSelectSection {
+  label?: string;
+  options: SearchableSelectOption[];
+}
+
+interface SearchableSelectProps {
+  value?: string;
+  onValueChange: (value: string) => void;
+  placeholder?: string;
+  sections: SearchableSelectSection[];
+  disabled?: boolean;
+  emptyText?: string;
+}
+
+function SearchableSelect({
+  value,
+  onValueChange,
+  placeholder = "Select an option",
+  sections,
+  disabled,
+  emptyText = "No option found.",
+}: SearchableSelectProps) {
+  const [open, setOpen] = useState(false);
+
+  const allOptions = useMemo(
+    () => sections.flatMap((section) => section.options),
+    [sections]
+  );
+  const selectedOption = allOptions.find((option) => option.value === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            "w-full justify-between hover:bg-muted",
+            disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+            !selectedOption && "text-muted-foreground"
+          )}
+          disabled={disabled}
+        >
+          {selectedOption ? selectedOption.label : placeholder}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search..." />
+          <CommandEmpty>{emptyText}</CommandEmpty>
+          <CommandList className="max-h-60 overflow-y-auto">
+            {sections.map((section, sectionIndex) => (
+              <CommandGroup
+                key={section.label ?? sectionIndex}
+                heading={section.label}
+              >
+                {section.options.map((option) => (
+                  <CommandItem
+                    key={option.value}
+                    value={`${option.value} ${option.label}`}
+                    onSelect={() => {
+                      onValueChange(option.value);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        option.value === value ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {option.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+const buildModifierFieldSections = (): SearchableSelectSection[] => {
+  const standardOptions = MODIFIER_FIELDS.filter((option) => option.group !== "custom").map((option) => ({
+    value: option.key,
+    label: option.label,
+  }));
+  const customOptions = MODIFIER_FIELDS.filter((option) => option.group === "custom").map((option) => ({
+    value: option.key,
+    label: option.label,
+  }));
+
+  const sections: SearchableSelectSection[] = [];
+  if (standardOptions.length > 0) {
+    sections.push({ options: standardOptions });
+  }
+  if (customOptions.length > 0) {
+    sections.push({ label: "-- Custom Field --", options: customOptions });
+  }
+  return sections;
+};
+
+const buildModifierTypeSections = (): SearchableSelectSection[] => [
+  {
+    options: MODIFIER_TYPES.map((option) => ({
+      value: option.key,
+      label: option.label,
+    })),
+  },
+];
+
 const createDefaultAddOn = (orderIndex = 0): AddOnFormValues => ({
   name: "",
   serviceCategory: "",
@@ -261,11 +376,116 @@ export function ServiceForm({
   });
 
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [modifiersSectionCollapsed, setModifiersSectionCollapsed] = useState(true);
+  const [addOnsSectionCollapsed, setAddOnsSectionCollapsed] = useState(true);
+  const [modifierCollapsedMap, setModifierCollapsedMap] = useState<Record<string, boolean>>({});
+  const [addOnCollapsedMap, setAddOnCollapsedMap] = useState<Record<string, boolean>>({});
+  const [taxCollapsedMap, setTaxCollapsedMap] = useState<Record<string, boolean>>({});
+  const modifiersInitRef = useRef(true);
+  const prevModifierIdsRef = useRef<string[]>([]);
+  const addOnsInitRef = useRef(true);
+  const prevAddOnIdsRef = useRef<string[]>([]);
+  const taxesInitRef = useRef(true);
+  const prevTaxIdsRef = useRef<string[]>([]);
 
   const defaultEventsPlaceholder = useMemo(() => "Event Names (comma separated)", []);
+  const modifierFieldSections = useMemo<SearchableSelectSection[]>(() => buildModifierFieldSections(), []);
+  const modifierTypeSections = useMemo<SearchableSelectSection[]>(() => buildModifierTypeSections(), []);
+
+  useEffect(() => {
+    const prevIds = prevModifierIdsRef.current;
+    const currentIds = modifierFields.map((field) => field.id);
+
+    setModifierCollapsedMap((prev) => {
+      const next: Record<string, boolean> = {};
+      currentIds.forEach((id) => {
+        if (prev[id] !== undefined) {
+          next[id] = prev[id];
+        } else {
+          next[id] = modifiersInitRef.current ? true : false;
+        }
+      });
+      return next;
+    });
+
+    if (!modifiersInitRef.current) {
+      const newlyAddedIds = currentIds.filter((id) => !prevIds.includes(id));
+      if (newlyAddedIds.length > 0) {
+        setModifiersSectionCollapsed(false);
+      }
+    }
+
+    modifiersInitRef.current = false;
+    prevModifierIdsRef.current = currentIds;
+  }, [modifierFields]);
+
+  useEffect(() => {
+    const prevIds = prevAddOnIdsRef.current;
+    const currentIds = addOnFields.map((field) => field.id);
+    const newlyAddedIds = currentIds.filter((id) => !prevIds.includes(id));
+
+    setAddOnCollapsedMap((prev) => {
+      const next: Record<string, boolean> = {};
+      currentIds.forEach((id) => {
+        if (prev[id] !== undefined) {
+          next[id] = prev[id];
+        } else {
+          next[id] = addOnsInitRef.current ? true : false;
+        }
+      });
+
+      if (!addOnsInitRef.current && newlyAddedIds.length > 0) {
+        newlyAddedIds.forEach((id) => {
+          next[id] = false;
+        });
+      }
+
+      return next;
+    });
+
+    if (!addOnsInitRef.current && newlyAddedIds.length > 0) {
+      setAddOnsSectionCollapsed(false);
+    }
+
+    addOnsInitRef.current = false;
+    prevAddOnIdsRef.current = currentIds;
+  }, [addOnFields]);
+
+  useEffect(() => {
+    const prevIds = prevTaxIdsRef.current;
+    const currentIds = taxFields.map((field) => field.id);
+    const newlyAddedIds = currentIds.filter((id) => !prevIds.includes(id));
+
+    setTaxCollapsedMap((prev) => {
+      const next: Record<string, boolean> = {};
+      currentIds.forEach((id) => {
+        if (prev[id] !== undefined) {
+          next[id] = prev[id];
+        } else {
+          next[id] = taxesInitRef.current ? true : false;
+        }
+      });
+
+      if (!taxesInitRef.current && newlyAddedIds.length > 0) {
+        newlyAddedIds.forEach((id) => {
+          next[id] = false;
+        });
+      }
+
+      return next;
+    });
+
+    taxesInitRef.current = false;
+    prevTaxIdsRef.current = currentIds;
+  }, [taxFields]);
 
   useEffect(() => {
     if (initialValues) {
+      modifiersInitRef.current = true;
+      addOnsInitRef.current = true;
+      setModifierCollapsedMap({});
+      setAddOnCollapsedMap({});
+      setAddOnsSectionCollapsed(true);
       form.reset({
         ...DEFAULT_VALUES,
         ...initialValues,
@@ -380,6 +600,7 @@ export function ServiceForm({
   const isSubmitting = form.formState.isSubmitting || isSubmittingExternal;
 
   const handleAddModifier = () => {
+    setModifiersSectionCollapsed(false);
     append({ ...DEFAULT_MODIFIER_VALUE });
   };
 
@@ -416,8 +637,9 @@ export function ServiceForm({
   };
 
   const handleAddAddOn = () => {
-    appendAddOn(createDefaultAddOn(addOnFields.length));
-  };
+  setAddOnsSectionCollapsed(false);
+  appendAddOn(createDefaultAddOn(addOnFields.length));
+};
 
   const handleTaxDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -438,6 +660,36 @@ export function ServiceForm({
   };
 
   const getType = (index: number) => form.watch(`modifiers.${index}.type`);
+
+  const toggleModifierCard = (id: string) => {
+    setModifierCollapsedMap((prev) => {
+      const current = prev[id] ?? true;
+      return {
+        ...prev,
+        [id]: !current,
+      };
+    });
+  };
+
+  const toggleAddOnCard = (id: string) => {
+    setAddOnCollapsedMap((prev) => {
+      const current = prev[id] ?? true;
+      return {
+        ...prev,
+        [id]: !current,
+      };
+    });
+  };
+
+  const toggleTaxCard = (id: string) => {
+    setTaxCollapsedMap((prev) => {
+      const current = prev[id] ?? true;
+      return {
+        ...prev,
+        [id]: !current,
+      };
+    });
+  };
 
   return (
     <TooltipProvider>
@@ -479,7 +731,7 @@ export function ServiceForm({
                     <Command>
                       <CommandInput placeholder="Search category..." />
                       <CommandEmpty>No category found.</CommandEmpty>
-                      <CommandList>
+                      <CommandList className="max-h-60 overflow-y-auto">
                         <CommandGroup>
                           {SERVICE_CATEGORIES.map((category) => (
                             <CommandItem
@@ -632,256 +884,312 @@ export function ServiceForm({
       </div>
 
       <div className="space-y-3 rounded-lg border p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="text-base font-semibold">Modifiers</h3>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-1 flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setModifiersSectionCollapsed((prev) => !prev)}
+                className="flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-muted"
+                aria-label={modifiersSectionCollapsed ? "Expand modifiers section" : "Collapse modifiers section"}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-5 w-5 shrink-0 transition-transform",
+                    modifiersSectionCollapsed ? "-rotate-90" : "rotate-0"
+                  )}
+                />
+              </button>
+              <h3 className="text-base font-semibold">Modifiers</h3>
+            </div>
             <p className="text-sm text-muted-foreground">
               Add additional fees &amp; hours when properties match specific criteria such as square footage or age.
             </p>
           </div>
-        </div>
-
-        {modifierFields.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No modifiers added yet.</div>
-        ) : (
-          <div className="space-y-4">
-            {modifierFields.map((field, index) => {
-              const fieldValue = form.watch(`modifiers.${index}.field`) as ModifierFieldKey;
-              const typeValue = getType(index);
-              const supportsType = fieldSupportsType(fieldValue);
-              const requiresRange = fieldRequiresRangeInputs(fieldValue);
-              const hasEquals = fieldHasEquals(fieldValue);
-              const showGreaterThan =
-                requiresRange || (!supportsType && !hasEquals) || (supportsType && typeValue === "per_unit_over");
-              const showLessThan = requiresRange || (supportsType && typeValue === "range");
-
-              return (
-                <div key={field.id} className="rounded-md border bg-muted/10 p-4">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div className="grid flex-1 gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Field</Label>
-                        <Controller
-                          name={`modifiers.${index}.field`}
-                          control={form.control}
-                          render={({ field: fieldController }) => (
-                            <Select
-                              value={fieldController.value}
-                              onValueChange={(value) => handleFieldChange(index, value)}
-                              disabled={isSubmitting}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select field" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {MODIFIER_FIELDS.filter((option) => option.group !== "custom").map((option) => (
-                                  <SelectItem key={option.key} value={option.key}>
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                                {MODIFIER_FIELDS.some((option) => option.group === "custom") && (
-                                  <>
-                                    <SelectSeparator />
-                                    <SelectGroup>
-                                      <SelectLabel>-- Custom Field --</SelectLabel>
-                                      {MODIFIER_FIELDS.filter((option) => option.group === "custom").map((option) => (
-                                        <SelectItem key={option.key} value={option.key}>
-                                          {option.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  </>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        />
-                      </div>
-
-                      {supportsType && (
-                        <div className="space-y-2">
-                          <Label>Type</Label>
-                          <Controller
-                            name={`modifiers.${index}.type`}
-                            control={form.control}
-                            render={({ field: typeController }) => (
-                              <Select
-                                value={typeController.value || "range"}
-                                onValueChange={(value) => {
-                                  typeController.onChange(value);
-                                  const current = form.getValues(`modifiers.${index}`);
-                                  if (value === "range") {
-                                    form.setValue(`modifiers.${index}.greaterThan`, current.greaterThan || "");
-                                    form.setValue(`modifiers.${index}.lessThanOrEqual`, current.lessThanOrEqual || "");
-                                  } else if (value === "per_unit_over") {
-                                    form.setValue(`modifiers.${index}.greaterThan`, current.greaterThan || "");
-                                    form.setValue(`modifiers.${index}.lessThanOrEqual`, "");
-                                  } else {
-                                    form.setValue(`modifiers.${index}.greaterThan`, "");
-                                    form.setValue(`modifiers.${index}.lessThanOrEqual`, "");
-                                  }
-                                }}
-                                disabled={isSubmitting}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {MODIFIER_TYPES.map((option) => (
-                                    <SelectItem key={option.key} value={option.key}>
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-                          />
-                        </div>
-                      )}
-
-                      {showGreaterThan && (
-                        <div className="space-y-2">
-                          <Label>Greater than</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0"
-                            {...form.register(`modifiers.${index}.greaterThan`)}
-                          />
-                          {form.formState.errors.modifiers?.[index]?.greaterThan && (
-                            <p className="text-xs text-red-600">
-                              {form.formState.errors.modifiers?.[index]?.greaterThan?.message}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {showLessThan && (
-                        <div className="space-y-2">
-                          <Label>Less than or equal to</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0"
-                            {...form.register(`modifiers.${index}.lessThanOrEqual`)}
-                          />
-                          {form.formState.errors.modifiers?.[index]?.lessThanOrEqual && (
-                            <p className="text-xs text-red-600">
-                              {form.formState.errors.modifiers?.[index]?.lessThanOrEqual?.message}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {hasEquals && (
-                        <div className="space-y-2">
-                          <Label>Equals</Label>
-                          <Input
-                            placeholder="Value"
-                            {...form.register(`modifiers.${index}.equals`)}
-                          />
-                          {form.formState.errors.modifiers?.[index]?.equals && (
-                            <p className="text-xs text-red-600">
-                              {form.formState.errors.modifiers?.[index]?.equals?.message}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <Label>Add Fee</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          {...form.register(`modifiers.${index}.addFee`)}
-                        />
-                        {form.formState.errors.modifiers?.[index]?.addFee && (
-                          <p className="text-xs text-red-600">
-                            {form.formState.errors.modifiers?.[index]?.addFee?.message}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Add Hours</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.0"
-                          {...form.register(`modifiers.${index}.addHours`)}
-                        />
-                        {form.formState.errors.modifiers?.[index]?.addHours && (
-                          <p className="text-xs text-red-600">
-                            {form.formState.errors.modifiers?.[index]?.addHours?.message}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="self-start text-destructive hover:text-destructive"
-                      onClick={() => remove(index)}
-                      disabled={isSubmitting}
-                      title="Remove modifier"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="flex justify-end">
           <Button type="button" variant="outline" size="sm" onClick={handleAddModifier} disabled={isSubmitting}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Modifier
           </Button>
         </div>
+
+        {!modifiersSectionCollapsed && (
+          <>
+            {modifierFields.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No modifiers added yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {modifierFields.map((field, index) => {
+                  const fieldValue = form.watch(`modifiers.${index}.field`) as ModifierFieldKey;
+                  const typeValue = getType(index);
+                  const supportsType = fieldSupportsType(fieldValue);
+                  const requiresRange = fieldRequiresRangeInputs(fieldValue);
+                  const hasEquals = fieldHasEquals(fieldValue);
+                  const showGreaterThan =
+                    requiresRange ||
+                    (!supportsType && !hasEquals) ||
+                    (supportsType && (typeValue === "range" || typeValue === "per_unit_over"));
+                  const showLessThan = requiresRange || (supportsType && typeValue === "range");
+                  const isCollapsed =
+                    modifierCollapsedMap[field.id] ?? (modifiersInitRef.current ? true : false);
+
+                  return (
+                    <div key={field.id} className="rounded-md border bg-muted/10">
+                      <div className="flex items-start justify-between gap-3 p-4">
+                        <div className="flex flex-1 items-center gap-2">
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-muted"
+                            onClick={() => toggleModifierCard(field.id)}
+                            aria-label={
+                              isCollapsed ? "Expand modifier details" : "Collapse modifier details"
+                            }
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "h-5 w-5 shrink-0 transition-transform",
+                                isCollapsed ? "-rotate-90" : "rotate-0"
+                              )}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            className="flex-1 text-left"
+                            onClick={() => toggleModifierCard(field.id)}
+                          >
+                            <p className="text-sm font-semibold">
+                              {getModifierFieldLabel(fieldValue) || "Select a field"}
+                            </p>
+                          </button>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => remove(index)}
+                          disabled={isSubmitting}
+                          title="Remove modifier"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {!isCollapsed && (
+                        <div className="border-t p-4">
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label>Field</Label>
+                              <Controller
+                                name={`modifiers.${index}.field`}
+                                control={form.control}
+                                render={({ field: fieldController }) => (
+                                  <SearchableSelect
+                                    value={fieldController.value}
+                                    onValueChange={(newValue) => {
+                                      fieldController.onChange(newValue);
+                                      handleFieldChange(index, newValue);
+                                    }}
+                                    placeholder="Select field"
+                                    sections={modifierFieldSections}
+                                    disabled={isSubmitting}
+                                  />
+                                )}
+                              />
+                            </div>
+
+                            {supportsType && (
+                              <div className="space-y-2">
+                                <Label>Type</Label>
+                                <Controller
+                                  name={`modifiers.${index}.type`}
+                                  control={form.control}
+                                  render={({ field: typeController }) => (
+                                    <SearchableSelect
+                                      value={typeController.value || "range"}
+                                      onValueChange={(newValue) => {
+                                        typeController.onChange(newValue);
+                                        const current = form.getValues(`modifiers.${index}`);
+                                        if (newValue === "range") {
+                                          form.setValue(`modifiers.${index}.greaterThan`, current.greaterThan || "");
+                                          form.setValue(
+                                            `modifiers.${index}.lessThanOrEqual`,
+                                            current.lessThanOrEqual || ""
+                                          );
+                                        } else if (newValue === "per_unit_over") {
+                                          form.setValue(`modifiers.${index}.greaterThan`, current.greaterThan || "");
+                                          form.setValue(`modifiers.${index}.lessThanOrEqual`, "");
+                                        } else {
+                                          form.setValue(`modifiers.${index}.greaterThan`, "");
+                                          form.setValue(`modifiers.${index}.lessThanOrEqual`, "");
+                                        }
+                                      }}
+                                      placeholder="Select type"
+                                      sections={modifierTypeSections}
+                                      disabled={isSubmitting}
+                                    />
+                                  )}
+                                />
+                              </div>
+                            )}
+
+                            {showGreaterThan && (
+                              <div className="space-y-2">
+                                <Label>Greater than</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="0"
+                                  {...form.register(`modifiers.${index}.greaterThan`)}
+                                />
+                                {form.formState.errors.modifiers?.[index]?.greaterThan && (
+                                  <p className="text-xs text-red-600">
+                                    {form.formState.errors.modifiers?.[index]?.greaterThan?.message}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {showLessThan && (
+                              <div className="space-y-2">
+                                <Label>Less than or equal to</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="0"
+                                  {...form.register(`modifiers.${index}.lessThanOrEqual`)}
+                                />
+                                {form.formState.errors.modifiers?.[index]?.lessThanOrEqual && (
+                                  <p className="text-xs text-red-600">
+                                    {form.formState.errors.modifiers?.[index]?.lessThanOrEqual?.message}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {hasEquals && (
+                              <div className="space-y-2">
+                                <Label>Equals</Label>
+                                <Input placeholder="Value" {...form.register(`modifiers.${index}.equals`)} />
+                                {form.formState.errors.modifiers?.[index]?.equals && (
+                                  <p className="text-xs text-red-600">
+                                    {form.formState.errors.modifiers?.[index]?.equals?.message}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="space-y-2">
+                              <Label>Add Fee</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                {...form.register(`modifiers.${index}.addFee`)}
+                              />
+                              {form.formState.errors.modifiers?.[index]?.addFee && (
+                                <p className="text-xs text-red-600">
+                                  {form.formState.errors.modifiers?.[index]?.addFee?.message}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label>Add Hours</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="0.0"
+                                {...form.register(`modifiers.${index}.addHours`)}
+                              />
+                              {form.formState.errors.modifiers?.[index]?.addHours && (
+                                <p className="text-xs text-red-600">
+                                  {form.formState.errors.modifiers?.[index]?.addHours?.message}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={handleAddModifier} disabled={isSubmitting}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add Modifier
+              </Button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="space-y-3 rounded-lg border p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="text-base font-semibold">Add-ons</h3>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-1 flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAddOnsSectionCollapsed((prev) => !prev)}
+                className="flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-muted"
+                aria-label={addOnsSectionCollapsed ? "Expand add-ons section" : "Collapse add-ons section"}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-5 w-5 shrink-0 transition-transform",
+                    addOnsSectionCollapsed ? "-rotate-90" : "rotate-0"
+                  )}
+                />
+              </button>
+              <h3 className="text-base font-semibold">Add-ons</h3>
+            </div>
             <p className="text-sm text-muted-foreground">
               Give your client options to add additional services and upsells.
             </p>
           </div>
-        </div>
-
-        {addOnFields.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No add-ons added yet.</div>
-        ) : (
-          <DndContext collisionDetection={closestCenter} onDragEnd={handleAddOnDragEnd}>
-            <SortableContext items={addOnFields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-4">
-                {addOnFields.map((field, index) => (
-                  <SortableAddOnItem
-                    key={field.id}
-                    fieldId={field.id}
-                    //@ts-ignore
-                    form={form}
-                    index={index}
-                    isSubmitting={isSubmitting}
-                    onRemove={() => removeAddOn(index)}
-                    defaultEventsPlaceholder={defaultEventsPlaceholder}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        )}
-
-        <div className="flex justify-end">
           <Button type="button" variant="outline" size="sm" onClick={handleAddAddOn} disabled={isSubmitting}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Add-on
           </Button>
         </div>
+
+        {!addOnsSectionCollapsed && (
+          <>
+            {addOnFields.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No add-ons added yet.</div>
+            ) : (
+              <DndContext collisionDetection={closestCenter} onDragEnd={handleAddOnDragEnd}>
+                <SortableContext items={addOnFields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-4">
+                    {addOnFields.map((field, index) => {
+                      const collapsed =
+                        addOnCollapsedMap[field.id] ?? (addOnsInitRef.current ? true : false);
+                      return (
+                        <SortableAddOnItem
+                          key={field.id}
+                          fieldId={field.id}
+                          //@ts-ignore
+                          form={form}
+                          index={index}
+                          isSubmitting={isSubmitting}
+                          onRemove={() => removeAddOn(index)}
+                          defaultEventsPlaceholder={defaultEventsPlaceholder}
+                          collapsed={collapsed}
+                          onToggleCollapse={() => toggleAddOnCard(field.id)}
+                        />
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
+
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={handleAddAddOn} disabled={isSubmitting}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add Add-on
+              </Button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="space-y-3 rounded-lg border p-4">
@@ -900,17 +1208,22 @@ export function ServiceForm({
           <DndContext collisionDetection={closestCenter} onDragEnd={handleTaxDragEnd}>
             <SortableContext items={taxFields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
-                {taxFields.map((field, index) => (
-                  <SortableTaxItem
-                    key={field.id}
-                    fieldId={field.id}
-                    //@ts-ignore
-                    form={form}
-                    index={index}
-                    isSubmitting={isSubmitting}
-                    onRemove={() => removeTax(index)}
-                  />
-                ))}
+                    {taxFields.map((field, index) => {
+                      const collapsed = taxCollapsedMap[field.id] ?? (taxesInitRef.current ? true : false);
+                      return (
+                        <SortableTaxItem
+                          key={field.id}
+                          fieldId={field.id}
+                          //@ts-ignore
+                          form={form}
+                          index={index}
+                          isSubmitting={isSubmitting}
+                          onRemove={() => removeTax(index)}
+                          collapsed={collapsed}
+                          onToggleCollapse={() => toggleTaxCard(field.id)}
+                        />
+                      );
+                    })}
               </div>
             </SortableContext>
           </DndContext>
@@ -950,6 +1263,8 @@ interface SortableAddOnItemProps {
   isSubmitting: boolean;
   onRemove: () => void;
   defaultEventsPlaceholder: string;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function SortableAddOnItem({
@@ -959,6 +1274,8 @@ function SortableAddOnItem({
   isSubmitting,
   onRemove,
   defaultEventsPlaceholder,
+  collapsed,
+  onToggleCollapse,
 }: SortableAddOnItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: fieldId });
 
@@ -976,6 +1293,8 @@ function SortableAddOnItem({
         onRemove={onRemove}
         dragHandleProps={{ attributes, listeners }}
         defaultEventsPlaceholder={defaultEventsPlaceholder}
+        collapsed={collapsed}
+        onToggleCollapse={onToggleCollapse}
       />
     </div>
   );
@@ -991,6 +1310,8 @@ interface AddOnCardProps {
     listeners?: Record<string, any>;
   };
   defaultEventsPlaceholder: string;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function AddOnCard({
@@ -1000,8 +1321,15 @@ function AddOnCard({
   onRemove,
   dragHandleProps,
   defaultEventsPlaceholder,
+  collapsed,
+  onToggleCollapse,
 }: AddOnCardProps) {
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [modifierCollapsedMap, setModifierCollapsedMap] = useState<Record<string, boolean>>({});
+  const modifierInitRef = useRef(true);
+  const prevModifierIdsRef = useRef<string[]>([]);
+  const modifierFieldSections = useMemo<SearchableSelectSection[]>(() => buildModifierFieldSections(), []);
+  const modifierTypeSections = useMemo<SearchableSelectSection[]>(() => buildModifierTypeSections(), []);
   const addOnPath = `addOns.${index}` as const;
   const addOnErrors = form.formState.errors.addOns?.[index];
 
@@ -1018,6 +1346,34 @@ function AddOnCard({
     control: form.control,
     name: `${addOnPath}.modifiers` as const,
   });
+
+  useEffect(() => {
+    const prevIds = prevModifierIdsRef.current;
+    const currentIds = modifierFields.map((field) => field.id);
+    const newlyAddedIds = currentIds.filter((id) => !prevIds.includes(id));
+
+    setModifierCollapsedMap((prev) => {
+      const next: Record<string, boolean> = {};
+      currentIds.forEach((id) => {
+        if (prev[id] !== undefined) {
+          next[id] = prev[id];
+        } else {
+          next[id] = modifierInitRef.current ? true : false;
+        }
+      });
+
+      if (!modifierInitRef.current && newlyAddedIds.length > 0) {
+        newlyAddedIds.forEach((id) => {
+          next[id] = false;
+        });
+      }
+
+      return next;
+    });
+
+    modifierInitRef.current = false;
+    prevModifierIdsRef.current = currentIds;
+  }, [modifierFields]);
 
   const handleAddModifier = () => {
     appendModifier({ ...DEFAULT_MODIFIER_VALUE });
@@ -1048,15 +1404,27 @@ function AddOnCard({
   const getModifierType = (modifierIndex: number) =>
     form.watch(`${addOnPath}.modifiers.${modifierIndex}.type` as const);
 
-  const serviceCategoryValue = form.watch(`${addOnPath}.serviceCategory` as const);
+  const addOnNameValue = form.watch(`${addOnPath}.name` as const);
+  const displayName = addOnNameValue?.trim() ? addOnNameValue.trim() : `Add-on ${index + 1}`;
   const dragAttributes = dragHandleProps.attributes ?? {};
   const dragListeners = dragHandleProps.listeners ?? {};
+  const collapseAriaLabel = collapsed ? "Expand add-on details" : "Collapse add-on details";
+
+  const toggleModifierCard = (id: string) => {
+    setModifierCollapsedMap((prev) => {
+      const current = prev[id] ?? true;
+      return {
+        ...prev,
+        [id]: !current,
+      };
+    });
+  };
 
   return (
     <div className="rounded-md border bg-muted/10 p-4">
       <input type="hidden" {...form.register(`${addOnPath}.orderIndex` as const)} />
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-1 items-center gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -1068,10 +1436,19 @@ function AddOnCard({
           >
             <GripVertical className="h-4 w-4" />
           </Button>
-          <div>
-            <h4 className="text-sm font-semibold">Add-on {index + 1}</h4>
-            <p className="text-xs text-muted-foreground">Order index: {index + 1}</p>
-          </div>
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-muted"
+            onClick={onToggleCollapse}
+            aria-label={collapseAriaLabel}
+          >
+            <ChevronDown
+              className={cn("h-5 w-5 shrink-0 transition-transform", collapsed ? "-rotate-90" : "rotate-0")}
+            />
+          </button>
+          <button type="button" className="flex-1 text-left" onClick={onToggleCollapse}>
+            <p className="text-sm font-semibold">{displayName}</p>
+          </button>
         </div>
         <Button
           type="button"
@@ -1086,8 +1463,9 @@ function AddOnCard({
         </Button>
       </div>
 
-      <div className="mt-4 space-y-4">
-        <div className="grid gap-4 md:grid-cols-2">
+      {!collapsed && (
+        <>
+        <div className="mt-4 space-y-4">
           <div className="space-y-2">
             <Label>Name *</Label>
             <Input
@@ -1122,7 +1500,7 @@ function AddOnCard({
                       <Command>
                         <CommandInput placeholder="Search category..." />
                         <CommandEmpty>No category found.</CommandEmpty>
-                        <CommandList>
+                        <CommandList className="max-h-60 overflow-y-auto">
                           <CommandGroup>
                             {SERVICE_CATEGORIES.map((category) => (
                               <CommandItem
@@ -1156,7 +1534,6 @@ function AddOnCard({
             )}
           </div>
         </div>
-
         <div className="space-y-2">
           <Label>Description</Label>
           <Textarea
@@ -1320,178 +1697,46 @@ function AddOnCard({
                 const requiresRange = fieldRequiresRangeInputs(modifierFieldValue);
                 const hasEquals = fieldHasEquals(modifierFieldValue);
                 const showGreaterThan =
-                  requiresRange || (!supportsType && !hasEquals) || (supportsType && modifierTypeValue === "per_unit_over");
+                  requiresRange ||
+                  (!supportsType && !hasEquals) ||
+                  (supportsType && (modifierTypeValue === "range" || modifierTypeValue === "per_unit_over"));
                 const showLessThan = requiresRange || (supportsType && modifierTypeValue === "range");
+                const modifierCollapsed = modifierCollapsedMap[field.id] ?? (modifierInitRef.current ? true : false);
 
                 return (
-                  <div key={field.id} className="rounded-md border bg-muted/10 p-4">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                      <div className="grid flex-1 gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label>Field</Label>
-                          <Controller
-                            name={`${addOnPath}.modifiers.${modifierIndex}.field` as const}
-                            control={form.control}
-                            render={({ field: fieldController }) => (
-                              <Select
-                                value={fieldController.value}
-                                onValueChange={(value) => handleModifierFieldChange(modifierIndex, value)}
-                                disabled={isSubmitting}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select field" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {MODIFIER_FIELDS.filter((option) => option.group !== "custom").map((option) => (
-                                    <SelectItem key={option.key} value={option.key}>
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                  {MODIFIER_FIELDS.some((option) => option.group === "custom") && (
-                                    <>
-                                      <SelectSeparator />
-                                      <SelectGroup>
-                                        <SelectLabel>-- Custom Field --</SelectLabel>
-                                        {MODIFIER_FIELDS.filter((option) => option.group === "custom").map((option) => (
-                                          <SelectItem key={option.key} value={option.key}>
-                                            {option.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectGroup>
-                                    </>
-                                  )}
-                                </SelectContent>
-                              </Select>
+                  <div key={field.id} className="rounded-md border bg-muted/10">
+                    <div className="flex items-start justify-between gap-3 p-4">
+                      <div className="flex flex-1 items-center gap-2">
+                        <button
+                          type="button"
+                          className="flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-muted"
+                          onClick={() => toggleModifierCard(field.id)}
+                          aria-label={
+                            modifierCollapsed ? "Expand modifier details" : "Collapse modifier details"
+                          }
+                        >
+                          <ChevronDown
+                            className={cn(
+                              "h-5 w-5 shrink-0 transition-transform",
+                              modifierCollapsed ? "-rotate-90" : "rotate-0"
                             )}
                           />
-                        </div>
-
-                        {supportsType && (
-                          <div className="space-y-2">
-                            <Label>Type</Label>
-                            <Controller
-                              name={`${addOnPath}.modifiers.${modifierIndex}.type` as const}
-                              control={form.control}
-                              render={({ field: typeController }) => (
-                                <Select
-                                  value={typeController.value || "range"}
-                                  onValueChange={(value) => {
-                                    typeController.onChange(value);
-                                    const current = form.getValues(`${addOnPath}.modifiers.${modifierIndex}`);
-                                    if (value === "range") {
-                                      form.setValue(`${addOnPath}.modifiers.${modifierIndex}.greaterThan`, current?.greaterThan || "");
-                                      form.setValue(`${addOnPath}.modifiers.${modifierIndex}.lessThanOrEqual`, current?.lessThanOrEqual || "");
-                                    } else if (value === "per_unit_over") {
-                                      form.setValue(`${addOnPath}.modifiers.${modifierIndex}.greaterThan`, current?.greaterThan || "");
-                                      form.setValue(`${addOnPath}.modifiers.${modifierIndex}.lessThanOrEqual`, "");
-                                    } else {
-                                      form.setValue(`${addOnPath}.modifiers.${modifierIndex}.greaterThan`, "");
-                                      form.setValue(`${addOnPath}.modifiers.${modifierIndex}.lessThanOrEqual`, "");
-                                    }
-                                  }}
-                                  disabled={isSubmitting}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select type" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {MODIFIER_TYPES.map((option) => (
-                                      <SelectItem key={option.key} value={option.key}>
-                                        {option.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
-                            />
-                          </div>
-                        )}
-
-                        {showGreaterThan && (
-                          <div className="space-y-2">
-                            <Label>Greater than</Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="0"
-                              {...form.register(`${addOnPath}.modifiers.${modifierIndex}.greaterThan` as const)}
-                            />
-                            {addOnErrors?.modifiers?.[modifierIndex]?.greaterThan && (
-                              <p className="text-xs text-red-600">
-                                {addOnErrors.modifiers?.[modifierIndex]?.greaterThan?.message}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {showLessThan && (
-                          <div className="space-y-2">
-                            <Label>Less than or equal to</Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="0"
-                              {...form.register(`${addOnPath}.modifiers.${modifierIndex}.lessThanOrEqual` as const)}
-                            />
-                            {addOnErrors?.modifiers?.[modifierIndex]?.lessThanOrEqual && (
-                              <p className="text-xs text-red-600">
-                                {addOnErrors.modifiers?.[modifierIndex]?.lessThanOrEqual?.message}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {hasEquals && (
-                          <div className="space-y-2">
-                            <Label>Equals</Label>
-                            <Input
-                              placeholder="Value"
-                              {...form.register(`${addOnPath}.modifiers.${modifierIndex}.equals` as const)}
-                            />
-                            {addOnErrors?.modifiers?.[modifierIndex]?.equals && (
-                              <p className="text-xs text-red-600">
-                                {addOnErrors.modifiers?.[modifierIndex]?.equals?.message}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        <div className="space-y-2">
-                          <Label>Add Fee</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            {...form.register(`${addOnPath}.modifiers.${modifierIndex}.addFee` as const)}
-                          />
-                          {addOnErrors?.modifiers?.[modifierIndex]?.addFee && (
-                            <p className="text-xs text-red-600">
-                              {addOnErrors.modifiers?.[modifierIndex]?.addFee?.message}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Add Hours</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.0"
-                            {...form.register(`${addOnPath}.modifiers.${modifierIndex}.addHours` as const)}
-                          />
-                          {addOnErrors?.modifiers?.[modifierIndex]?.addHours && (
-                            <p className="text-xs text-red-600">
-                              {addOnErrors.modifiers?.[modifierIndex]?.addHours?.message}
-                            </p>
-                          )}
-                        </div>
+                        </button>
+                        <button
+                          type="button"
+                          className="flex-1 text-left"
+                          onClick={() => toggleModifierCard(field.id)}
+                        >
+                          <p className="text-sm font-semibold">
+                            {getModifierFieldLabel(modifierFieldValue) || "Select a field"}
+                          </p>
+                        </button>
                       </div>
-
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="self-start text-destructive hover:text-destructive"
+                        className="text-destructive hover:text-destructive"
                         onClick={() => removeModifier(modifierIndex)}
                         disabled={isSubmitting}
                         title="Remove modifier"
@@ -1499,13 +1744,160 @@ function AddOnCard({
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
+
+                    {!modifierCollapsed && (
+                      <div className="border-t p-4">
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Field</Label>
+                            <Controller
+                              name={`${addOnPath}.modifiers.${modifierIndex}.field` as const}
+                              control={form.control}
+                              render={({ field: fieldController }) => (
+                                <SearchableSelect
+                                  value={fieldController.value}
+                                  onValueChange={(newValue) => {
+                                    fieldController.onChange(newValue);
+                                    handleModifierFieldChange(modifierIndex, newValue);
+                                  }}
+                                  placeholder="Select field"
+                                  sections={modifierFieldSections}
+                                  disabled={isSubmitting}
+                                />
+                              )}
+                            />
+                          </div>
+
+                          {supportsType && (
+                            <div className="space-y-2">
+                              <Label>Type</Label>
+                              <Controller
+                                name={`${addOnPath}.modifiers.${modifierIndex}.type` as const}
+                                control={form.control}
+                                render={({ field: typeController }) => (
+                                  <SearchableSelect
+                                    value={typeController.value || "range"}
+                                    onValueChange={(newValue) => {
+                                      typeController.onChange(newValue);
+                                      const current = form.getValues(`${addOnPath}.modifiers.${modifierIndex}`);
+                                      if (newValue === "range") {
+                                        form.setValue(
+                                          `${addOnPath}.modifiers.${modifierIndex}.greaterThan`,
+                                          current?.greaterThan || ""
+                                        );
+                                        form.setValue(
+                                          `${addOnPath}.modifiers.${modifierIndex}.lessThanOrEqual`,
+                                          current?.lessThanOrEqual || ""
+                                        );
+                                      } else if (newValue === "per_unit_over") {
+                                        form.setValue(
+                                          `${addOnPath}.modifiers.${modifierIndex}.greaterThan`,
+                                          current?.greaterThan || ""
+                                        );
+                                        form.setValue(`${addOnPath}.modifiers.${modifierIndex}.lessThanOrEqual`, "");
+                                      } else {
+                                        form.setValue(`${addOnPath}.modifiers.${modifierIndex}.greaterThan`, "");
+                                        form.setValue(`${addOnPath}.modifiers.${modifierIndex}.lessThanOrEqual`, "");
+                                      }
+                                    }}
+                                    placeholder="Select type"
+                                    sections={modifierTypeSections}
+                                    disabled={isSubmitting}
+                                  />
+                                )}
+                              />
+                            </div>
+                          )}
+
+                          {showGreaterThan && (
+                            <div className="space-y-2">
+                              <Label>Greater than</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="0"
+                                {...form.register(`${addOnPath}.modifiers.${modifierIndex}.greaterThan` as const)}
+                              />
+                              {addOnErrors?.modifiers?.[modifierIndex]?.greaterThan && (
+                                <p className="text-xs text-red-600">
+                                  {addOnErrors.modifiers?.[modifierIndex]?.greaterThan?.message}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {showLessThan && (
+                            <div className="space-y-2">
+                              <Label>Less than or equal to</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="0"
+                                {...form.register(`${addOnPath}.modifiers.${modifierIndex}.lessThanOrEqual` as const)}
+                              />
+                              {addOnErrors?.modifiers?.[modifierIndex]?.lessThanOrEqual && (
+                                <p className="text-xs text-red-600">
+                                  {addOnErrors.modifiers?.[modifierIndex]?.lessThanOrEqual?.message}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {hasEquals && (
+                            <div className="space-y-2">
+                              <Label>Equals</Label>
+                              <Input
+                                placeholder="Value"
+                                {...form.register(`${addOnPath}.modifiers.${modifierIndex}.equals` as const)}
+                              />
+                              {addOnErrors?.modifiers?.[modifierIndex]?.equals && (
+                                <p className="text-xs text-red-600">
+                                  {addOnErrors.modifiers?.[modifierIndex]?.equals?.message}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="space-y-2">
+                            <Label>Add Fee</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="0.00"
+                              {...form.register(`${addOnPath}.modifiers.${modifierIndex}.addFee` as const)}
+                            />
+                            {addOnErrors?.modifiers?.[modifierIndex]?.addFee && (
+                              <p className="text-xs text-red-600">
+                                {addOnErrors.modifiers?.[modifierIndex]?.addFee?.message}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Add Hours</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="0.0"
+                              {...form.register(`${addOnPath}.modifiers.${modifierIndex}.addHours` as const)}
+                            />
+                            {addOnErrors?.modifiers?.[modifierIndex]?.addHours && (
+                              <p className="text-xs text-red-600">
+                                {addOnErrors.modifiers?.[modifierIndex]?.addHours?.message}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
         </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1516,6 +1908,8 @@ interface SortableTaxItemProps {
   index: number;
   isSubmitting: boolean;
   onRemove: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function SortableTaxItem({
@@ -1524,6 +1918,8 @@ function SortableTaxItem({
   index,
   isSubmitting,
   onRemove,
+  collapsed,
+  onToggleCollapse,
 }: SortableTaxItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: fieldId });
 
@@ -1540,6 +1936,8 @@ function SortableTaxItem({
         isSubmitting={isSubmitting}
         onRemove={onRemove}
         dragHandleProps={{ attributes, listeners }}
+        collapsed={collapsed}
+        onToggleCollapse={onToggleCollapse}
       />
     </div>
   );
@@ -1554,6 +1952,8 @@ interface TaxCardProps {
     attributes?: Record<string, any>;
     listeners?: Record<string, any>;
   };
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function TaxCard({
@@ -1562,6 +1962,8 @@ function TaxCard({
   isSubmitting,
   onRemove,
   dragHandleProps,
+  collapsed,
+  onToggleCollapse,
 }: TaxCardProps) {
   const taxPath = `taxes.${index}` as const;
   const taxErrors = form.formState.errors.taxes?.[index];
@@ -1572,12 +1974,15 @@ function TaxCard({
 
   const dragAttributes = dragHandleProps.attributes ?? {};
   const dragListeners = dragHandleProps.listeners ?? {};
+  const taxNameValue = form.watch(`${taxPath}.name` as const);
+  const displayName = taxNameValue?.trim() ? taxNameValue.trim() : `Tax ${index + 1}`;
+  const collapseAriaLabel = collapsed ? "Expand tax details" : "Collapse tax details";
 
   return (
     <div className="rounded-md border bg-muted/10 p-4">
       <input type="hidden" {...form.register(`${taxPath}.orderIndex` as const)} />
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-1 items-center gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -1589,10 +1994,19 @@ function TaxCard({
           >
             <GripVertical className="h-4 w-4" />
           </Button>
-          <div>
-            <h4 className="text-sm font-semibold">Tax {index + 1}</h4>
-            <p className="text-xs text-muted-foreground">Order index: {index + 1}</p>
-          </div>
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-muted"
+            onClick={onToggleCollapse}
+            aria-label={collapseAriaLabel}
+          >
+            <ChevronDown
+              className={cn("h-5 w-5 shrink-0 transition-transform", collapsed ? "-rotate-90" : "rotate-0")}
+            />
+          </button>
+          <button type="button" className="flex-1 text-left" onClick={onToggleCollapse}>
+            <p className="text-sm font-semibold">{displayName}</p>
+          </button>
         </div>
         <Button
           type="button"
@@ -1607,28 +2021,30 @@ function TaxCard({
         </Button>
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Name *</Label>
-          <Input
-            placeholder="Tax name"
-            {...form.register(`${taxPath}.name` as const)}
-          />
-          {taxErrors?.name && <p className="text-sm text-red-600">{taxErrors.name.message}</p>}
+      {!collapsed && (
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Name *</Label>
+            <Input
+              placeholder="Tax name"
+              {...form.register(`${taxPath}.name` as const)}
+            />
+            {taxErrors?.name && <p className="text-sm text-red-600">{taxErrors.name.message}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label>Add Percent *</Label>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              {...form.register(`${taxPath}.addPercent` as const)}
+            />
+            {taxErrors?.addPercent && (
+              <p className="text-sm text-red-600">{taxErrors.addPercent.message}</p>
+            )}
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label>Add Percent *</Label>
-          <Input
-            type="number"
-            step="0.01"
-            placeholder="0.00"
-            {...form.register(`${taxPath}.addPercent` as const)}
-          />
-          {taxErrors?.addPercent && (
-            <p className="text-sm text-red-600">{taxErrors.addPercent.message}</p>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
