@@ -42,6 +42,7 @@ export interface IService extends Document {
   modifiers: IServiceModifier[];
   addOns: IServiceAddOn[];
   taxes: IServiceTax[];
+  orderIndex: number;
   company: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -214,6 +215,11 @@ const ServiceSchema = new Schema<IService>(
       ],
       default: [],
     },
+    orderIndex: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
     company: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Company',
@@ -231,7 +237,37 @@ const ServiceSchema = new Schema<IService>(
   }
 );
 
+ServiceSchema.pre('save', async function (next) {
+  const doc = this as IService & { orderIndex?: number };
+
+  if (
+    typeof doc.orderIndex === 'number' &&
+    Number.isFinite(doc.orderIndex) &&
+    doc.orderIndex > 0
+  ) {
+    return next();
+  }
+
+  try {
+    const Model = this.constructor as mongoose.Model<IService>;
+    const lastService = await Model.findOne({ company: doc.company })
+      .sort({ orderIndex: -1 })
+      .select('orderIndex')
+      .lean();
+
+    doc.orderIndex =
+      typeof lastService?.orderIndex === 'number' && Number.isFinite(lastService.orderIndex)
+        ? lastService.orderIndex + 1
+        : 1;
+
+    next();
+  } catch (error) {
+    next(error as Error);
+  }
+});
+
 ServiceSchema.index({ company: 1, name: 1 });
+ServiceSchema.index({ company: 1, orderIndex: 1, createdAt: 1 });
 
 export const Service: Model<IService> =
   mongoose.models.Service || mongoose.model<IService>('Service', ServiceSchema);

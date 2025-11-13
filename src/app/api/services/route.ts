@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     const services = await Service.find({ company: currentUser.company })
-      .sort({ createdAt: -1 })
+      .sort({ orderIndex: 1, createdAt: 1 })
       .lean();
 
     return NextResponse.json({ services });
@@ -122,6 +122,14 @@ export async function POST(request: NextRequest) {
     const sanitizedModifiers = sanitizeModifiers(modifiers);
     const sanitizedAddOns = sanitizeAddOns(body.addOns);
     const sanitizedTaxes = sanitizeTaxes(body.taxes);
+    const lastService = await Service.findOne({ company: currentUser.company })
+      .sort({ orderIndex: -1 })
+      .select('orderIndex')
+      .lean();
+    const nextOrderIndex =
+      typeof lastService?.orderIndex === 'number' && Number.isFinite(lastService.orderIndex)
+        ? lastService.orderIndex + 1
+        : 1;
     const newService = await Service.create({
       name: name.trim(),
       serviceCategory: serviceCategory.trim(),
@@ -131,6 +139,7 @@ export async function POST(request: NextRequest) {
       ...(parsedBaseDuration !== undefined ? { baseDurationHours: parsedBaseDuration } : {}),
       defaultInspectionEvents: events,
       organizationServiceId: organizationServiceId?.trim() || undefined,
+      orderIndex: nextOrderIndex,
       company: currentUser.company,
       createdBy: currentUser._id,
       modifiers: sanitizedModifiers,
