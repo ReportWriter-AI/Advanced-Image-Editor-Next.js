@@ -1,12 +1,11 @@
 "use client";
 
-import { useRouter, useSearchParams } from 'next/navigation';
-import ImageEditor from '../../../components/ImageEditor';
+import { useSearchParams } from 'next/navigation';
+import ImageEditor from '../../../../components/ImageEditor';
 import { useState, useRef, useEffect, Suspense } from 'react';
 import { useAnalysisStore } from '@/lib/store';
 
 function ImageEditorPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const selectedInspectionId = searchParams.get('inspectionId') || '';
   const preloadImageUrl = searchParams.get('imageUrl'); // Get existing image URL
@@ -340,9 +339,6 @@ function ImageEditorPageContent() {
     setHasCropFrame(hasFrame);
   };
 
-  const handleBackToTable = () => {
-    router.push('/');
-  };
 
   const handleSubmit = async () => {
     // Special handling for information block annotation
@@ -647,10 +643,6 @@ function ImageEditorPageContent() {
 
       {/* Action Options Bar */}
       <div className="action-bar">
-        <button className="action-btn back-btn" onClick={handleBackToTable}>
-          <i className="fas fa-arrow-left"></i>
-        </button>
-
         {/* Done button for annotation mode */}
         {returnTo && checklistId && (
           <button 
