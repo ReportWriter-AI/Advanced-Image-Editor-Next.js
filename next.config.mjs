@@ -1,9 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Ensure puppeteer-core and @sparticuz/chromium are treated as external for server components
-  experimental: {
-    serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "@sparticuz/chromium-min"],
-  },
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "@sparticuz/chromium-min"],
   // Optimize chunk loading to prevent ChunkLoadError
   webpack: (config, { isServer }) => {
     if (isServer) {

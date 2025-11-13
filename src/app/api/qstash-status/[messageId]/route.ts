@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 // GET /api/qstash-status/:messageId
 // Queries QStash for the delivery status of a published message.
-export async function GET(_req: Request, { params }: { params: { messageId: string } }) {
-  const { messageId } = params;
+export async function GET(_req: Request, { params }: { params: Promise<{ messageId: string }> }) {
+  const { messageId } = await params;
   const token = process.env.QSTASH_TOKEN;
   if (!token) {
     return NextResponse.json({ error: "Missing QSTASH_TOKEN env" }, { status: 500 });

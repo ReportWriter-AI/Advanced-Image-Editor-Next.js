@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ inspectionId: string }> }
 ) {
   try {
-  const { inspectionId } = params;
+  const { inspectionId } = await params;
   const defectId = inspectionId;
     const defects = await getDefectsByInspection(inspectionId);
     return NextResponse.json(defects);
@@ -104,7 +104,7 @@ export async function PATCH(
   { params }: { params: Promise<{ inspectionId: string }> }
 ) {
   try {
-    const { inspectionId } = params;
+    const { inspectionId } = await params;
     const defectId = inspectionId;
     const body = await req.json();
 
