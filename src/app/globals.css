@@ -8,11 +8,17 @@
 @import '@photo-sphere-viewer/core/index.css';
 
 :root {
-  --primary-color: #3498db;
-  --secondary-color: #2ecc71;
-  --text-color: #333;
-  --background-color: #f9f9f9;
-  --purple: #800080;
+  --primary-color: #8230c9;
+  --secondary-color: #a466da;
+  --text-color: #371456;
+  --background-color: #f8f6fc;
+  --purple: #8230c9;
+  --purple-light: #b583e1;
+  --purple-medium: #a466da;
+  --purple-dark: #934ad3;
+  --purple-darker: #8230c9;
+  --purple-darkest: #6f29ac;
+  --accent-color: #5d228f;
 }
 
 * {
@@ -25,18 +31,18 @@
 /* iOS-specific fixes for pull-to-refresh and modal scrolling */
 html {
   height: 100%;
-  background: #f0f0f0 !important;
+  background: linear-gradient(135deg, #f8f6fc 0%, #f3f0f8 100%) !important;
   background-attachment: fixed !important;
   overscroll-behavior: contain; /* Prevent pull-to-refresh */
   -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 body {
-  background: #f0f0f0 !important;
+  background: linear-gradient(135deg, #f8f6fc 0%, #f3f0f8 100%) !important;
   background-attachment: fixed !important;
   min-height: 100vh;
   padding: 20px;
-  color: black;
+  color: #371456;
   margin: 0;
   overscroll-behavior: contain; /* Prevent pull-to-refresh */
   -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
@@ -52,11 +58,11 @@ body {
 
 /* Heading Sections */
 .heading-section {
-  /* background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%); */
+  background: linear-gradient(135deg, #5d228f 0%, #8230c9 50%, #a466da 100%);
   padding: 32px 24px;
   border-radius: 16px;
   margin: 24px 0;
-  box-shadow: 0 8px 32px rgba(30, 41, 59, 0.3);
+  box-shadow: 0 8px 32px rgba(130, 48, 201, 0.3);
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -69,7 +75,7 @@ body {
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4, #10b981);
+  background: linear-gradient(90deg, #b583e1, #a466da, #934ad3, #8230c9);
   border-radius: 16px 16px 0 0;
 }
 
@@ -96,14 +102,14 @@ body {
 
 .heading-icon {
   font-size: 2.5rem;
-  color: #60a5fa;
+  color: #c6a0e8;
   margin-bottom: 16px;
   text-shadow: 0 2px 8px rgba(96, 165, 250, 0.4);
   display: block;
 }
 
 .heading-section h1 {
-  color: #000000;
+  color: #ffffff;
   font-size: 2.5rem;
   font-weight: 700;
   margin: 0 0 12px 0;
@@ -113,7 +119,7 @@ body {
 }
 
 .heading-section h2 {
-  color: #000000;
+  color: #ffffff;
   font-size: 2rem;
   font-weight: 600;
   margin: 0 0 12px 0;
@@ -123,7 +129,7 @@ body {
 }
 
 .heading-section p {
-  color: #000000;
+  color: #f8f6fc;
   font-size: 1.1rem;
   font-weight: 400;
   margin: 0;
@@ -159,7 +165,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  box-shadow: 0 4px 20px rgba(75, 108, 183, 0.3);
+  box-shadow: 0 4px 20px rgba(130, 48, 201, 0.3);
   position: relative;
   overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -184,13 +190,13 @@ body {
 
 .action-btn:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 30px rgba(75, 108, 183, 0.4);
-  background: linear-gradient(135deg, rgb(106, 17, 203) 0%, rgb(75, 108, 183) 100%);
+  box-shadow: 0 8px 30px rgba(130, 48, 201, 0.4);
+  background: linear-gradient(135deg, #8230c9 0%, #a466da 100%);
 }
 
 .action-btn:active {
   transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(75, 108, 183, 0.3);
+  box-shadow: 0 4px 20px rgba(130, 48, 201, 0.3);
 }
 
 .action-btn:focus {
@@ -334,6 +340,32 @@ body {
   justify-content: center;
   width: 100%;
   text-align: center;
+}
+
+/* Checklist options grid: desktop/tablet behaves like current auto-fill, mobile shows exactly two columns */
+.checklist-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+  /* Enable smooth touch interactions on mobile */
+  -webkit-overflow-scrolling: touch;
+}
+
+.checklist-options-grid label {
+  /* Ensure items wrap nicely on small screens */
+  min-height: 38px;
+  /* Optimize touch targets for iOS */
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Mobile breakpoint: two columns for options */
+@media (max-width: 640px) {
+  .checklist-options-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
 
 /* Image Upload Area */

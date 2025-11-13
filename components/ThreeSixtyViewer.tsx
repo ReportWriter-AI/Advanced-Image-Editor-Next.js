@@ -20,7 +20,6 @@ export default function ThreeSixtyViewer({
   className = ''
 }: ThreeSixtyViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
-  const [viewer, setViewer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -83,7 +82,6 @@ export default function ThreeSixtyViewer({
         viewerInstance.addEventListener('ready', () => {
           console.log('🎉 360° viewer loaded successfully!');
           setLoading(false);
-          setViewer(viewerInstance);
         });
 
         viewerInstance.addEventListener('error', (err: any) => {
@@ -113,18 +111,6 @@ export default function ThreeSixtyViewer({
       }
     };
   }, [imageUrl, autoLoad]);
-
-  const resetView = () => {
-    if (viewer) {
-      viewer.animate({
-        yaw: 0,
-        pitch: 0,
-        zoom: 50,
-        speed: 1000,
-      });
-    }
-  };
-
   return (
     <div 
       className={`threesixty-viewer-container ${className}`}
@@ -161,33 +147,6 @@ export default function ThreeSixtyViewer({
         <i className="fas fa-sync-alt" style={{ animation: 'spin 3s linear infinite' }}></i>
         {isMobile ? '360°' : '360 Photo'}
       </div>
-
-      {!loading && !error && (
-        <button
-          onClick={resetView}
-          style={{
-            position: 'absolute',
-            top: isMobile ? '6px' : '12px',
-            right: isMobile ? '6px' : '12px',
-            zIndex: 10,
-            background: 'rgba(255, 255, 255, 0.9)',
-            color: '#333',
-            border: 'none',
-            padding: isMobile ? '6px 8px' : '8px 12px',
-            borderRadius: '6px',
-            fontSize: isMobile ? '11px' : '13px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: isMobile ? '4px' : '6px',
-          }}
-          title="Reset to initial view"
-        >
-          <i className="fas fa-redo"></i>
-          {!isMobile && <span>Reset View</span>}
-        </button>
-      )}
 
       {loading && (
         <div
@@ -241,35 +200,6 @@ export default function ThreeSixtyViewer({
           height: '100%',
         }}
       />
-
-      {!loading && !error && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: isMobile ? '6px' : '12px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 10,
-            background: 'rgba(0, 0, 0, 0.7)',
-            color: 'white',
-            padding: isMobile ? '6px 12px' : '8px 16px',
-            borderRadius: '20px',
-            fontSize: isMobile ? '9px' : '11px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: isMobile ? '6px' : '12px',
-            pointerEvents: 'none',
-            opacity: 0.8,
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            maxWidth: isMobile ? '90%' : 'auto'
-          }}
-        >
-          <span><i className="fas fa-hand-paper"></i> {isMobile ? 'Drag' : 'Drag to pan'}</span>
-          <span><i className="fas fa-search-plus"></i> {isMobile ? 'Pinch' : 'Scroll to zoom'}</span>
-          {!isMobile && <span><i className="fas fa-expand"></i> Fullscreen</span>}
-        </div>
-      )}
 
       <style jsx>{`
         @keyframes spin {

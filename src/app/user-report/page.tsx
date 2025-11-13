@@ -251,32 +251,67 @@ export default function UserReport() {
     console.log("Report saved successfully!");
 
     let imageurl = ''
-    //CLOUDLFARE TO GEN URL
+    // Direct-to-R2 upload via presigned URL (avoids Vercel bandwidth/limits)
     try {
-      const formData = new FormData();
-      // const ress = await fetch(analysisData?.imageFile!);
-      // const blob = await ress.blob();
-      // const file = new File([blob], "upload.jpg", { type: blob.type });
-      formData.append("file", analysisData?.imageFile!);   
-      
-        const res = await fetch("/api/r2api", {
-          method: "POST",
-          body: formData,
-        });
-      
-        const data = await res.json();
-        if (res.ok) {
-          imageurl = data.url
-          console.log("Uploaded to R2:", imageurl);
-        } else {
-          console.log("Error: " + data.error);
+      let fileToUpload: File | null = null;
+      if (analysisData?.imageFile instanceof File) {
+        fileToUpload = analysisData.imageFile;
+      } else if (typeof analysisData?.image === 'string') {
+        // Fallback: convert data URL or remote URL to File
+        try {
+          const directResp = await fetch(analysisData.image);
+          const blob = await directResp.blob();
+          fileToUpload = new File([blob], `upload-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+        } catch (e) {
+          // If CORS blocks direct fetch, retry via proxy endpoint
+          try {
+            const proxied = `/api/proxy-image?url=${encodeURIComponent(analysisData.image)}`;
+            const proxyResp = await fetch(proxied);
+            const blob = await proxyResp.blob();
+            fileToUpload = new File([blob], `upload-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+          } catch (e2) {
+            console.error('Failed to fetch image for upload:', e2);
+          }
         }
       }
-    catch (error) {
+
+      if (!fileToUpload) {
+        throw new Error('No image file available for upload');
+      }
+
+      // Get presigned URL
+      const presignedRes = await fetch(
+        `/api/r2api?action=presigned&fileName=${encodeURIComponent(fileToUpload.name)}&contentType=${encodeURIComponent(fileToUpload.type || 'application/octet-stream')}`
+      );
+      if (!presignedRes.ok) {
+        const t = await presignedRes.text();
+        throw new Error(`Failed to get presigned URL: ${t}`);
+      }
+      const { uploadUrl, publicUrl } = await presignedRes.json();
+
+      // Upload directly to R2
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': fileToUpload.type || 'application/octet-stream' },
+        body: fileToUpload,
+      });
+      if (!putRes.ok) {
+        const t = await putRes.text();
+        throw new Error(`R2 upload failed: ${putRes.status} ${t}`);
+      }
+
+      imageurl = publicUrl;
+      console.log('Uploaded to R2 (direct):', imageurl);
+    } catch (error) {
       console.log('IMAGE NOT UPLOADED: ', error)
     }
   
     try {
+      // Calculate base_cost for future photo multiplier calculations
+      const materialCost = analysisResult?.materials_total_cost || 0;
+      const laborCost = (analysisResult?.labor_rate || 0) * (analysisResult?.hours_required || 0);
+      const baseCost = materialCost + laborCost;
+      
       const res = await fetch("/api/defects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -294,6 +329,7 @@ export default function UserReport() {
           hours_required: analysisResult?.hours_required,
           recommendation: analysisResult?.recommendation,
           color: analysisData?.selectedArrowColor || '#d63636', // pass the selected arrow color (default to red if not set)
+          base_cost: baseCost, // Save base cost for photo multiplier calculations
         }),
       });
 

@@ -12,6 +12,7 @@ interface HeaderImageUploaderProps {
   onImageRemoved: () => void;
   onHeaderNameChanged: (text: string) => void;
   onHeaderAddressChanged: (text: string) => void;
+  getProxiedSrc?: (url: string | null | undefined) => string;
 }
 
 const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({ 
@@ -21,7 +22,8 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
   onImageUploaded,
   onImageRemoved,
   onHeaderNameChanged,
-  onHeaderAddressChanged
+  onHeaderAddressChanged,
+  getProxiedSrc
 }) => {
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -30,6 +32,87 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  // Normalize smartphone photo orientation using EXIF, return a new JPEG File if rotation/flip needed
+  const fixImageOrientation = async (inputFile: File): Promise<File> => {
+    try {
+      // Only attempt on images (skip videos) and common formats; HEIC is handled separately
+      if (!inputFile.type.startsWith('image/')) return inputFile;
+
+  // Use ESM build to avoid UMD warning
+  const exifr: any = (await import('exifr/dist/full.esm.mjs')) as any;
+      const orientation: number | undefined = await exifr.orientation(inputFile);
+      if (!orientation || orientation === 1) return inputFile; // No transform needed
+
+      // Draw onto canvas with the correct transform
+      const imgUrl = URL.createObjectURL(inputFile);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = imgUrl;
+      });
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(imgUrl);
+        return inputFile;
+      }
+
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+
+      // Set canvas size and apply orientation-specific transforms
+      switch (orientation) {
+        case 2: // mirror horizontal
+          canvas.width = width; canvas.height = height;
+          ctx.translate(width, 0); ctx.scale(-1, 1);
+          break;
+        case 3: // rotate 180
+          canvas.width = width; canvas.height = height;
+          ctx.translate(width, height); ctx.rotate(Math.PI);
+          break;
+        case 4: // mirror vertical
+          canvas.width = width; canvas.height = height;
+          ctx.translate(0, height); ctx.scale(1, -1);
+          break;
+        case 5: // mirror horizontal and rotate 270 CW
+          canvas.width = height; canvas.height = width;
+          ctx.rotate(0.5 * Math.PI); ctx.scale(1, -1); ctx.translate(0, -height);
+          break;
+        case 6: // rotate 90 CW
+          canvas.width = height; canvas.height = width;
+          ctx.rotate(0.5 * Math.PI); ctx.translate(0, -height);
+          break;
+        case 7: // mirror horizontal and rotate 90 CW
+          canvas.width = height; canvas.height = width;
+          ctx.rotate(0.5 * Math.PI); ctx.translate(width, -height); ctx.scale(-1, 1);
+          break;
+        case 8: // rotate 270 CW
+          canvas.width = height; canvas.height = width;
+          ctx.rotate(-0.5 * Math.PI); ctx.translate(-width, 0);
+          break;
+        default:
+          canvas.width = width; canvas.height = height;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(imgUrl);
+
+      // Convert canvas back to a JPEG File
+      const blob: Blob = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.95)
+      );
+      const normalized = new File([blob], inputFile.name.replace(/\.(png|jpg|jpeg|webp)$/i, '') + '.jpg', { type: 'image/jpeg' });
+      return normalized;
+    } catch (err) {
+      console.warn('EXIF orientation normalization skipped:', err);
+      return inputFile;
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const originalFile = e.target.files?.[0];
@@ -50,21 +133,45 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
         file = new File([convertedBlob], `${file.name.replace(/\.(heic|heif)$/i,'')}.jpg`, { type: 'image/jpeg' });
       }
 
+      // Normalize EXIF orientation for JPEG/PNG after optional HEIC conversion
+      try {
+        file = await fixImageOrientation(file);
+      } catch (e) {
+        console.warn('Orientation fix failed, using original:', e);
+      }
+
       tempUrl = URL.createObjectURL(file);
       setPreviewUrl(tempUrl);
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      console.log('Uploading header image to R2... (converted:', isHeic, ')');
-      const response = await fetch('/api/r2api', { method: 'POST', body: formData });
-      const data = await response.json();
-      if (!response.ok) {
-        console.error('Upload failed response:', data);
-        throw new Error(data.error || 'Failed to upload image');
+      console.log('Uploading header image to R2 using presigned URL... (converted:', isHeic, ')');
+      
+      // NEW: Direct R2 upload using presigned URL
+      const presignedRes = await fetch(
+        `/api/r2api?action=presigned&fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type)}`
+      );
+      
+      if (!presignedRes.ok) {
+        throw new Error('Failed to get presigned upload URL');
       }
-      console.log('Upload successful, URL:', data.url);
-      onImageUploaded(data.url);
+      
+      const { uploadUrl, publicUrl } = await presignedRes.json();
+      console.log('✅ Got presigned URL, uploading directly to R2...');
+      
+      // Upload file DIRECTLY to R2
+      const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Direct R2 upload failed with status ${response.status}`);
+      }
+      
+      console.log('✅ Upload successful, URL:', publicUrl);
+      onImageUploaded(publicUrl);
     } catch (error: any) {
       console.error('Upload error:', error);
       alert(`Failed to upload image: ${error.message || 'Please try again.'}`);
@@ -121,9 +228,15 @@ const HeaderImageUploader: React.FC<HeaderImageUploaderProps> = ({
           <h4>Current Header Image</h4>
           <div className="image-with-text-preview">
             <img 
-              src={currentImage} 
+              src={getProxiedSrc ? getProxiedSrc(currentImage) : currentImage} 
               alt="Current header" 
               className="header-image-preview"
+              onError={(e) => {
+                console.error('Failed to load header image preview:', currentImage);
+                if (getProxiedSrc && !(e.currentTarget.src?.includes('/api/proxy-image?'))) {
+                  e.currentTarget.src = getProxiedSrc(currentImage) || '';
+                }
+              }}
             />
             {(localHeaderName || localHeaderAddress) && (
               <div className="header-text-overlay" style={{ lineHeight: 1.15, flexDirection: 'column' }}>

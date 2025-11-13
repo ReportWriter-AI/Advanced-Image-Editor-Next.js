@@ -30,9 +30,8 @@ function decodeBase64Image(dataString: string) {
 
 async function handler(request: Request) {
   try {
-    // const raw = await request.text();
-    // console.log("Raw body:", raw);
-    const body = await request.json();
+  const body = await request.json();
+    
     const {
       imageUrl,
       description,
@@ -50,10 +49,10 @@ async function handler(request: Request) {
       isThreeSixty
     } = body;
 
-    console.log("🔄 Processing job", analysisId);
 
-    let finalImageUrl = imageUrl;
-    // let finalVideoUrl = '';
+  let finalImageUrl: string | undefined = imageUrl;
+  let finalThumbnailUrl: string | null = null;
+  // let finalVideoUrl = '';
 
       if (imageUrl && imageUrl.startsWith("data:")) {
         // Decode base64 into buffer + mime type
@@ -66,18 +65,21 @@ async function handler(request: Request) {
         finalImageUrl = await uploadToR2(buffer, key, mime);
       }
 
-      if (thumbnail && thumbnail.startsWith("data:")) {
-        // Decode base64 into buffer + mime type
-        const { mime, buffer } = decodeBase64Image(thumbnail);
-      
-        // Generate R2 key
-        const key = `inspections/${inspectionId}/${Date.now()}-thumbnail.png`;
-      
-        // Upload buffer to R2
-        finalImageUrl = await uploadToR2(buffer, key, mime);
-        console.log("✅ Thumbnail uploaded to R2:", finalImageUrl);
+      if (thumbnail) {
+        if (thumbnail.startsWith("data:")) {
+          // Decode base64 into buffer + mime type
+          const { mime, buffer } = decodeBase64Image(thumbnail);
+          // Generate R2 key
+          const key = `inspections/${inspectionId}/${Date.now()}-thumbnail.png`;
+          // Upload buffer to R2
+          finalThumbnailUrl = await uploadToR2(buffer, key, mime);
+          console.log("✅ Thumbnail uploaded to R2:", finalThumbnailUrl);
+        } else {
+          // Already a remote URL
+          finalThumbnailUrl = thumbnail;
+        }
       } else {
-        console.log('no thumbnail found')
+  // no thumbnail
       }
 
       // if (videoFile) {
@@ -112,10 +114,11 @@ async function handler(request: Request) {
       content,
     });
 
+    
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: process.env.OPENAI_ASSISTANT_ID!,
     });
-
+    
     // Poll until done
     let runStatus = run.status;
     while (!["completed", "failed", "cancelled"].includes(runStatus)) {
@@ -126,8 +129,9 @@ async function handler(request: Request) {
       runStatus = currentRun.status;
     }
 
+    
     if (runStatus !== "completed") {
-      console.error("Run failed:", runStatus);
+  console.error("Run failed:", runStatus);
       return NextResponse.json({ error: "Run failed" }, { status: 500 });
     }
 
@@ -148,11 +152,14 @@ async function handler(request: Request) {
 
     const jsonMatch = assistantResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error("Assistant response not JSON:", assistantResponse);
+  console.error("Assistant response not JSON:", assistantResponse);
       return NextResponse.json({ error: "Invalid AI response" }, { status: 500 });
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
+
+    // Calculate total cost from AI analysis
+    const totalCost = (parsed.materials_total_cost || 0) + ((parsed.labor_rate || 0) * (parsed.hours_required || 0));
 
     const defectData = {
       inspection_id: inspectionId,
@@ -163,20 +170,21 @@ async function handler(request: Request) {
       defect_description: parsed.defect || description || "",
       defect_short_description: parsed.short_description || "",
       materials: parsed.materials_names || "",
-      material_total_cost: parsed.materials_total_cost || 0,
+      material_total_cost: totalCost, // Use calculated total cost
       labor_type: parsed.labor_type || "",
       labor_rate: parsed.labor_rate || 0,
       hours_required: parsed.hours_required || 0,
       recommendation: parsed.recommendation || "",
       color: selectedColor || undefined,
       type: type,
-      thumbnail: finalImageUrl,
+      thumbnail: finalThumbnailUrl,
       video: finalVideoUrl,
-      isThreeSixty: isThreeSixty || false
+      isThreeSixty: isThreeSixty || false,
+      base_cost: totalCost, // Save base cost for future multiplication
+      additional_images: [], // Initialize empty array for additional location photos
     };
 
-    await createDefect(defectData);
-    console.log("✅ Defect saved", defectData);
+  await createDefect(defectData);
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
@@ -185,8 +193,5 @@ async function handler(request: Request) {
   }
 }
 
-// ✅ Secure endpoint with QStash signature verification
-// Only apply verification if QSTASH keys are available (runtime, not build time)
-export const POST = process.env.QSTASH_CURRENT_SIGNING_KEY 
-  ? verifySignatureAppRouter(handler)
-  : handler;
+// Secure endpoint with QStash signature verification
+export const POST = verifySignatureAppRouter(handler);

@@ -9,6 +9,8 @@ export interface ISectionChecklist extends Document {
   type: 'status' | 'information';
   tab: 'information' | 'limitations'; // Which tab to display this item in
   answer_choices?: string[]; // NEW: Predefined answer choices (e.g., ["AO Smith", "Rheem", "GE"])
+  default_checked?: boolean; // NEW: If true, auto-select for new inspections/blocks
+  default_selected_answers?: string[]; // NEW: If default_checked and options exist, preselect these template options
   order_index: number;
   createdAt: Date;
   updatedAt: Date;
@@ -23,6 +25,8 @@ const SectionChecklistSchema = new Schema<ISectionChecklist>(
     type: { type: String, enum: ['status', 'information'], required: true, default: 'information' },
     tab: { type: String, enum: ['information', 'limitations'], required: true, default: 'information' },
     answer_choices: { type: [String], default: undefined }, // NEW: Array of predefined answer choices
+    default_checked: { type: Boolean, default: false }, // NEW: Auto-selected by default on new blocks/inspections
+    default_selected_answers: { type: [String], default: undefined }, // NEW: Template-level default selected options
     order_index: { type: Number, required: true },
   },
   { timestamps: true }

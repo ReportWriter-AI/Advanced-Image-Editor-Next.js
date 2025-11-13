@@ -21,8 +21,8 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Invalid checklistId' }, { status: 400 });
     }
 
-    const body = await req.json();
-    const { text, comment, type, tab, answer_choices } = body || {};
+  const body = await req.json();
+  const { text, comment, type, tab, answer_choices, default_checked, default_selected_answers } = body || {};
 
     const updateData: any = {};
     const unsetData: any = {};
@@ -43,7 +43,27 @@ export async function PUT(
     if (type !== undefined && ['status', 'information'].includes(type)) updateData.type = type;
     if (tab !== undefined && ['information', 'limitations'].includes(tab)) updateData.tab = tab;
     if (answer_choices !== undefined) {
-      updateData.answer_choices = Array.isArray(answer_choices) && answer_choices.length > 0 ? answer_choices : undefined;
+      // If answer_choices provided as a non-empty array, set it.
+      // If provided as an empty array, UNSET the field to fully remove previous options.
+      if (Array.isArray(answer_choices)) {
+        if (answer_choices.length > 0) {
+          updateData.answer_choices = answer_choices;
+        } else {
+          unsetData.answer_choices = '';
+        }
+      }
+    }
+    if (default_checked !== undefined) {
+      updateData.default_checked = Boolean(default_checked);
+    }
+    if (default_selected_answers !== undefined) {
+      if (Array.isArray(default_selected_answers)) {
+        if (default_selected_answers.length > 0) {
+          updateData.default_selected_answers = default_selected_answers;
+        } else {
+          unsetData.default_selected_answers = '';
+        }
+      }
     }
 
     // Build the update object with both $set and $unset operations

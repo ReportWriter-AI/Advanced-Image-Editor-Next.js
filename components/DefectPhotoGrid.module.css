@@ -1,0 +1,238 @@
+.container {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+
+/* Single Photo Layout */
+.gridSingle {
+  width: 100%;
+}
+
+/* Two Photos Layout */
+.gridTwo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Multiple Photos Layout (3+) */
+/* Mobile-first: 1 large on top, 2 small below in a row */
+.gridMultiple {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.photoColumn {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto;
+  gap: 8px;
+}
+
+.photoWrapper,
+.photoWrapperLarge,
+.photoWrapperWithOverlay {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  background: #f0f0f0;
+}
+
+.photoWrapper:hover,
+.photoWrapperLarge:hover,
+.photoWrapperWithOverlay:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* .photoWrapperLarge inherits base wrapper styles; first item naturally renders on top */
+
+.photo {
+  width: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+/* Safari/iOS fix: Only non-img containers (e.g., 360° viewer wrappers) should stretch to fill */
+.photo:not(img) {
+  height: 100%;
+  min-height: 200px;
+}
+
+/* Apply min/max heights only to non-img containers so images keep natural aspect ratio */
+.gridSingle .photo:not(img) {
+  min-height: 300px;
+  max-height: 500px;
+}
+
+.gridTwo .photo:not(img) {
+  min-height: 250px;
+  max-height: 400px;
+}
+
+.gridMultiple .photoWrapperLarge .photo:not(img) {
+  min-height: 300px;
+  max-height: 500px;
+}
+
+.gridMultiple .photoColumn .photo:not(img) {
+  min-height: 145px;
+  max-height: 245px;
+}
+
+/* Ensure <img> elements use height:auto for proper aspect on iOS Safari */
+img.photo {
+  height: auto;
+}
+
+.locationLabel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+  color: white;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+
+.overlayText {
+  color: white;
+  font-size: 2.5rem;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Lightbox */
+.lightbox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.lightboxContent {
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lightboxImage {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.lightboxLocation {
+  margin-top: 16px;
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.lightboxCounter {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+.closeBtn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 3rem;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.2s ease;
+  z-index: 10001;
+}
+
+.closeBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.navBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 3rem;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+  z-index: 10001;
+}
+
+.navBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.prevBtn {
+  left: 20px;
+}
+
+.nextBtn {
+  right: 20px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .overlayText {
+    font-size: 2rem;
+  }
+  
+  .navBtn,
+  .closeBtn {
+    width: 40px;
+    height: 40px;
+    font-size: 2rem;
+  }
+}

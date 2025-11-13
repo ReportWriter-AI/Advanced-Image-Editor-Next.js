@@ -24,4 +24,6 @@ export interface Defect {
   hours_required: number;
   recommendation: string;
   isThreeSixty?: boolean; // 360° photo flag
+  additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>; // Multiple location photos (supports 360)
+  base_cost?: number; // Base cost (AI-calculated from first image)
 }

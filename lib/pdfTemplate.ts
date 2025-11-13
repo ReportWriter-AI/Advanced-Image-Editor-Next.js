@@ -11,6 +11,8 @@ export type DefectItem = {
   recommendation?: string;
   color?: string;
   display_number?: string; // Dynamic numbering like "3.1.2"
+  additional_images?: Array<{ url: string; location: string }>; // Multiple location photos
+  base_cost?: number; // Base cost (AI-calculated from first image)
 };
 
 export type InformationBlockImage = {
@@ -54,6 +56,7 @@ export type ReportMeta = {
   startNumber?: number; // base section number, defaults to 1
   reportType?: 'full' | 'summary';
   informationBlocks?: InformationBlock[]; // Information sections to display before defects
+  hidePricing?: boolean; // Hide all cost/pricing information
 };
 
 function escapeHtml(str: string = ""): string {
@@ -212,7 +215,14 @@ function splitDefectText(raw?: string): DefectTextParts {
 
 // Generate HTML for information section block
 function generateInformationSectionHTML(block: InformationBlock): string {
-  const allItems = block.selected_checklist_ids || [];
+  const allItemsRaw = block.selected_checklist_ids || [];
+  const allItems = Array.isArray(allItemsRaw)
+    ? [...allItemsRaw].sort((a, b) => {
+        const ao = typeof a?.order_index === 'number' ? a.order_index : Number.POSITIVE_INFINITY;
+        const bo = typeof b?.order_index === 'number' ? b.order_index : Number.POSITIVE_INFINITY;
+        return ao - bo;
+      })
+    : allItemsRaw;
   const hasContent = allItems.length > 0 || block.custom_text;
   
   if (!hasContent) return '';
@@ -235,7 +245,7 @@ function generateInformationSectionHTML(block: InformationBlock): string {
     const selectedAnswers = selectedAnswersMap.get(itemId) || [];
     
     if (isStatus) {
-      // Status items: ONLY "Label: Value" format - NO comments
+      // Status items: "Label: Value" format with optional comment
       const parts = (item.text || '').split(':');
       const label = parts[0]?.trim() || '';
       const value = parts.slice(1).join(':').trim() || '';
@@ -247,6 +257,10 @@ function generateInformationSectionHTML(block: InformationBlock): string {
             <span style="margin-left: 0.25rem; font-weight: 400; color: #6b7280;">
               ${escapeHtml(value)}\n            </span>` : ''}
           </div>
+          ${item.comment ? `
+          <div style="font-size: 0.875rem; color: #374151; line-height: 1.6; margin-top: 0.375rem;">
+            ${escapeHtml(item.comment)}
+          </div>` : ''}
           ${selectedAnswers.length > 0 ? `
           <div style="margin-left: 0.25rem; font-weight: 400; color: #6b7280; font-size: 0.875rem;">
             ${selectedAnswers.map(ans => escapeHtml(ans)).join(', ')}
@@ -384,10 +398,22 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     startNumber = 1,
     reportType = 'full',
     informationBlocks = [],
+    hidePricing = false,
   } = meta;
 
+  // Detect if an Orientation / Shutoffs information block exists
+  const orientationBlock = Array.isArray(informationBlocks) ? informationBlocks.find(block => {
+    const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
+    if (!blockSection) return false;
+    const clean = String(blockSection).replace(/^\d+\s*-\s*/, '').trim().toLowerCase();
+    return clean === 'orientation / shutoffs';
+  }) : null;
+
+  // If Orientation exists, defects should start at Section 4 (reserving Section 3)
+  const startNumberAdjusted = orientationBlock ? Math.max(startNumber, 4) : startNumber;
+
   // Calculate display numbers for all defects
-  const numberedDefects = calculateDefectNumbers(defects, startNumber);
+  const numberedDefects = calculateDefectNumbers(defects, startNumberAdjusted);
   
   // Sort by section then subsection for stable ordering
   const sorted = [...numberedDefects].sort((a, b) => {
@@ -398,7 +424,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     return 0;
   });
 
-  let currentMain = startNumber; // will increment on first new section to match web logic
+  let currentMain = startNumberAdjusted; // will increment on first new section to match web logic
   let lastSection: string | null = null;
   let subCounter = 0;
 
@@ -412,8 +438,9 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
       const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
       if (blockSection) {
         const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-        // Exclude Section 1 (Inspection Details) as it appears after Section 2
-        if (!sectionsWithDefects.has(cleanBlock) && cleanBlock !== 'Inspection Details') {
+        const cleanLower = cleanBlock.trim().toLowerCase();
+        if (!sectionsWithDefects.has(cleanBlock)
+            && cleanLower !== 'orientation / shutoffs') {
           informationOnlySections.push(blockSection);
         }
       }
@@ -436,7 +463,12 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
         subCounter = subsectionNum;
       }
 
-      const totalCost = (d.material_total_cost || 0) + (d.labor_rate || 0) * (d.hours_required || 0);
+      // Calculate total cost with photo multiplier
+      // Fallback: if base_cost doesn't exist (legacy defects), calculate it from material + labor
+      const baseCost = d.base_cost || ((d.material_total_cost || 0) + (d.labor_rate || 0) * (d.hours_required || 0));
+      const photoCount = 1 + (d.additional_images?.length || 0);
+      const totalCost = baseCost * photoCount;
+      
       const selectedColor = d.color || "#d63636";
       const defectParts = splitDefectText(d.defect_description || "");
       const defectTitle = defectParts.title;
@@ -468,8 +500,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
           // Match by removing leading numbers like "9 - " from both
           const cleanSection = d.section.replace(/^\d+\s*-\s*/, '');
           const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-          // Exclude Section 1 (Inspection Details) as it appears after Section 2
-          return cleanBlock === cleanSection && cleanBlock !== 'Inspection Details';
+          return cleanBlock === cleanSection;
         });
         
         if (matchingBlock) {
@@ -508,6 +539,17 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
                 <h4 class="section-title">Location</h4>
                 <p class="section-content">${escapeHtml(d.location || "Not specified")}</p>
               </div>
+              ${d.additional_images && d.additional_images.length > 0 ? `
+              <div class="additional-photos">
+                <h4 class="section-title">Additional Location Photos (${1 + d.additional_images.length}/10)</h4>
+                <div class="additional-grid">
+                  ${d.additional_images.map(img => `
+                  <div class="additional-item">
+                    <img src="${escapeHtml(img.url)}" alt="Additional photo" class="additional-image" />
+                    ${img.location ? `<div class="additional-caption">${escapeHtml(img.location)}</div>` : ''}
+                  </div>`).join('')}
+                </div>
+              </div>` : ''}
             </div>
 
             <div class="description-section">
@@ -519,6 +561,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
                   ${defectBodyHtml}
                 </div>
               </div>
+              ${!hidePricing ? `
               <div class="section">
                 <h4 class="section-title">Estimated Costs</h4>
                 <div class="section-content">
@@ -534,6 +577,14 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
               <div class="cost-highlight">
                 <div class="total-cost">Total Estimated Cost: ${currency(totalCost)}</div>
               </div>
+              ` : `
+              <div class="section">
+                <h4 class="section-title">Recommendation</h4>
+                <div class="section-content">
+                  <p>${escapeHtml(d.recommendation || "N/A")}</p>
+                </div>
+              </div>
+              `}
             </div>
           </div>
         </section>
@@ -563,6 +614,22 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
       ${generateInformationSectionHTML(matchingBlock)}
     `;
   }).join("\n");
+
+  // Build Orientation / Shutoffs section as Section 3 (placed after Section 2 content, before defects)
+  const orientationSectionHtml = (() => {
+    if (!orientationBlock || reportType !== 'full') return '';
+    // Clean title
+    const rawName = typeof orientationBlock.section_id === 'object' ? orientationBlock.section_id?.name || '' : '';
+    const cleanName = rawName.replace(/^\d+\s*-\s*/, '') || 'Orientation / Shutoffs';
+    return `
+      <div class="section-heading" style="--selected-color: #111827; border-bottom: none;">
+        <h2 class="section-heading-text" style="color: #111827;">
+          Section 3 - ${escapeHtml(cleanName)}
+        </h2>
+      </div>
+      ${generateInformationSectionHTML(orientationBlock)}
+    `;
+  })();
 
   // Build cost summary rows with numbering matching detail sections
   const costSummaryRows = sorted.map((d) => {
@@ -811,6 +878,13 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
   .defect-title { font-weight: 700; font-size: 14px; margin: 0 0 6px 0; color: var(--selected-color, #d63636); }
   .defect-body { font-size: 13px; color: #374151; line-height: 1.6; margin: 0 0 8px 0; }
 
+    /* Additional location photos */
+    .additional-photos { margin-top: 8px; background: #fff; border-left: 3px solid var(--selected-color, #d63636); padding: 8px; border-radius: 4px; }
+    .additional-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .additional-item { width: calc(50% - 4px); max-width: 220px; page-break-inside: avoid; break-inside: avoid; }
+    .additional-image { width: 100%; height: auto; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .additional-caption { text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; font-weight: 500; }
+
     .cost-highlight { background: #f8fafc; border: 1px solid var(--selected-color, #d63636); padding: 8px; border-radius: 6px; margin-top: 8px; }
     .total-cost { text-align: center; font-weight: 700; color: var(--selected-color, #d63636); }
 
@@ -851,7 +925,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     
     .info-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 1rem;
       /* Allow grid to break across pages if needed */
       page-break-inside: auto;
@@ -1086,72 +1160,11 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
   </section>
   <div class="page-break"></div>
   ` : ''}
+  
 
-  ${reportType === 'full' ? `<section class="cover cover--section1 keep-together">
-    <h2>Section 1 - Inspection Overview & Client Responsibilities</h2>
-    <hr style="margin: 8px 0 16px 0; border: none; height: 1px; background-color: #000000;">
-    <p>This is a visual inspection only. The scope of this inspection is to verify the proper performance of the home's major systems. We do not verify proper design.</p>
-    <p>The following items reflect the condition of the home and its systems <strong>at the time and date the inspection was performed</strong>. Conditions of an occupied home can change after the inspection (e.g., leaks may occur beneath sinks, water may run at toilets, walls or flooring may be damaged during moving, appliances may fail, etc.).</p>
-    <p>Furnishings, personal items, and/or systems of the home are not dismantled or moved. A 3–4 hour inspection is not equal to "live-in exposure" and will not discover all concerns. Unless otherwise stated, we will only inspect/comment on the following systems: <em>Electrical, Heating/Cooling, Appliances, Plumbing, Roof and Attic, Exterior, Grounds, and the Foundation</em>.</p>
-  <p>This inspection is not a warranty or insurance policy. The limit of liability of AGI Property Inspections and its employees does not extend beyond the day the inspection was performed.</p>
-    <p>Cosmetic items (e.g., peeling wallpaper, wall scuffs, nail holes, normal wear and tear, etc.) are not part of this inspection. We also do not inspect for fungi, rodents, or insects. If such issues are noted, it is only to bring them to your attention so you can have the proper contractor evaluate further.</p>
-    <p>Although every effort is made to inspect all systems, not every defect can be identified. Some areas may be inaccessible or hazardous. The home should be carefully reviewed during your final walk-through to ensure no new concerns have occurred and that requested repairs have been completed.</p>
-  <p>Please contact our office immediately at <a href="tel:3379051428">337-905-1428</a> if you suspect or discover any concerns during the final walk-through.</p>
-    <p>Repair recommendations and cost estimates included in this report are approximate, generated from typical labor and material rates in our region. They are not formal quotes and must always be verified by licensed contractors. AGI Property Inspections does not guarantee their accuracy.</p>
-    <p>We do not provide guaranteed repair methods. Any corrections should be performed by qualified, licensed contractors. Consult your Real Estate Professional, Attorney, or Contractor for further advice regarding responsibility for these repairs.</p>
-    <p>While this report may identify products involved in recalls or lawsuits, it is not comprehensive. Identifying all recalled products is not a requirement for Louisiana licensed Home Inspectors.</p>
-    <p>This inspection complies with the standards of practice of the State of Louisiana Home Inspectors Licensing Board. Home inspectors are generalists and recommend further review by licensed specialists when needed.</p>
-  <p>This inspection report and all information contained within is the sole property of AGI Property Inspections and is leased to the clients named in this report. It may not be shared or passed on without AGI’s consent. Doing so may result in legal action.</p>
-  </section>
+  ${orientationSectionHtml}
 
-  <div class="page-break"></div>
-
-  <section class="cover cover--section2 keep-together">
-    <h2>Section 2 - Inspection Scope &amp; Limitations</h2>
-    <hr style="margin: 8px 0 16px 0; border: none; height: 1px; background-color: #000000;">
-    ${(() => {
-      // Find Section 1 (Inspection Details) information block if it exists
-      const section1Block = informationBlocks.find(block => {
-        const blockSection = typeof block.section_id === 'object' ? block.section_id?.name : null;
-        if (!blockSection) return false;
-        const cleanBlock = blockSection.replace(/^\d+\s*-\s*/, '');
-        return cleanBlock === 'Inspection Details' || blockSection === '1 - Inspection Details';
-      });
-      return section1Block ? generateInformationSectionHTML(section1Block) : '';
-    })()}
-    <h3>Inspection Categories &amp; Summary</h3>
-    <h4 class="category-immediate">Immediate Attention</h4>
-    <p class="category-immediate"><strong>Major Defects:</strong> Issues that compromise the home’s structural integrity, may result in additional damage if not repaired, or are considered a safety hazard. These items are color-coded red in the report and should be corrected as soon as possible.</p>
-    <h4 class="category-repair">Items for Repair</h4>
-    <p class="category-repair"><strong>Defects:</strong> Items in need of repair or correction, such as plumbing or electrical concerns, damaged or improperly installed components, etc. These are color-coded orange in the report and have no strict repair timeline.</p>
-    <h4 class="category-maintenance">Maintenance Items</h4>
-    <p class="category-maintenance">Small DIY-type repairs and maintenance recommendations provided to increase knowledge of long-term care. While not urgent, addressing these will reduce future repair needs and costs.</p>
-  <h4 class="category-evaluation">Further Evaluation</h4>
-  <p class="category-evaluation">In some cases, a defect falls outside the scope of a general home inspection or requires a more extensive level of knowledge to determine the full extent of the issue. These items should be further evaluated by a specialist.</p>
-    <hr />
-    <h3>Important Information &amp; Limitations</h3>
-    <p>AGI Property Inspections performs all inspections in compliance with the Louisiana Standards of Practice. We inspect readily accessible, visually observable, permanently installed systems and components of the home. This inspection is not technically exhaustive or quantitative.</p>
-    <p>Some comments may go beyond the minimum Standards as a courtesy to provide additional detail. Any item noted for repair, replacement, maintenance, or further evaluation should be reviewed by qualified, licensed tradespeople.</p>
-    <p>This inspection cannot predict future conditions or reveal hidden or latent defects. The report reflects the home’s condition only at the time of inspection. Weather, occupancy, or use may reveal issues not present at the time.</p>
-    <p>This report should be considered alongside the seller’s disclosure, pest inspection report, and contractor evaluations for a complete picture of the home’s condition.</p>
-    <hr />
-    <h3>Repair Estimates Disclaimer</h3>
-    <p>This report may include repair recommendations and estimated costs. These are based on typical labor and material rates in our region, generated from AI image review. They are approximate and not formal quotes.</p>
-    <p>Estimates are not formal quotes. They do not account for unique site conditions and may vary depending on contractor, materials, and methods. Final pricing must always be obtained through qualified, licensed contractors with on-site evaluation. AGI Property Inspections does not guarantee the accuracy of estimates or assume responsibility for work performed by outside contractors.</p>
-    <hr />
-    <h3>Recommendations</h3>
-    <p>Contractors / Further Evaluation: Repairs noted should be performed by licensed professionals. Keep receipts for warranty and documentation purposes.</p>
-    <p>Causes of Damage / Methods of Repair: Suggested repair methods are based on inspector experience and opinion. Final determination should always be made by licensed contractors.</p>
-    <hr />
-    <h3>Excluded Items</h3>
-    <p>The following are not included in this inspection: septic systems, security systems, irrigation systems, pools, hot tubs, wells, sheds, playgrounds, saunas, outdoor lighting, central vacuums, water filters, water softeners, sound or intercom systems, generators, sport courts, sea walls, outbuildings, operating skylights, awnings, exterior BBQ grills, and firepits.</p>
-    <hr />
-    <h3>Occupied Home Disclaimer</h3>
-    <p>If the home was occupied at the time of inspection, some areas may not have been accessible (furniture, personal belongings, etc.). Every effort was made to inspect all accessible areas; however, some issues may not have been visible.</p>
-    <p>We recommend using your final walkthrough to verify that no issues were missed and that the property remains in the same condition as at the time of inspection.</p>
-  </section>` : ''}
-
-  ${reportType === 'full' ? `<!-- Non-priced defects summary placed after Section 2 -->
+  ${reportType === 'full' ? `<!-- Non-priced defects summary placed after Section 2 (and Orientation, if present) -->
   <section class="cover cover--summary keep-together">
     <h2>Defects Summary</h2>
     <table class="table">
@@ -1174,137 +1187,9 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
   
   ${informationOnlySectionsHtml}
 
-  ${reportType === 'full' ? `
-  <!-- Hardcoded Section - Resources and Disclaimers -->
-  <div class="section-heading" style="--selected-color: #111827; border-bottom: none; margin-top: 2rem;">
-    <h2 class="section-heading-text" style="color: #111827;">
-      Resources and Disclaimers
-    </h2>
-  </div>
-  <div style="margin-top: 1rem; margin-bottom: 1.5rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 1.25rem;">
-    <!-- Header -->
-    <div style="display: flex; align-items: center; margin-bottom: 1rem; padding-bottom: 0.625rem; border-bottom: 2px solid #3b82f6;">
-      <h3 style="font-size: 0.9375rem; font-weight: 700; letter-spacing: 0.05em; color: #1e40af; margin: 0; text-transform: uppercase;">INFORMATION</h3>
-    </div>
-    
-    <!-- Vertical Stack for INFORMATION items -->
-    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-      <!-- Final Checklist -->
-      <div style="display: flex; flex-direction: column; gap: 0.375rem;">
-        <div style="font-weight: 700; color: #000000; font-size: 0.875rem;">
-          General: Final Checklist
-        </div>
-        <div style="font-size: 0.8125rem; color: #374151; line-height: 1.5;">
-          <p style="margin: 0 0 0.625rem 0;">
-            Our goal is to treat every home with respect and leave them in the same condition as when we arrived. The following are steps taken as part of our final checklist to ensure that everything was reset to its original position/condition.
-          </p>
-          <div style="margin-left: 0.875rem;">
-            <p style="margin: 0.1875rem 0;">• All Interior and Exterior Lights Are Off</p>
-            <p style="margin: 0.1875rem 0;">• All Accessible GFCI Receptacles Were Reset</p>
-            <p style="margin: 0.1875rem 0;">• All Gates Were Closed on The Fence</p>
-            <p style="margin: 0.1875rem 0;">• Dishwasher Was Finished and Off</p>
-            <p style="margin: 0.1875rem 0;">• Oven/Range/Cooktops Turned Off</p>
-            <p style="margin: 0.1875rem 0;">• Thermostat Was Reset to Original Position</p>
-            <p style="margin: 0.1875rem 0;">• All Exterior Doors and Windows Are Locked</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Post Inspection -->
-      <div style="display: flex; flex-direction: column; gap: 0.375rem; page-break-inside: avoid;">
-        <div style="font-weight: 700; color: #000000; font-size: 0.875rem;">
-          General: Post Inspection
-        </div>
-        <div style="font-size: 0.8125rem; color: #374151; line-height: 1.5;">
-          <p style="margin: 0 0 0.5rem 0;">
-            The "Final Walk-Through" prior to closing is the time for you to go back to the property to ensure there aren't any major changes. Conditions can change between the time of a home inspection and the time of closing. Restrictions that existed during the inspection may have been removed for the walk-through, which could expose issues that weren't visible the day of the inspection The following are recommendations of things you can check during your final walkthrough:
-          </p>
-          <p style="margin: 0 0 0.5rem 0;">1. Check the heating and cooling system. Turn the thermostat to heat mode and turn the temperature setting up. Confirm that the heating system is running and making heat. Turn the thermostat to cool mode and turn the temperature setting down. Confirm the condenser fan (outside equipment) is spinning and the system is making cool air.</p>
-          <p style="margin: 0 0 0.5rem 0;">2. Operate all appliances; oven/stove, dishwasher, microwave, etc.</p>
-          <p style="margin: 0 0 0.5rem 0;">3. Run the water at all plumbing fixtures, both inside and outside, and flush toilets.</p>
-          <p style="margin: 0 0 0.5rem 0;">4. Operate all exterior doors, windows and locks. Sudden change of functionality with any of these, could indicate serious issues, like foundation movement.</p>
-          <p style="margin: 0 0 0.5rem 0;">5. Test smoke/carbon monoxide detectors, following the manufacturer's instructions. Only their presence or absence is reported on. We always recommend you replace them, unless they are clearly only a few years old or the seller can specifically say when they were installed.</p>
-          <p style="margin: 0 0 0.5rem 0;">6. Ask for all remote controls to any garage door openers, fans, gas fireplaces, etc. so that you can ensure that they work before your last opportunity to have them correct that.</p>
-          <p style="margin: 0 0 0.5rem 0;">7. Inspect areas that may have been restricted or covered, at the time of the inspection. There are videos in your report of any such restriction present at the time of the inspection.</p>
-          <p style="margin: 0 0 0.5rem 0;">8. Ask sellers about warranties for major building systems, security codes, smart equipment, etc.</p>
-          <p style="margin: 0 0 0.5rem 0;">9. Ask seller about any warranties that may be transferable or subscriptions like, pool, pest control, security.</p>
-        </div>
-      </div>
-
-      <!-- Inspections Disclaimer -->
-      <div style="display: flex; flex-direction: column; gap: 0.375rem; page-break-inside: avoid;">
-        <div style="font-weight: 700; color: #000000; font-size: 0.875rem;">
-          General: Inspections Disclaimer
-        </div>
-        <div style="font-size: 0.8125rem; color: #374151; line-height: 1.5;">
-          <p style="margin: 0 0 0.5rem 0;">The home inspection report (Report) was prepared by AGI: Property Inspections (AGI) for the specific purposes of assessing the general condition of the building and identifying defects that are readily apparent at the time of inspection based on the limited visual, non-invasive inspection as further described below in the Scope and Limitations & Exclusions sections. No responsibility is accepted if the Report is used for any other purpose, by any other parties, than the client in this inspection.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Scope</p>
-          <p style="margin: 0 0 0.5rem 0;">- The Report is based on a limited visual, above-ground, non-invasive inspection of the standard systems and components of the building. AGI does not open up, uncover or dismantle any part of the building as part of the inspection or undertake any internal assessment of the building, aside from the electrical panel dead front.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Report Limitations & Exclusions</p>
-          <p style="margin: 0 0 0.5rem 0;">- The Report is an evaluation only and not a guarantee or warranty as to the state of the building or any product, system, or feature in the building.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">AGI accepts no responsibility or liability for any omission in its inspection or the Report related to defects or irregularities which are not reasonably visible at the time of the inspection or which relate to components of the building:</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">1. which are below ground or which are concealed or closed in behind finished surfaces (such as plumbing, drainage, heating, framing, ventilation, insulation, or wiring);</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">2. which required the moving of anything that impeded access or limited visibility (such as floor coverings, furniture, appliances, personal property, vehicles, vegetation, debris, or soil). AGI does not move owner/occupier items for the inspection, to which access is not readily accessible. This may also include roofs, subfloors, ceiling cavities, and high, constricted, or dangerous areas, for which dangerous, hazardous, or adverse situations are possible.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">In addition, the customer understands and accepts that it's possible that AGI will not find some defects because the defect may only occur intermittently or the defect has been deliberately concealed. If you believe that any of these circumstances apply, you should immediately contact AGI to try and resolve them.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">Any area, system, item, or component of the building not explicitly identified in the Report as having been inspected was not included in the scope of the inspection. This consists of the condition and location of any special features or services, underground services drainage, or any systems including electrical, plumbing, gas, or heating except as otherwise may be described in the Report.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">Descriptions in the Report of systems or appliances relate to the existence of such systems or appliances only and not the adequacy, efficiency, or life expectancy of such systems or appliances.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">The Report</p>
-          <p style="margin: 0 0 0.5rem 0;">- is not a structural survey, engineer's report, or weather tightness inspection; does not assess compliance with the requirements of any legislation (including any act, regulation, code, or by-law) unless otherwise stated; is not a geotechnical, site or environmental report. AGI makes no representation as to the existence or absence of any hazard (as defined in the Health and Safety in Employment Act) or any hazardous substance, natural hazard, or contaminant (as those terms are defined in the Resource Management Act) in the building or property.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">AGI has not undertaken any title search and assumes all improvements are within the legal boundaries of the property.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">No property survey or any search of the information held by the territorial authority or any other relevant authority has been undertaken. It is recommended that the customer conducts its own Land Information Memorandum or Council property file search.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Unit Title Properties</p>
-          <p style="margin: 0 0 0.5rem 0;">- If the property is a Unit Title property, the inspection and Report are limited to the actual unit and any accessory unit(s) and do not extend to the remainder of the building or the common areas.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">AGI recommends the customer obtain a copy of the financial statements and minutes from meetings of the Body Corporate to establish the history of the inspected property under such Body Corporate.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Responsibility to Third Parties</p>
-          <p style="margin: 0 0 0.5rem 0;">- Our responsibility in connection with this Report is limited to the client to whom the Report is addressed and to that client only. We disclaim all responsibility and will accept no liability to any other party without first obtaining the written consent of AGI and the author of the Report.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">AGI reserves the right to alter, amend, explain, or limit any information given to any other party.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Publication</p>
-          <p style="margin: 0 0 0.5rem 0;">- Neither the whole nor any part of the Report (or any other report provided by AGI, whether written or verbal) may be published or included in any published document, circular, or statement whether in hard copy or electronic form or otherwise disseminated or sold without the prior written approval of AGI and the inspector.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Claims & Disputes</p>
-          <p style="margin: 0 0 0.5rem 0;">- Should any dispute arise as a result of the inspection or the Report, it must be submitted to AGI in writing as soon as practically possible but in any case, within ten working days of discovery. The customer agrees that in the event of a dispute, the Report's contents may not be used to satisfy any terms of a sale and purchase agreement until the dispute/dispute has been resolved. In the event the customer nevertheless enters into an unconditional agreement for the purchase of the subject property or makes an existing agreement unconditional before the resolution of the dispute, the customer shall be deemed to have waived the customer's rights to continue with and/or make any future claim against AGI in relation to that matter.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">Any claim relating to the accuracy of the Report, in the form of errors or omissions, is limited to the failure on the part of AGI to follow the Standards of Practice promulgated by the Louisiana State Board of Home Inspectors (a copy is made available for viewing along with the Pre-Inspection Agreement).</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">Except in the case of an emergency, the customer further agrees not to disturb, repair, replace, or alter anything that may constitute evidence relating to the dispute or claimed discrepancy before AGI has had an opportunity to re-inspect and investigate the claim. The Client understands and agrees that any failure to notify AGI or permit AGI to re-inspect as stated above shall be deemed a waiver of the customer's rights to continue with and/or make any future claim against AGI about that matter.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Limitation of Liability</p>
-          <p style="margin: 0 0 0.5rem 0;">- The customer acknowledges and agrees that the director(s) and employee(s) of AGI shall not be held liable to the client.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">AGI shall have no liability to the client for any indirect or consequential loss suffered by the client or any other person. The client indemnifies AGI concerning any claims concerning any such loss.</p>
-          
-          <p style="margin: 0 0 0.5rem 0;">Subject to any legal provisions, if AGI becomes liable to the customer for any reason, for any loss, damage, harm, or injury in any way connected to the inspection and/or the Report, AGI's total liability shall be limited to a sum not exceeding the original fee of the home inspection.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Consumer Guarantees Act</p>
-          <p style="margin: 0 0 0.5rem 0;">- Nothing contained in these terms and conditions shall be deemed to exclude or restrict any rights or remedies that the client may have under the Consumer Guarantees Act 1993 or otherwise at law.</p>
-          
-          <p style="margin: 0 0 0.5rem 0; font-weight: 700;">Partial Invalidity</p>
-          <p style="margin: 0 0 0.5rem 0;">- If any provision in these terms and conditions is illegal, invalid, or unenforceable, such provision shall be deemed to be excluded or read down to the extent necessary to make the provision legal, valid, or enforceable, and the remaining provisions of these terms and conditions shall not be affected.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  ` : ''}
-
   <div class="page-break"></div>
 
-  ${reportType === 'full' ? `<section class="cover">
+  ${reportType === 'full' && !hidePricing ? `<section class="cover">
     <h2>Total Estimated Cost</h2>
     <table class="table">
       <thead>
@@ -1324,7 +1209,7 @@ export function generateInspectionReportHTML(defects: DefectItem[], meta: Report
     </table>
   </section>` : ''}
 
-  ${reportType === 'summary' ? `<section class="cover">
+  ${reportType === 'summary' && !hidePricing ? `<section class="cover">
     <h2>Total Estimated Cost</h2>
     <table class="table">
       <thead>

@@ -1,35 +1,53 @@
 import React, { useRef } from "react";
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
+  // New: support selecting multiple files at once
+  onFilesSelect: (files: File[]) => void;
   accept?: string;
   id?: string;
+  labels?: { upload?: string; photo?: string; video?: string };
+  layoutColumns?: number; // e.g., 2 to force two columns (2x2 when 4 buttons)
+  extraButtons?: React.ReactNode[]; // optional extra buttons appended to the grid
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({ 
-  onFileSelect, 
+  onFilesSelect, 
   accept = "image/*,.heic,.heif", 
-  id = "file-upload" 
+  id = "file-upload",
+  labels,
+  layoutColumns,
+  extraButtons = []
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Light client-side validation to avoid round-trip on completely unsupported types
-      const isImage = file.type.startsWith('image/');
-      const isVideo = file.type.startsWith('video/');
-      if (!isImage && !isVideo) {
-        alert('Unsupported file type. Please select an image or video.');
-        e.target.value = '';
-        return;
-      }
-      onFileSelect(file);
-      // Reset the input so the same file can be selected again if needed
+  // Image inputs: allow multiple selection
+  const handleImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const filtered = files.filter((f) => f.type.startsWith('image/') || /heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name));
+    if (!filtered.length) {
+      alert('Unsupported file type. Please select image files.');
       e.target.value = '';
+      return;
     }
+    onFilesSelect(filtered);
+    // Reset the input so the same file(s) can be selected again if needed
+    e.target.value = '';
+  };
+
+  // Video input: single file selection
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      alert('Unsupported file type. Please select a video.');
+      e.target.value = '';
+      return;
+    }
+    onFilesSelect([file]);
+    e.target.value = '';
   };
 
   return (
@@ -38,24 +56,26 @@ const FileUpload: React.FC<FileUploadProps> = ({
       <input 
         type="file" 
         ref={fileInputRef}
-        onChange={handleFileChange} 
+        onChange={handleImagesChange} 
         id={id} 
         style={{ display: 'none' }}
-        accept="image/*,.heic,.heif"
+        accept={accept}
+        multiple
       />
       <input 
         type="file" 
         ref={cameraInputRef}
-        onChange={handleFileChange} 
+        onChange={handleImagesChange} 
         id={`${id}-camera`} 
         style={{ display: 'none' }}
-        accept="image/*,.heic,.heif"
+        accept={accept}
+        multiple
         /* No capture attribute: lets users switch between cameras in OS UI */
       />
       <input 
         type="file" 
         ref={videoInputRef}
-        onChange={handleFileChange} 
+        onChange={handleVideoChange} 
         id={`${id}-video`} 
         style={{ display: 'none' }}
         accept="video/*"
@@ -65,10 +85,20 @@ const FileUpload: React.FC<FileUploadProps> = ({
       {/* Upload buttons in a clean grid layout */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+        gridTemplateColumns: layoutColumns ? `repeat(${layoutColumns}, minmax(140px, 1fr))` : 'repeat(auto-fit, minmax(140px, 1fr))', 
         gap: '0.5rem',
-        maxWidth: '500px'
+        maxWidth: '100%',
+        width: '100%',
+        margin: '0 auto',
+        boxSizing: 'border-box',
+        overflowX: 'hidden'
       }}>
+        {/* Optional extra buttons (e.g., 360° Pic) can be prepended for custom layouts */}
+        {extraButtons && extraButtons.length > 0 && extraButtons.map((node, idx) => (
+          <div key={`extra-${idx}`} style={{ display: 'contents' }}>
+            {node}
+          </div>
+        ))}
         <label 
           htmlFor={id}
           style={{
@@ -87,10 +117,10 @@ const FileUpload: React.FC<FileUploadProps> = ({
             transition: 'background-color 0.2s',
             whiteSpace: 'nowrap'
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2563eb')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#8230c9')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#3b82f6')}
         >
-          📷 Upload Image
+          📷 {labels?.upload ?? 'Upload Image'}
         </label>
         
         <label
@@ -114,7 +144,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#059669')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
         >
-          📸 Take Photo
+          📸 {labels?.photo ?? 'Take Photo'}
         </label>
         
         <label
@@ -138,7 +168,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#7c3aed')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#8b5cf6')}
         >
-          🎥 Take Video
+          🎥 {labels?.video ?? 'Take Video'}
         </label>
       </div>
     </div>
