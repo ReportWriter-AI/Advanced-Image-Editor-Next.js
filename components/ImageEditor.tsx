@@ -1490,9 +1490,64 @@ const captureImage = () => {
           const c = getArrowCenter(clickedShape);
           setDragArrowOffset({ x: mouseX - c.x, y: mouseY - c.y });
           setInteractionMode('move');
-        } else {
-          // For circles and squares, just move them
+        } else if (clickedShape.type === 'circle' || clickedShape.type === 'square') {
+          // For circles and squares, check for resize handles FIRST
           const center = clickedShape.center || clickedShape.points[0];
+          const tolerance = 20;
+
+          if (clickedShape.type === 'circle' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
+            const handles = [
+              { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
+              { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+            ];
+
+            const clickedHandle = handles.find(handle =>
+              Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+            );
+
+            if (clickedHandle) {
+              setIsResizingShape(true);
+              setResizeHandle(clickedHandle.name);
+              setInitialShapeData({
+                center: center,
+                width: clickedShape.width,
+                height: clickedShape.height,
+                id: clickedShape.id
+              });
+              return;
+            }
+          } else if (clickedShape.type === 'square' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
+            const handles = [
+              { x: center.x - clickedShape.width/2 - 5, y: center.y - clickedShape.height/2 - 5, name: 'top-left' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y - clickedShape.height/2 - 5, name: 'top-right' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-right' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-left' },
+              { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
+              { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+            ];
+
+            const clickedHandle = handles.find(handle =>
+              Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+            );
+
+            if (clickedHandle) {
+              setIsResizingShape(true);
+              setResizeHandle(clickedHandle.name);
+              setInitialShapeData({
+                center: center,
+                width: clickedShape.width,
+                height: clickedShape.height,
+                id: clickedShape.id
+              });
+              return;
+            }
+          }
+
+          // If no resize handle was clicked, start moving the shape
           setIsMovingShape(true);
           setMoveOffset({
             x: mouseX - center.x,
