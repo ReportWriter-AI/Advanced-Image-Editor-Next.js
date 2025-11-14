@@ -568,24 +568,34 @@ function ImageEditorPageContent() {
 
         // Update defect with new main image AND annotations
         console.log('💾 Saving annotations:', currentAnnotations.length);
+        console.log('📝 Full annotations data:', JSON.stringify(currentAnnotations, null, 2));
 
         // If there's an original image in localStorage, save it too
         const originalImageUrl = localStorage.getItem('defectOriginalImage');
+        console.log('🖼️ Original image URL:', originalImageUrl);
+
+        const updatePayload = {
+          inspection_id: currentDefect.inspection_id,
+          image: uploadData.url,
+          annotations: currentAnnotations,
+          originalImage: originalImageUrl || currentDefect.originalImage || uploadData.url
+        };
+
+        console.log('📦 Update payload:', JSON.stringify(updatePayload, null, 2));
 
         const updateRes = await fetch(`/api/defects/${defectId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            inspection_id: currentDefect.inspection_id,
-            image: uploadData.url,
-            annotations: currentAnnotations,
-            originalImage: originalImageUrl || currentDefect.originalImage || uploadData.url
-          })
+          body: JSON.stringify(updatePayload)
         });
 
         if (!updateRes.ok) {
+          const errorText = await updateRes.text();
+          console.error('❌ Update failed:', errorText);
           throw new Error('Failed to update defect');
         }
+
+        console.log('✅ Defect updated successfully');
 
         // Notify parent window via localStorage so the Manage Defects modal can refresh instantly
         try {

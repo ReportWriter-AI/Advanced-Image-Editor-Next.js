@@ -408,9 +408,22 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
   const fetchDefects = async () => {
     try {
       setLoading(true);
+      console.log('📥 Fetching defects for inspection:', inspectionId);
       const response = await fetch(`/api/defects/${inspectionId}`);
     if (response.ok) {
         const data = await response.json();
+        console.log('📊 Fetched defects:', data.length);
+
+        // Log annotations info for each defect
+        data.forEach((defect: any, idx: number) => {
+          console.log(`Defect ${idx}:`, {
+            id: defect._id,
+            hasAnnotations: !!defect.annotations,
+            annotationsCount: defect.annotations?.length || 0,
+            hasOriginalImage: !!defect.originalImage
+          });
+        });
+
         // Ensure data is an array and has proper structure
         const safeData = Array.isArray(data) ? data : [];
         setDefects(safeData);
