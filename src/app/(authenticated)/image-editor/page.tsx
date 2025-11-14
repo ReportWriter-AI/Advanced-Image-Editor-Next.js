@@ -53,6 +53,8 @@ function ImageEditorPageContent() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [isThreeSixty, setIsThreeSixty] = useState(false); // 360° photo flag
+  const [preloadedAnnotations, setPreloadedAnnotations] = useState<any[] | undefined>(undefined);
+  const [currentAnnotations, setCurrentAnnotations] = useState<any[]>([]);
 
 
 
@@ -327,6 +329,26 @@ function ImageEditorPageContent() {
     }
   }, [preloadImageUrl]);
 
+  // Load annotations from localStorage for defect-main mode
+  useEffect(() => {
+    if (isDefectMainMode) {
+      console.log('📥 Defect-main mode detected, checking for annotations...');
+      const annotationsJson = localStorage.getItem('defectAnnotations');
+      if (annotationsJson) {
+        try {
+          const annotations = JSON.parse(annotationsJson);
+          console.log('✅ Loaded annotations from localStorage:', annotations.length);
+          setPreloadedAnnotations(annotations);
+        } catch (e) {
+          console.error('❌ Failed to parse annotations from localStorage:', e);
+        }
+      } else {
+        console.log('ℹ️ No annotations found in localStorage');
+        setPreloadedAnnotations([]);
+      }
+    }
+  }, [isDefectMainMode]);
+
 
 
   const handleActionClick = (mode: 'none' | 'crop' | 'arrow' | 'circle' | 'square') => {
@@ -544,13 +566,20 @@ function ImageEditorPageContent() {
           throw new Error('Defect not found');
         }
 
-        // Update defect with new main image
+        // Update defect with new main image AND annotations
+        console.log('💾 Saving annotations:', currentAnnotations.length);
+
+        // If there's an original image in localStorage, save it too
+        const originalImageUrl = localStorage.getItem('defectOriginalImage');
+
         const updateRes = await fetch(`/api/defects/${defectId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             inspection_id: currentDefect.inspection_id,
-            image: uploadData.url
+            image: uploadData.url,
+            annotations: currentAnnotations,
+            originalImage: originalImageUrl || currentDefect.originalImage || uploadData.url
           })
         });
 
@@ -1257,8 +1286,8 @@ function ImageEditorPageContent() {
 
       {/* Image Upload Area */}
       <div className="image-upload-area">
-        <ImageEditor 
-          activeMode={activeMode} 
+        <ImageEditor
+          activeMode={activeMode}
           onCropStateChange={handleCropStateChange}
           onUndo={handleUndo}
           onRedo={handleRedo}
@@ -1272,6 +1301,8 @@ function ImageEditorPageContent() {
           setVideoSrc={setVideoSrc}
           preloadedImage={currentImage}
           preloadedFile={editedFile}
+          preloadedAnnotations={preloadedAnnotations}
+          onAnnotationsChange={setCurrentAnnotations}
         />
       </div>
 

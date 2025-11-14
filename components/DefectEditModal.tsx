@@ -79,6 +79,8 @@ interface Defect {
   isThreeSixty?: boolean; // 360° photo flag
   additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>; // Multiple location photos (supports 360)
   base_cost?: number; // Base cost from AI analysis
+  annotations?: any[]; // Annotation shapes (arrows, circles, squares, freehand)
+  originalImage?: string; // Original image without annotations
 }
 
 interface DefectEditModalProps {
@@ -544,8 +546,19 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId, inspect
     localStorage.setItem('editingDefectId', defect._id);
     localStorage.setItem('editingInspectionId', inspectionId);
 
+    // Pass annotations and original image for re-editing
+    if (defect.annotations && defect.annotations.length > 0) {
+      localStorage.setItem('defectAnnotations', JSON.stringify(defect.annotations));
+    } else {
+      localStorage.removeItem('defectAnnotations');
+    }
+
+    // Use original image if available, otherwise use current image
+    const imageToEdit = defect.originalImage || defect.image;
+    localStorage.setItem('defectOriginalImage', imageToEdit);
+
     window.open(
-      `/image-editor?src=${encodeURIComponent(defect.image)}&mode=defect-main&defectId=${defect._id}&inspectionId=${inspectionId}`,
+      `/image-editor?src=${encodeURIComponent(imageToEdit)}&mode=defect-main&defectId=${defect._id}&inspectionId=${inspectionId}`,
       '_blank'
     );
   };

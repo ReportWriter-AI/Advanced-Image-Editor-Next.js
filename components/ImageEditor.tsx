@@ -62,14 +62,16 @@ interface ImageEditorProps {
   setThumbnail: (thumb: string | null) => void;
   preloadedImage?: HTMLImageElement | null; // New prop for preloaded images
   preloadedFile?: File | null; // New prop for preloaded file
+  preloadedAnnotations?: Line[]; // Editable annotations to load
+  onAnnotationsChange?: (annotations: Line[]) => void; // Callback when annotations change
 }
 
-const ImageEditor: React.FC<ImageEditorProps> = ({ 
-  activeMode, 
-  onCropStateChange, 
-  onUndo, 
+const ImageEditor: React.FC<ImageEditorProps> = ({
+  activeMode,
+  onCropStateChange,
+  onUndo,
   onRedo,
-  onImageChange, 
+  onImageChange,
   onEditedFile,
   videoRef,
   setIsCameraOpen,
@@ -78,7 +80,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   setVideoSrc,
   setThumbnail,
   preloadedImage,
-  preloadedFile
+  preloadedFile,
+  preloadedAnnotations,
+  onAnnotationsChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -238,6 +242,26 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     }
   }, [preloadedImage, preloadedFile, onImageChange, onEditedFile]);
 
+  // Load preloaded annotations if provided
+  useEffect(() => {
+    if (preloadedAnnotations && preloadedAnnotations.length > 0) {
+      console.log('📥 Loading preloaded annotations:', preloadedAnnotations.length);
+      setLines(preloadedAnnotations);
+
+      // Find max ID to continue from
+      const maxId = Math.max(0, ...preloadedAnnotations.map(line => line.id || 0));
+      setLineIdCounter(maxId + 1);
+
+      console.log('✅ Annotations loaded, next ID will be:', maxId + 1);
+    }
+  }, [preloadedAnnotations]);
+
+  // Notify parent when annotations change (for auto-save)
+  useEffect(() => {
+    if (onAnnotationsChange) {
+      onAnnotationsChange(lines);
+    }
+  }, [lines, onAnnotationsChange]);
 
 
 
