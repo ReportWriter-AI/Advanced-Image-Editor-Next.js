@@ -31,7 +31,14 @@ function decodeBase64Image(dataString: string) {
 async function handler(request: Request) {
   try {
   const body = await request.json();
-    
+
+    console.log('🔍 process-analysis received request');
+    console.log('📦 Body keys:', Object.keys(body));
+    console.log('📊 annotations field:', body.annotations);
+    console.log('  - is array:', Array.isArray(body.annotations));
+    console.log('  - length:', body.annotations?.length || 0);
+    console.log('🖼️ originalImage field:', body.originalImage);
+
     const {
       imageUrl,
       description,
@@ -188,7 +195,14 @@ async function handler(request: Request) {
       originalImage: originalImage || finalImageUrl!, // Save original unannotated image
     };
 
+    console.log('💾 About to call createDefect with:');
+    console.log('  - annotations:', defectData.annotations);
+    console.log('  - annotations length:', defectData.annotations?.length || 0);
+    console.log('  - originalImage:', defectData.originalImage);
+
   await createDefect(defectData);
+
+    console.log('✅ createDefect completed successfully');
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

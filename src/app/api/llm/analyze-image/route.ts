@@ -93,6 +93,12 @@ export async function POST(request: Request) {
       thumbnailUrlJson = body.thumbnailUrl;
       annotations = body.annotations; // Editable annotations
       originalImage = body.originalImage; // Original unannotated image
+
+      console.log('🔍 analyze-image received JSON body');
+      console.log('📊 annotations:', annotations);
+      console.log('  - is array:', Array.isArray(annotations));
+      console.log('  - length:', annotations?.length || 0);
+      console.log('🖼️ originalImage:', originalImage);
     }
     else if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
@@ -179,6 +185,11 @@ export async function POST(request: Request) {
 
   // Publish job to QStash -> will call /api/process-analysis
   try {
+    console.log('📤 About to publish to QStash:');
+    console.log('  - annotations:', annotations);
+    console.log('  - annotations length:', annotations?.length || 0);
+    console.log('  - originalImage:', originalImage);
+
     const qstashResponse = await client.publishJSON({
       url: `${baseUrl}/api/process-analysis`,
       body: {
@@ -198,6 +209,8 @@ export async function POST(request: Request) {
         originalImage // Pass original image URL
       },
     });
+
+    console.log('✅ QStash publish successful');
   } catch (qstashError) {
     console.error('❌ QStash publish failed:', qstashError);
     throw qstashError;
