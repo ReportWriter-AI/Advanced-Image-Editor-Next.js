@@ -282,12 +282,14 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   }, [lines]);
 
   // Notify parent when annotations change (for auto-save)
-  // Note: onAnnotationsChange (setCurrentAnnotations) is a stable setState setter,
-  // so we don't need it in dependencies. This prevents infinite loops during rapid updates.
-  // IMPORTANT: Don't notify during active interactions (drag/resize) to avoid triggering
-  // too many updates per second (60+ fps), which React interprets as infinite loop.
-  // We read interaction states directly instead of adding them to dependencies to minimize
-  // how often this effect runs (only when lines actually changes, not when interaction states change).
+  // DISABLED: This useEffect was causing "Maximum update depth exceeded" errors because:
+  // 1. During drag/resize, setLines is called 60+ times/second (at mouse move rate)
+  // 2. Each setLines triggers this useEffect
+  // 3. Even with early return, React sees useEffect running 60+ times/second
+  // 4. React interprets this as infinite loop → error
+  // SOLUTION: Parent notification moved to handleMouseUp (called ONCE when interaction ends)
+  // This is actually better - parent only gets updated when interaction completes, not during.
+  /*
   useEffect(() => {
     // Only notify parent when user is NOT actively interacting with shapes
     const isInteracting = isDraggingArrow || isMovingShape || isResizingShape || isResizingArrow || isDrawing;
@@ -296,6 +298,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
       onAnnotationsChange(lines);
     }
   }, [lines]); // eslint-disable-line react-hooks/exhaustive-deps
+  */
 
 
 
@@ -2499,12 +2502,18 @@ const captureImage = () => {
     setIsResizingArrow(false);
     setArrowResizeEnd(null);
     setInteractionMode(null);
-    
+
     // Stop ultra-smooth movement
     isMovingRef.current = false;
     if (movementFrameRef.current) {
       cancelAnimationFrame(movementFrameRef.current);
       movementFrameRef.current = null;
+    }
+
+    // Notify parent of final state after interaction completes
+    // This is called ONCE per interaction (on mouse up), not 60+ times/second during drag
+    if (onAnnotationsChange) {
+      onAnnotationsChange(lines);
     }
   };
 
