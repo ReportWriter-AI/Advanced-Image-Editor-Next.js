@@ -46,6 +46,7 @@ function ImageEditorPageContent() {
   const locationDropdownRef2 = useRef<HTMLDivElement>(null);
   const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
   const [editedFile, setEditedFile] = useState<File | null>(null);
+  const [originalFile, setOriginalFile] = useState<File | null>(null); // Store original unannotated file for CREATE flow
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedColor, setSelectedColor] = useState('#d63636'); // Default red color - shared across all tools
@@ -880,7 +881,32 @@ function ImageEditorPageContent() {
         throw new Error('No edited image to upload');
       }
 
-      // Get presigned URL for image
+      // Upload original image (without annotations) if available and annotations exist
+      let originalImageUrl: string | null = null;
+      if (originalFile && currentAnnotations.length > 0) {
+        console.log('📤 Uploading original (unannotated) image for CREATE flow...');
+        const presignedOrigRes = await fetch(
+          `/api/r2api?action=presigned&fileName=original-${encodeURIComponent(originalFile.name)}&contentType=${encodeURIComponent(originalFile.type)}`
+        );
+        if (!presignedOrigRes.ok) {
+          const t = await presignedOrigRes.text();
+          throw new Error(`Failed to get presigned URL for original image: ${t}`);
+        }
+        const { uploadUrl: origUploadUrl, publicUrl: origPublicUrl } = await presignedOrigRes.json();
+        const putOrig = await fetch(origUploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': originalFile.type },
+          body: originalFile,
+        });
+        if (!putOrig.ok) {
+          const t = await putOrig.text();
+          throw new Error(`Failed to upload original image to R2: ${putOrig.status} ${t}`);
+        }
+        originalImageUrl = origPublicUrl;
+        console.log('✅ Original image uploaded:', originalImageUrl);
+      }
+
+      // Get presigned URL for annotated image
       const presignedImgRes = await fetch(
         `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
       );
@@ -889,7 +915,7 @@ function ImageEditorPageContent() {
         throw new Error(`Failed to get presigned URL for image: ${t}`);
       }
       const { uploadUrl: imgUploadUrl, publicUrl: imagePublicUrl } = await presignedImgRes.json();
-      // Upload the edited image directly to R2
+      // Upload the edited (annotated) image directly to R2
       const putImg = await fetch(imgUploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': editedFile.type },
@@ -899,6 +925,7 @@ function ImageEditorPageContent() {
         const t = await putImg.text();
         throw new Error(`Failed to upload image to R2: ${putImg.status} ${t}`);
       }
+      console.log('✅ Annotated image uploaded:', imagePublicUrl);
 
       // Optional video upload via presigned URL
       let videoPublicUrl: string | null = null;
@@ -961,6 +988,8 @@ function ImageEditorPageContent() {
       // 2) Send only JSON metadata and URLs to the analysis endpoint
       console.log('🚀 Sending to analyze-image API...');
       console.log('📝 Sending annotations:', currentAnnotations.length);
+      console.log('🖼️ Original image URL:', originalImageUrl || imagePublicUrl);
+      console.log('🎨 Annotated image URL:', imagePublicUrl);
       const response = await fetch('/api/llm/analyze-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -977,7 +1006,7 @@ function ImageEditorPageContent() {
           videoUrl: videoPublicUrl,
           thumbnailUrl: thumbnailPublicUrl,
           annotations: currentAnnotations, // Include annotations for saving
-          originalImage: imagePublicUrl, // Save original (unannotated) image URL
+          originalImage: originalImageUrl || imagePublicUrl, // Use original (unannotated) if available, otherwise annotated
         }),
       });
       
@@ -1306,6 +1335,7 @@ function ImageEditorPageContent() {
           onRedo={handleRedo}
           onImageChange={setCurrentImage}
           onEditedFile={setEditedFile}
+          onOriginalFileSet={setOriginalFile}
           videoRef={videoRef}
           setIsCameraOpen={setIsCameraOpen}
           isCameraOpen={isCameraOpen}

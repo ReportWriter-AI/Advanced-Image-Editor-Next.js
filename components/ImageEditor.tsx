@@ -54,6 +54,7 @@ interface ImageEditorProps {
   onRedo: () => void;
   onImageChange?: (img: HTMLImageElement | null) => void;
   onEditedFile?: (file: File | null) => void;
+  onOriginalFileSet?: (file: File | null) => void; // Callback when original file is uploaded (for CREATE flow)
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   setIsCameraOpen: (val: boolean) => void;
   isCameraOpen: boolean;
@@ -73,6 +74,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   onRedo,
   onImageChange,
   onEditedFile,
+  onOriginalFileSet,
   videoRef,
   setIsCameraOpen,
   isCameraOpen,
@@ -438,6 +440,13 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (file.type.startsWith('image/')) {
       // Fix orientation when needed
       file = await fixImageOrientation(file);
+
+      // Save original file (before annotations) for CREATE flow
+      // This allows us to upload both original (unannotated) and annotated versions
+      if (onOriginalFileSet) {
+        onOriginalFileSet(file);
+        console.log('✅ Original file saved for CREATE flow:', file.name);
+      }
 
       setEditedFile(file);
       if (onEditedFile) onEditedFile(file);
