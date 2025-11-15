@@ -211,5 +211,21 @@ async function handler(request: Request) {
   }
 }
 
-// Secure endpoint with QStash signature verification
-export const POST = verifySignatureAppRouter(handler);
+// Wrapper to conditionally verify QStash signature
+async function postHandler(req: Request) {
+  // Check if request is from localhost (development mode)
+  const host = req.headers.get('host') || '';
+  const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+
+  if (isLocalhost) {
+    // Development: Skip QStash signature verification, call handler directly
+    console.log('🏠 Development mode: Skipping QStash signature verification');
+    return handler(req);
+  } else {
+    // Production: Verify QStash signature
+    console.log('🌐 Production mode: Verifying QStash signature');
+    return verifySignatureAppRouter(handler)(req);
+  }
+}
+
+export const POST = postHandler;
