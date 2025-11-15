@@ -48,7 +48,7 @@ export function MultiSelect({
     onChange(exists ? value.filter((val) => val !== optionValue) : [...value, optionValue])
   }
 
-  const clearAll = (event: React.MouseEvent) => {
+  const clearAll = (event: React.SyntheticEvent) => {
     event.stopPropagation()
     if (disabled) return
     onChange([])
@@ -77,14 +77,20 @@ export function MultiSelect({
             </span>
             <div className="flex items-center gap-1">
               {selectedOptions.length > 0 && (
-                <button
-                  type="button"
+                <span
+                  role="button"
+                  tabIndex={0}
                   onClick={clearAll}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      clearAll(event)
+                    }
+                  }}
                   aria-label="Clear selection"
                   className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-muted focus:outline-none"
                 >
                   <X className="h-3 w-3" />
-                </button>
+                </span>
               )}
               <ChevronsUpDown className="h-4 w-4 opacity-50" />
             </div>
@@ -105,7 +111,16 @@ export function MultiSelect({
                       onSelect={() => toggleValue(option.value)}
                     >
                       <div className="flex flex-1 items-center gap-2">
-                        <Check className={cn("h-4 w-4", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span
+                          className={cn(
+                            "flex h-4 w-4 items-center justify-center rounded-sm border transition-colors",
+                            isSelected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-muted bg-background text-transparent"
+                          )}
+                        >
+                          <Check className="h-3 w-3" />
+                        </span>
                         <div className="flex flex-col">
                           <span>{option.label}</span>
                           {option.description && (

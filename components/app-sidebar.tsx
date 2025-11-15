@@ -19,6 +19,7 @@ import {
 	BookMarked,
 	SlidersHorizontal,
 	BadgePercent,
+	FileSignature,
 } from "lucide-react";
 
 import {
@@ -69,6 +70,11 @@ const data = {
 					title: "Discount Codes",
 					url: "/discount-codes",
 					icon: BadgePercent,
+				},
+				{
+					title: "Agreements",
+					url: "/agreements",
+					icon: FileSignature,
 				},
 				{
 					title: "Modifiers",

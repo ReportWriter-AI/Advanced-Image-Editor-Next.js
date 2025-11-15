@@ -3,6 +3,7 @@ import dbConnect from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import User from "@/src/models/User";
 import Availability, { TimeBlock } from "@/src/models/Availability";
+import Company from "@/src/models/Company";
 import type { DateSpecificAvailability, IAvailability } from "@/src/models/Availability";
 import type { DayKey } from "@/src/constants/availability";
 import {
@@ -180,7 +181,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ inspectors: response, allowedTimes: ALLOWED_TIMES });
+    const company = await Company.findById(currentUser.company).select("availabilityViewMode");
+    const viewMode = company?.availabilityViewMode === "timeSlots" ? "timeSlots" : "openSchedule";
+
+    return NextResponse.json({ inspectors: response, allowedTimes: ALLOWED_TIMES, viewMode });
   } catch (error: any) {
     console.error("Availability GET error:", error);
     return NextResponse.json(

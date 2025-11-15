@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MultiSelect } from "@/components/ui/multi-select";
 import {
   Command,
   CommandEmpty,
@@ -87,6 +89,7 @@ const baseServiceFieldsSchema = z.object({
   baseDurationHours: baseDurationSchema,
   defaultInspectionEvents: z.string().optional(),
   organizationServiceId: z.string().optional(),
+  agreementIds: z.array(z.string()).default([]),
   modifiers: z.array(modifierSchema).default([]),
 });
 
@@ -136,6 +139,7 @@ export interface ServiceFormNormalizedValues {
   baseDurationHours?: number;
   defaultInspectionEvents: string[];
   organizationServiceId?: string;
+  agreementIds: string[];
   modifiers: ServiceFormNormalizedModifier[];
   addOns: Array<{
     name: string;
@@ -166,6 +170,7 @@ const DEFAULT_VALUES: ServiceFormValues = {
   baseDurationHours: "",
   defaultInspectionEvents: "",
   organizationServiceId: "",
+  agreementIds: [],
   modifiers: [],
   addOns: [],
   taxes: [],
@@ -214,6 +219,11 @@ interface ModifierFieldMeta {
   requiresRange: boolean;
   hasEquals: boolean;
   label: string;
+}
+
+interface AgreementOption {
+  id: string;
+  name: string;
 }
 
 function SearchableSelect({
@@ -306,6 +316,7 @@ const createDefaultAddOn = (orderIndex = 0): AddOnFormValues => ({
   baseDurationHours: "",
   defaultInspectionEvents: "",
   organizationServiceId: "",
+  agreementIds: [],
   modifiers: [],
   allowUpsell: false,
   orderIndex,
@@ -349,6 +360,9 @@ export function ServiceForm({
   const [modifierOptions, setModifierOptions] = useState<ModifierOptionWithMeta[]>(defaultModifierOptions);
   const [modifierOptionsLoading, setModifierOptionsLoading] = useState(true);
   const [modifierOptionsError, setModifierOptionsError] = useState<string | null>(null);
+  const [agreements, setAgreements] = useState<AgreementOption[]>([]);
+  const [agreementsLoading, setAgreementsLoading] = useState(true);
+  const [agreementsError, setAgreementsError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchModifierOptions = async () => {
@@ -384,6 +398,35 @@ export function ServiceForm({
 
     fetchModifierOptions();
   }, [defaultModifierOptions]);
+
+  useEffect(() => {
+    const fetchAgreements = async () => {
+      try {
+        setAgreementsLoading(true);
+        setAgreementsError(null);
+        const response = await fetch("/api/agreements", { credentials: "include" });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || "Failed to load agreements");
+        }
+        const options: AgreementOption[] = Array.isArray(result.agreements)
+          ? result.agreements.map((agreement: any) => ({
+              id: agreement._id,
+              name: agreement.name,
+            }))
+          : [];
+        setAgreements(options);
+      } catch (error: any) {
+        console.error("Agreement options error:", error);
+        setAgreementsError(error.message || "Failed to load agreements");
+        setAgreements([]);
+      } finally {
+        setAgreementsLoading(false);
+      }
+    };
+
+    fetchAgreements();
+  }, []);
 
   const { fields: modifierFields, append, remove, update, replace } = useFieldArray({
     control: form.control,
@@ -650,6 +693,7 @@ export function ServiceForm({
       ...(baseDurationValue !== undefined ? { baseDurationHours: baseDurationValue } : {}),
       defaultInspectionEvents: normalizeDefaultEvents(values.defaultInspectionEvents),
       organizationServiceId: values.organizationServiceId?.trim() || undefined,
+      agreementIds: values.agreementIds ?? [],
       modifiers: normalizeModifiers(values.modifiers),
       addOns:
         values.addOns?.map((addOn, index) => {
@@ -938,6 +982,40 @@ export function ServiceForm({
             {...form.register("organizationServiceId")}
           />
         </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="agreementId" className="flex items-center gap-1">
+          Agreement
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-4 w-4 cursor-pointer text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent>Select which agreement clients must sign for this service.</TooltipContent>
+          </Tooltip>
+        </Label>
+        <Controller
+          name="agreementIds"
+          control={form.control}
+          render={({ field }) => (
+            <MultiSelect
+              value={field.value ?? []}
+              onChange={field.onChange}
+              options={agreements.map((agreement) => ({
+                value: agreement.id,
+                label: agreement.name,
+              }))}
+              placeholder={
+                agreementsLoading ? "Loading agreements..." : "Select agreements (optional)"
+              }
+              disabled={agreementsLoading || isSubmitting}
+            />
+          )}
+        />
+        {agreementsError && <p className="text-sm text-red-600">{agreementsError}</p>}
+        <p className="text-xs text-muted-foreground">
+          Clients will be asked to sign every agreement selected here when booking this service.
+        </p>
+      </div>
 
         <div className="space-y-2">
           <div className="flex items-center gap-1">
@@ -1672,7 +1750,7 @@ function AddOnCard({
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Base Cost</Label>
+            <Label>Add Fee</Label>
             <Input
               type="number"
               step="0.01"
@@ -1683,7 +1761,7 @@ function AddOnCard({
             {addOnErrors?.baseCost && <p className="text-sm text-red-600">{addOnErrors.baseCost.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Base Duration (HRs)</Label>
+            <Label>Add Hours</Label>
             <Input
               type="number"
               step="0.01"

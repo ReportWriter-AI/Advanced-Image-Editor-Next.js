@@ -19,6 +19,9 @@ export interface ICompany extends Document {
   serviceArea?: string;
   logoUrl?: string;
   headerLogoUrl?: string;
+  agreementSignatureType?: 'checkbox' | 'written';
+  agreementClientInstructions?: string;
+  availabilityViewMode?: 'openSchedule' | 'timeSlots';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -99,6 +102,20 @@ const CompanySchema = new Schema<ICompany>(
     headerLogoUrl: {
       type: String,
       trim: true,
+    },
+    agreementSignatureType: {
+      type: String,
+      enum: ['checkbox', 'written'],
+      default: 'checkbox',
+    },
+    agreementClientInstructions: {
+      type: String,
+      default: 'Please read through and sign:',
+    },
+    availabilityViewMode: {
+      type: String,
+      enum: ['openSchedule', 'timeSlots'],
+      default: 'openSchedule',
     },
   },
   {

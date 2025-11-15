@@ -88,6 +88,7 @@ interface AvailabilityApiInspector {
 interface AvailabilityApiResponse {
   inspectors: AvailabilityApiInspector[]
   allowedTimes?: string[]
+  viewMode?: AvailabilityMode
 }
 
 type SaveState = {
@@ -232,6 +233,7 @@ function AvailabilityPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({})
+  const [updatingViewMode, setUpdatingViewMode] = useState(false)
   const initializedRef = useRef(false)
   const lastSavedPayloadRef = useRef<Record<string, string>>({})
 
@@ -257,8 +259,10 @@ function AvailabilityPage() {
       const nextAllowedTimes = data.allowedTimes && data.allowedTimes.length > 0 ? data.allowedTimes : ALLOWED_TIMES
 
       setAllowedTimes(nextAllowedTimes)
+      const serverViewMode: AvailabilityMode =
+        data.viewMode === "timeSlots" ? "timeSlots" : "openSchedule"
       form.reset({
-        viewMode: form.getValues("viewMode") ?? "openSchedule",
+        viewMode: serverViewMode,
         inspectors: mappedInspectors,
       })
 
@@ -381,8 +385,29 @@ function AvailabilityPage() {
     [form],
   )
 
-  const handleModeToggle = (mode: AvailabilityMode) => {
+  const handleModeToggle = async (mode: AvailabilityMode) => {
+    if (viewMode === mode) return
     form.setValue("viewMode", mode, { shouldDirty: false, shouldTouch: false })
+    try {
+      setUpdatingViewMode(true)
+      const response = await fetch("/api/availability/view-mode", {
+        method: "PUT",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ viewMode: mode }),
+      })
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}))
+        throw new Error(result.error || "Failed to save view preference")
+      }
+    } catch (err: any) {
+      console.error("handleModeToggle error", err)
+      toast.error(err?.message || "Failed to save view preference")
+    } finally {
+      setUpdatingViewMode(false)
+    }
   }
 
   const inspectors = useWatch({ control: form.control, name: "inspectors" })
@@ -407,8 +432,10 @@ function AvailabilityPage() {
                   className={cn(
                     "rounded-md px-4 py-2 font-medium transition-all",
                     viewMode === "openSchedule" && "shadow-lg",
+                    updatingViewMode && "opacity-70"
                   )}
                   onClick={() => handleModeToggle("openSchedule")}
+                  disabled={updatingViewMode}
                 >
                   Open Schedule
                 </Button>
@@ -418,8 +445,10 @@ function AvailabilityPage() {
                   className={cn(
                     "rounded-md px-4 py-2 font-medium transition-all",
                     viewMode === "timeSlots" && "shadow-lg",
+                    updatingViewMode && "opacity-70"
                   )}
                   onClick={() => handleModeToggle("timeSlots")}
+                  disabled={updatingViewMode}
                 >
                   Time Slots
                 </Button>
