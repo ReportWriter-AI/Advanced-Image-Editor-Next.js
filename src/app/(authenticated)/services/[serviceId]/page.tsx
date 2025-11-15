@@ -5,8 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, CheckCircle2, Loader2, Save } from "lucide-react";
-import { fieldSupportsType } from "@/constants/modifierOptions";
-import type { ModifierFieldKey } from "@/constants/modifierOptions";
 import {
   ServiceForm,
   ServiceFormNormalizedValues,
@@ -93,32 +91,27 @@ export default function EditServicePage() {
         }
 
         const service = (result as ServiceResponse).service;
-        const mapModifierToForm = (modifier: ServiceResponse["service"]["modifiers"][number]) => {
-          const supportsType = modifier.field
-            ? fieldSupportsType(modifier.field as ModifierFieldKey)
-            : false;
-          return {
-            field: modifier.field,
-            type: supportsType ? modifier.type || "range" : undefined,
-            greaterThan:
-              modifier.greaterThan !== undefined && modifier.greaterThan !== null
-                ? modifier.greaterThan.toString()
-                : "",
-            lessThanOrEqual:
-              modifier.lessThanOrEqual !== undefined && modifier.lessThanOrEqual !== null
-                ? modifier.lessThanOrEqual.toString()
-                : "",
-            equals: modifier.equals || "",
-            addFee:
-              modifier.addFee !== undefined && modifier.addFee !== null
-                ? modifier.addFee.toString()
-                : "",
-            addHours:
-              modifier.addHours !== undefined && modifier.addHours !== null
-                ? modifier.addHours.toString()
-                : "",
-          };
-        };
+        const mapModifierToForm = (modifier: ServiceResponse["service"]["modifiers"][number]) => ({
+          field: modifier.field,
+          type: modifier.type || "range",
+          greaterThan:
+            modifier.greaterThan !== undefined && modifier.greaterThan !== null
+              ? modifier.greaterThan.toString()
+              : "",
+          lessThanOrEqual:
+            modifier.lessThanOrEqual !== undefined && modifier.lessThanOrEqual !== null
+              ? modifier.lessThanOrEqual.toString()
+              : "",
+          equals: modifier.equals || "",
+          addFee:
+            modifier.addFee !== undefined && modifier.addFee !== null
+              ? modifier.addFee.toString()
+              : "",
+          addHours:
+            modifier.addHours !== undefined && modifier.addHours !== null
+              ? modifier.addHours.toString()
+              : "",
+        });
 
         setInitialValues({
           name: service.name,

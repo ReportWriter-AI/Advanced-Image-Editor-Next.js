@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import dbConnect from '../../../../../lib/db';
 import User from '../../../../../src/models/User';
 import Company from '../../../../../src/models/Company';
-import crypto from 'crypto';
 import { sendVerificationEmail } from '../../../../../lib/email';
+import { ensureDefaultModifiersForCompany } from '../../../../../lib/modifier-service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -114,6 +115,9 @@ export async function POST(request: NextRequest) {
     await Company.findByIdAndUpdate(company._id, {
       createdBy: user._id,
     });
+
+    //@ts-ignore
+    await ensureDefaultModifiersForCompany(company._id, user._id);
 
     // Send verification email
     await sendVerificationEmail(email, emailVerificationToken);

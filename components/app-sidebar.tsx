@@ -17,6 +17,7 @@ import {
 	Wrench,
 	CalendarClock,
 	BookMarked,
+	SlidersHorizontal,
 } from "lucide-react";
 
 import {
@@ -62,6 +63,11 @@ const data = {
 					title: "Services",
 					url: "/services",
 					icon: Wrench,
+				},
+				{
+					title: "Modifiers",
+					url: "/modifiers",
+					icon: SlidersHorizontal,
 				},
 				{
 					title: "Availability",

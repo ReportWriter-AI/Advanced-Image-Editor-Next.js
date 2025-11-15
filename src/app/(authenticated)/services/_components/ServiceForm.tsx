@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import type { UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,14 +21,7 @@ import {
 } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SERVICE_CATEGORIES } from "@/constants/serviceCategories";
-import {
-  MODIFIER_FIELDS,
-  MODIFIER_TYPES,
-  fieldHasEquals,
-  fieldRequiresRangeInputs,
-  fieldSupportsType,
-  type ModifierFieldKey,
-} from "@/constants/modifierOptions";
+import { MODIFIER_FIELDS, MODIFIER_TYPES } from "@/constants/modifierOptions";
 import { cn } from "@/lib/utils";
 import { Check, ChevronDown, ChevronsUpDown, GripVertical, Info, Loader2, PlusCircle, Trash2 } from "lucide-react";
 import { DndContext, DragEndEvent, closestCenter } from "@dnd-kit/core";
@@ -122,6 +115,7 @@ type BaseServiceFormValues = z.infer<typeof baseServiceFieldsSchema>;
 export type AddOnFormValues = z.infer<typeof addOnSchema>;
 export type TaxFormValues = z.infer<typeof taxSchema>;
 export type ServiceFormValues = z.infer<typeof serviceFormSchema>;
+type ModifierFieldKey = string;
 
 export interface ServiceFormNormalizedModifier {
   field: ModifierFieldKey;
@@ -187,11 +181,6 @@ const DEFAULT_MODIFIER_VALUE = {
   addHours: "",
 } as const;
 
-const getModifierFieldLabel = (fieldKey: string) => {
-  const option = MODIFIER_FIELDS.find((opt) => opt.key === fieldKey);
-  return option?.label ?? fieldKey;
-};
-
 interface SearchableSelectOption {
   value: string;
   label: string;
@@ -209,6 +198,22 @@ interface SearchableSelectProps {
   sections: SearchableSelectSection[];
   disabled?: boolean;
   emptyText?: string;
+}
+
+interface ModifierOptionWithMeta {
+  key: string;
+  label: string;
+  supportsType: boolean;
+  hasEqualsField: boolean;
+  requiresRange: boolean;
+  group?: "custom";
+}
+
+interface ModifierFieldMeta {
+  supportsType: boolean;
+  requiresRange: boolean;
+  hasEquals: boolean;
+  label: string;
 }
 
 function SearchableSelect({
@@ -283,26 +288,6 @@ function SearchableSelect({
   );
 }
 
-const buildModifierFieldSections = (): SearchableSelectSection[] => {
-  const standardOptions = MODIFIER_FIELDS.filter((option) => option.group !== "custom").map((option) => ({
-    value: option.key,
-    label: option.label,
-  }));
-  const customOptions = MODIFIER_FIELDS.filter((option) => option.group === "custom").map((option) => ({
-    value: option.key,
-    label: option.label,
-  }));
-
-  const sections: SearchableSelectSection[] = [];
-  if (standardOptions.length > 0) {
-    sections.push({ options: standardOptions });
-  }
-  if (customOptions.length > 0) {
-    sections.push({ label: "-- Custom Field --", options: customOptions });
-  }
-  return sections;
-};
-
 const buildModifierTypeSections = (): SearchableSelectSection[] => [
   {
     options: MODIFIER_TYPES.map((option) => ({
@@ -348,6 +333,58 @@ export function ServiceForm({
     defaultValues: DEFAULT_VALUES,
   });
 
+  const defaultModifierOptions = useMemo<ModifierOptionWithMeta[]>(
+    () =>
+      MODIFIER_FIELDS.map((option) => ({
+        key: option.key,
+        label: option.label,
+        supportsType: option.supportsType,
+        hasEqualsField: option.hasEqualsField,
+        requiresRange: option.requiresRange,
+        group: option.group,
+      })),
+    []
+  );
+
+  const [modifierOptions, setModifierOptions] = useState<ModifierOptionWithMeta[]>(defaultModifierOptions);
+  const [modifierOptionsLoading, setModifierOptionsLoading] = useState(true);
+  const [modifierOptionsError, setModifierOptionsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchModifierOptions = async () => {
+      try {
+        setModifierOptionsLoading(true);
+        setModifierOptionsError(null);
+        const response = await fetch("/api/modifiers", { credentials: "include" });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || "Failed to load modifiers");
+        }
+
+        const options: ModifierOptionWithMeta[] = Array.isArray(result.modifiers)
+          ? result.modifiers.map((modifier: any) => ({
+              key: modifier.key,
+              label: modifier.label,
+              supportsType: Boolean(modifier.supportsType),
+              hasEqualsField: Boolean(modifier.hasEqualsField),
+              requiresRange: Boolean(modifier.requiresRange),
+              group: modifier.group === "custom" ? "custom" : undefined,
+            }))
+          : [];
+
+        setModifierOptions(options.length > 0 ? options : defaultModifierOptions);
+      } catch (error: any) {
+        console.error("Modifier options error:", error);
+        setModifierOptionsError(error.message || "Failed to load modifiers");
+        setModifierOptions(defaultModifierOptions);
+      } finally {
+        setModifierOptionsLoading(false);
+      }
+    };
+
+    fetchModifierOptions();
+  }, [defaultModifierOptions]);
+
   const { fields: modifierFields, append, remove, update, replace } = useFieldArray({
     control: form.control,
     name: "modifiers",
@@ -389,8 +426,59 @@ export function ServiceForm({
   const prevTaxIdsRef = useRef<string[]>([]);
 
   const defaultEventsPlaceholder = useMemo(() => "Event Names (comma separated)", []);
-  const modifierFieldSections = useMemo<SearchableSelectSection[]>(() => buildModifierFieldSections(), []);
+  const modifierFieldSections = useMemo<SearchableSelectSection[]>(() => {
+    const standardOptions = modifierOptions
+      .filter((option) => option.group !== "custom")
+      .map((option) => ({
+        value: option.key,
+        label: option.label,
+      }));
+    const customOptions = modifierOptions
+      .filter((option) => option.group === "custom")
+      .map((option) => ({
+        value: option.key,
+        label: option.label,
+      }));
+
+    const sections: SearchableSelectSection[] = [];
+    if (standardOptions.length > 0) {
+      sections.push({ options: standardOptions });
+    }
+    if (customOptions.length > 0) {
+      sections.push({ label: "-- Custom Field --", options: customOptions });
+    }
+    return sections;
+  }, [modifierOptions]);
   const modifierTypeSections = useMemo<SearchableSelectSection[]>(() => buildModifierTypeSections(), []);
+
+  const modifierOptionMap = useMemo<Record<string, ModifierOptionWithMeta>>(() => {
+    const map: Record<string, ModifierOptionWithMeta> = {};
+    modifierOptions.forEach((option) => {
+      map[option.key] = option;
+    });
+    return map;
+  }, [modifierOptions]);
+
+  const getFieldMeta = useCallback(
+    (fieldKey?: string): ModifierFieldMeta => {
+      const meta = fieldKey ? modifierOptionMap[fieldKey] : undefined;
+      return {
+        supportsType: meta?.supportsType ?? false,
+        requiresRange: meta?.requiresRange ?? false,
+        hasEquals: meta?.hasEqualsField ?? false,
+        label: meta?.label ?? fieldKey ?? "",
+      };
+    },
+    [modifierOptionMap]
+  );
+
+  const getDefaultModifierField = useCallback(() => {
+    const sqFt = modifierOptions.find((option) => option.key === DEFAULT_MODIFIER_VALUE.field);
+    if (sqFt) {
+      return sqFt.key;
+    }
+    return modifierOptions[0]?.key ?? DEFAULT_MODIFIER_VALUE.field;
+  }, [modifierOptions]);
 
   useEffect(() => {
     const prevIds = prevModifierIdsRef.current;
@@ -518,17 +606,17 @@ export function ServiceForm({
     const normalizeModifiers = (mods: typeof values.modifiers): ServiceFormNormalizedModifier[] =>
       mods?.map((modifier) => {
         const fieldKey = modifier.field as ModifierFieldKey;
-        const supportsTypeForField = fieldSupportsType(fieldKey);
-        const hasEqualsForField = fieldHasEquals(fieldKey);
+        const { supportsType, hasEquals } = getFieldMeta(fieldKey);
         const payload: ServiceFormNormalizedModifier = {
           field: fieldKey,
         };
 
-        if (supportsTypeForField && modifier.type) {
-          payload.type = modifier.type;
+        if (supportsType) {
+          const normalizedType = modifier.type && modifier.type.trim().length > 0 ? modifier.type : "range";
+          payload.type = normalizedType;
         }
 
-        if (hasEqualsForField && modifier.equals && modifier.equals.trim() !== "") {
+        if (hasEquals && modifier.equals && modifier.equals.trim() !== "") {
           payload.equals = modifier.equals.trim();
         }
 
@@ -601,14 +689,18 @@ export function ServiceForm({
 
   const handleAddModifier = () => {
     setModifiersSectionCollapsed(false);
-    append({ ...DEFAULT_MODIFIER_VALUE });
+    const fieldKey = getDefaultModifierField();
+    const { supportsType } = getFieldMeta(fieldKey);
+    append({
+      ...DEFAULT_MODIFIER_VALUE,
+      field: fieldKey,
+      type: supportsType ? DEFAULT_MODIFIER_VALUE.type : undefined,
+    });
   };
 
   const handleFieldChange = (index: number, newField: string) => {
     const current = form.getValues(`modifiers.${index}`);
-    const supportsType = fieldSupportsType(newField as ModifierFieldKey);
-    const requiresRange = fieldRequiresRangeInputs(newField as ModifierFieldKey);
-    const hasEquals = fieldHasEquals(newField as ModifierFieldKey);
+    const { supportsType, requiresRange, hasEquals } = getFieldMeta(newField as ModifierFieldKey);
 
     update(index, {
       ...current,
@@ -905,6 +997,11 @@ export function ServiceForm({
             <p className="text-sm text-muted-foreground">
               Add additional fees &amp; hours when properties match specific criteria such as square footage or age.
             </p>
+            {modifierOptionsError && (
+              <p className="text-xs text-red-600">
+                {modifierOptionsError}. Showing default modifier list.
+              </p>
+            )}
           </div>
           <Button type="button" variant="outline" size="sm" onClick={handleAddModifier} disabled={isSubmitting}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Modifier
@@ -920,9 +1017,7 @@ export function ServiceForm({
                 {modifierFields.map((field, index) => {
                   const fieldValue = form.watch(`modifiers.${index}.field`) as ModifierFieldKey;
                   const typeValue = getType(index);
-                  const supportsType = fieldSupportsType(fieldValue);
-                  const requiresRange = fieldRequiresRangeInputs(fieldValue);
-                  const hasEquals = fieldHasEquals(fieldValue);
+                  const { supportsType, requiresRange, hasEquals, label } = getFieldMeta(fieldValue);
                   const showGreaterThan =
                     requiresRange ||
                     (!supportsType && !hasEquals) ||
@@ -956,7 +1051,7 @@ export function ServiceForm({
                             onClick={() => toggleModifierCard(field.id)}
                           >
                             <p className="text-sm font-semibold">
-                              {getModifierFieldLabel(fieldValue) || "Select a field"}
+                            {label || "Select a field"}
                             </p>
                           </button>
                         </div>
@@ -990,7 +1085,7 @@ export function ServiceForm({
                                     }}
                                     placeholder="Select field"
                                     sections={modifierFieldSections}
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || modifierOptionsLoading}
                                   />
                                 )}
                               />
@@ -1175,6 +1270,11 @@ export function ServiceForm({
                           defaultEventsPlaceholder={defaultEventsPlaceholder}
                           collapsed={collapsed}
                           onToggleCollapse={() => toggleAddOnCard(field.id)}
+                          modifierFieldSections={modifierFieldSections}
+                          modifierTypeSections={modifierTypeSections}
+                          getFieldMeta={getFieldMeta}
+                          getDefaultModifierField={getDefaultModifierField}
+                          modifierOptionsLoading={modifierOptionsLoading}
                         />
                       );
                     })}
@@ -1265,6 +1365,11 @@ interface SortableAddOnItemProps {
   defaultEventsPlaceholder: string;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  modifierFieldSections: SearchableSelectSection[];
+  modifierTypeSections: SearchableSelectSection[];
+  getFieldMeta: (fieldKey?: string) => ModifierFieldMeta;
+  getDefaultModifierField: () => string;
+  modifierOptionsLoading: boolean;
 }
 
 function SortableAddOnItem({
@@ -1276,6 +1381,11 @@ function SortableAddOnItem({
   defaultEventsPlaceholder,
   collapsed,
   onToggleCollapse,
+  modifierFieldSections,
+  modifierTypeSections,
+  getFieldMeta,
+  getDefaultModifierField,
+  modifierOptionsLoading,
 }: SortableAddOnItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: fieldId });
 
@@ -1295,6 +1405,11 @@ function SortableAddOnItem({
         defaultEventsPlaceholder={defaultEventsPlaceholder}
         collapsed={collapsed}
         onToggleCollapse={onToggleCollapse}
+        modifierFieldSections={modifierFieldSections}
+        modifierTypeSections={modifierTypeSections}
+        getFieldMeta={getFieldMeta}
+        getDefaultModifierField={getDefaultModifierField}
+        modifierOptionsLoading={modifierOptionsLoading}
       />
     </div>
   );
@@ -1312,6 +1427,11 @@ interface AddOnCardProps {
   defaultEventsPlaceholder: string;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  modifierFieldSections: SearchableSelectSection[];
+  modifierTypeSections: SearchableSelectSection[];
+  getFieldMeta: (fieldKey?: string) => ModifierFieldMeta;
+  getDefaultModifierField: () => string;
+  modifierOptionsLoading: boolean;
 }
 
 function AddOnCard({
@@ -1323,13 +1443,16 @@ function AddOnCard({
   defaultEventsPlaceholder,
   collapsed,
   onToggleCollapse,
+  modifierFieldSections,
+  modifierTypeSections,
+  getFieldMeta,
+  getDefaultModifierField,
+  modifierOptionsLoading,
 }: AddOnCardProps) {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [modifierCollapsedMap, setModifierCollapsedMap] = useState<Record<string, boolean>>({});
   const modifierInitRef = useRef(true);
   const prevModifierIdsRef = useRef<string[]>([]);
-  const modifierFieldSections = useMemo<SearchableSelectSection[]>(() => buildModifierFieldSections(), []);
-  const modifierTypeSections = useMemo<SearchableSelectSection[]>(() => buildModifierTypeSections(), []);
   const addOnPath = `addOns.${index}` as const;
   const addOnErrors = form.formState.errors.addOns?.[index];
 
@@ -1376,14 +1499,18 @@ function AddOnCard({
   }, [modifierFields]);
 
   const handleAddModifier = () => {
-    appendModifier({ ...DEFAULT_MODIFIER_VALUE });
+    const defaultField = getDefaultModifierField();
+    const { supportsType } = getFieldMeta(defaultField);
+    appendModifier({
+      ...DEFAULT_MODIFIER_VALUE,
+      field: defaultField,
+      type: supportsType ? DEFAULT_MODIFIER_VALUE.type : undefined,
+    });
   };
 
   const handleModifierFieldChange = (modifierIndex: number, newField: string) => {
     const current = form.getValues(`${addOnPath}.modifiers.${modifierIndex}`);
-    const supportsType = fieldSupportsType(newField as ModifierFieldKey);
-    const requiresRange = fieldRequiresRangeInputs(newField as ModifierFieldKey);
-    const hasEquals = fieldHasEquals(newField as ModifierFieldKey);
+    const { supportsType, requiresRange, hasEquals } = getFieldMeta(newField as ModifierFieldKey);
 
     updateModifier(modifierIndex, {
       ...current,
@@ -1693,9 +1820,8 @@ function AddOnCard({
                   `${addOnPath}.modifiers.${modifierIndex}.field` as const
                 ) as ModifierFieldKey;
                 const modifierTypeValue = getModifierType(modifierIndex);
-                const supportsType = fieldSupportsType(modifierFieldValue);
-                const requiresRange = fieldRequiresRangeInputs(modifierFieldValue);
-                const hasEquals = fieldHasEquals(modifierFieldValue);
+                const { supportsType, requiresRange, hasEquals, label: modifierLabel } =
+                  getFieldMeta(modifierFieldValue);
                 const showGreaterThan =
                   requiresRange ||
                   (!supportsType && !hasEquals) ||
@@ -1728,7 +1854,7 @@ function AddOnCard({
                           onClick={() => toggleModifierCard(field.id)}
                         >
                           <p className="text-sm font-semibold">
-                            {getModifierFieldLabel(modifierFieldValue) || "Select a field"}
+                            {modifierLabel || "Select a field"}
                           </p>
                         </button>
                       </div>
@@ -1762,7 +1888,7 @@ function AddOnCard({
                                   }}
                                   placeholder="Select field"
                                   sections={modifierFieldSections}
-                                  disabled={isSubmitting}
+                                  disabled={isSubmitting || modifierOptionsLoading}
                                 />
                               )}
                             />
