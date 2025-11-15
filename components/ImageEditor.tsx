@@ -1495,6 +1495,14 @@ const captureImage = () => {
           const center = clickedShape.center || clickedShape.points[0];
           const tolerance = 20;
 
+          console.log('🔵 Circle/Square clicked in none mode:', {
+            type: clickedShape.type,
+            id: clickedShape.id,
+            center,
+            width: clickedShape.width,
+            height: clickedShape.height
+          });
+
           if (clickedShape.type === 'circle' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
             const handles = [
               { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
@@ -1503,11 +1511,22 @@ const captureImage = () => {
               { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
             ];
 
+            console.log('🔍 Checking circle handles:', {
+              mouseX, mouseY,
+              handles: handles.map(h => ({
+                name: h.name,
+                x: h.x,
+                y: h.y,
+                distance: Math.sqrt(Math.pow(mouseX - h.x, 2) + Math.pow(mouseY - h.y, 2))
+              }))
+            });
+
             const clickedHandle = handles.find(handle =>
               Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
             );
 
             if (clickedHandle) {
+              console.log('✅ Circle resize handle clicked:', clickedHandle.name);
               setIsResizingShape(true);
               setResizeHandle(clickedHandle.name);
               setInitialShapeData({
@@ -1517,6 +1536,8 @@ const captureImage = () => {
                 id: clickedShape.id
               });
               return;
+            } else {
+              console.log('ℹ️ No circle handle clicked, will move instead');
             }
           } else if (clickedShape.type === 'square' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
             const handles = [
@@ -1530,11 +1551,23 @@ const captureImage = () => {
               { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
             ];
 
+            console.log('🔍 Checking square handles:', {
+              mouseX, mouseY,
+              handles: handles.map(h => ({
+                name: h.name,
+                x: h.x,
+                y: h.y,
+                distanceX: Math.abs(mouseX - h.x),
+                distanceY: Math.abs(mouseY - h.y)
+              }))
+            });
+
             const clickedHandle = handles.find(handle =>
               Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
             );
 
             if (clickedHandle) {
+              console.log('✅ Square resize handle clicked:', clickedHandle.name);
               setIsResizingShape(true);
               setResizeHandle(clickedHandle.name);
               setInitialShapeData({
@@ -1544,10 +1577,13 @@ const captureImage = () => {
                 id: clickedShape.id
               });
               return;
+            } else {
+              console.log('ℹ️ No square handle clicked, will move instead');
             }
           }
 
           // If no resize handle was clicked, start moving the shape
+          console.log('🚚 Starting move operation for', clickedShape.type);
           setIsMovingShape(true);
           setMoveOffset({
             x: mouseX - center.x,
