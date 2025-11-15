@@ -613,6 +613,13 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
   }, [rotationVelocity, selectedArrowId, lastRotationTime]);
 
   // Ultra-smooth arrow movement with requestAnimationFrame
+  // DISABLED: This causes "Maximum update depth exceeded" error because:
+  // 1. requestAnimationFrame calls processMovement continuously
+  // 2. processMovement calls setLines
+  // 3. setLines triggers parent useEffect 60+ times/second
+  // 4. React interprets this as infinite loop
+  // Normal handleMouseMove already provides smooth movement, so this optimization is unnecessary.
+  /*
   useEffect(() => {
     const processMovement = () => {
       if (pendingMovementRef.current && isMovingRef.current) {
@@ -633,22 +640,23 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
         }
         pendingMovementRef.current = null;
       }
-      
+
       if (isMovingRef.current) {
         movementFrameRef.current = requestAnimationFrame(processMovement);
       }
     };
-    
+
     if (isMovingRef.current) {
       movementFrameRef.current = requestAnimationFrame(processMovement);
     }
-    
+
     return () => {
       if (movementFrameRef.current) {
         cancelAnimationFrame(movementFrameRef.current);
       }
     };
   }, [isMovingRef.current]);
+  */
 
 
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
