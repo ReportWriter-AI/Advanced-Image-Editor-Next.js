@@ -18,6 +18,7 @@ import {
 	CalendarClock,
 	BookMarked,
 	SlidersHorizontal,
+	BadgePercent,
 } from "lucide-react";
 
 import {
@@ -63,6 +64,11 @@ const data = {
 					title: "Services",
 					url: "/services",
 					icon: Wrench,
+				},
+				{
+					title: "Discount Codes",
+					url: "/discount-codes",
+					icon: BadgePercent,
 				},
 				{
 					title: "Modifiers",
