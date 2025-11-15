@@ -1700,44 +1700,42 @@ function ImageEditorPageContent() {
                          className="location-search-input"
                          style={{ marginBottom: '8px' }}
                        />
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                         <div style={{ display: 'flex', gap: '6px' }}>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                         <div style={{ display: 'flex', gap: '5px' }}>
                            <button
                              onClick={() => handleAddLocation(false)}
                              style={{
                                flex: 1,
-                               padding: '6px 8px',
+                               padding: '5px 6px',
                                background: '#3b82f6',
                                color: 'white',
                                border: 'none',
-                               borderRadius: '5px',
+                               borderRadius: '4px',
                                cursor: 'pointer',
-                               fontSize: '11px',
+                               fontSize: '10px',
                                fontWeight: '500',
                                whiteSpace: 'nowrap'
                              }}
                              title="Add only to this inspection"
                            >
-                             <i className="fas fa-file" style={{ marginRight: '3px', fontSize: '9px' }}></i>
                              This Insp.
                            </button>
                            <button
                              onClick={() => handleAddLocation(true)}
                              style={{
                                flex: 1,
-                               padding: '6px 8px',
+                               padding: '5px 6px',
                                background: '#6a11cb',
                                color: 'white',
                                border: 'none',
-                               borderRadius: '5px',
+                               borderRadius: '4px',
                                cursor: 'pointer',
-                               fontSize: '11px',
+                               fontSize: '10px',
                                fontWeight: '500',
                                whiteSpace: 'nowrap'
                              }}
                              title="Save to template (all inspections)"
                            >
-                             <i className="fas fa-save" style={{ marginRight: '3px', fontSize: '9px' }}></i>
                              Template
                            </button>
                          </div>
@@ -1747,19 +1745,19 @@ function ImageEditorPageContent() {
                              setNewLocationInput('');
                            }}
                            style={{
-                             padding: '5px 10px',
+                             padding: '4px 8px',
                              background: '#e5e7eb',
                              color: '#374151',
                              border: 'none',
-                             borderRadius: '5px',
+                             borderRadius: '4px',
                              cursor: 'pointer',
-                             fontSize: '11px'
+                             fontSize: '10px'
                            }}
                          >
                            Cancel
                          </button>
-                         <div style={{ fontSize: '10px', color: '#6b7280', padding: '2px 0', lineHeight: '1.3' }}>
-                           💡 <strong>This Insp.</strong> = Only here • <strong>Template</strong> = All inspections
+                         <div style={{ fontSize: '9px', color: '#6b7280', padding: '2px 0', lineHeight: '1.2' }}>
+                           💡 Insp. = Only here • Template = All
                          </div>
                        </div>
                      </div>
@@ -1903,44 +1901,42 @@ function ImageEditorPageContent() {
                          className="location-search-input"
                          style={{ marginBottom: '8px' }}
                        />
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                         <div style={{ display: 'flex', gap: '6px' }}>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                         <div style={{ display: 'flex', gap: '5px' }}>
                            <button
                              onClick={() => handleAddSection(false)}
                              style={{
                                flex: 1,
-                               padding: '6px 8px',
+                               padding: '5px 6px',
                                background: '#3b82f6',
                                color: 'white',
                                border: 'none',
-                               borderRadius: '5px',
+                               borderRadius: '4px',
                                cursor: 'pointer',
-                               fontSize: '11px',
+                               fontSize: '10px',
                                fontWeight: '500',
                                whiteSpace: 'nowrap'
                              }}
                              title="Add only to this inspection"
                            >
-                             <i className="fas fa-file" style={{ marginRight: '3px', fontSize: '9px' }}></i>
                              This Insp.
                            </button>
                            <button
                              onClick={() => handleAddSection(true)}
                              style={{
                                flex: 1,
-                               padding: '6px 8px',
+                               padding: '5px 6px',
                                background: '#6a11cb',
                                color: 'white',
                                border: 'none',
-                               borderRadius: '5px',
+                               borderRadius: '4px',
                                cursor: 'pointer',
-                               fontSize: '11px',
+                               fontSize: '10px',
                                fontWeight: '500',
                                whiteSpace: 'nowrap'
                              }}
                              title="Save to template (all inspections)"
                            >
-                             <i className="fas fa-save" style={{ marginRight: '3px', fontSize: '9px' }}></i>
                              Template
                            </button>
                          </div>
@@ -1950,19 +1946,19 @@ function ImageEditorPageContent() {
                              setNewSectionInput('');
                            }}
                            style={{
-                             padding: '5px 10px',
+                             padding: '4px 8px',
                              background: '#e5e7eb',
                              color: '#374151',
                              border: 'none',
-                             borderRadius: '5px',
+                             borderRadius: '4px',
                              cursor: 'pointer',
-                             fontSize: '11px'
+                             fontSize: '10px'
                            }}
                          >
                            Cancel
                          </button>
-                         <div style={{ fontSize: '10px', color: '#6b7280', padding: '2px 0', lineHeight: '1.3' }}>
-                           💡 <strong>This Insp.</strong> = Only here • <strong>Template</strong> = All inspections
+                         <div style={{ fontSize: '9px', color: '#6b7280', padding: '2px 0', lineHeight: '1.2' }}>
+                           💡 Insp. = Only here • Template = All
                          </div>
                        </div>
                      </div>
@@ -2107,44 +2103,42 @@ function ImageEditorPageContent() {
                          className="location-search-input"
                          style={{ marginBottom: '8px' }}
                        />
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                         <div style={{ display: 'flex', gap: '6px' }}>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                         <div style={{ display: 'flex', gap: '5px' }}>
                            <button
                              onClick={() => handleAddSubSection(false)}
                              style={{
                                flex: 1,
-                               padding: '6px 8px',
+                               padding: '5px 6px',
                                background: '#3b82f6',
                                color: 'white',
                                border: 'none',
-                               borderRadius: '5px',
+                               borderRadius: '4px',
                                cursor: 'pointer',
-                               fontSize: '11px',
+                               fontSize: '10px',
                                fontWeight: '500',
                                whiteSpace: 'nowrap'
                              }}
                              title="Add only to this inspection"
                            >
-                             <i className="fas fa-file" style={{ marginRight: '3px', fontSize: '9px' }}></i>
                              This Insp.
                            </button>
                            <button
                              onClick={() => handleAddSubSection(true)}
                              style={{
                                flex: 1,
-                               padding: '6px 8px',
+                               padding: '5px 6px',
                                background: '#6a11cb',
                                color: 'white',
                                border: 'none',
-                               borderRadius: '5px',
+                               borderRadius: '4px',
                                cursor: 'pointer',
-                               fontSize: '11px',
+                               fontSize: '10px',
                                fontWeight: '500',
                                whiteSpace: 'nowrap'
                              }}
                              title="Save to template (all inspections)"
                            >
-                             <i className="fas fa-save" style={{ marginRight: '3px', fontSize: '9px' }}></i>
                              Template
                            </button>
                          </div>
@@ -2154,19 +2148,19 @@ function ImageEditorPageContent() {
                              setNewSubSectionInput('');
                            }}
                            style={{
-                             padding: '5px 10px',
+                             padding: '4px 8px',
                              background: '#e5e7eb',
                              color: '#374151',
                              border: 'none',
-                             borderRadius: '5px',
+                             borderRadius: '4px',
                              cursor: 'pointer',
-                             fontSize: '11px'
+                             fontSize: '10px'
                            }}
                          >
                            Cancel
                          </button>
-                         <div style={{ fontSize: '10px', color: '#6b7280', padding: '2px 0', lineHeight: '1.3' }}>
-                           💡 <strong>This Insp.</strong> = Only here • <strong>Template</strong> = All inspections
+                         <div style={{ fontSize: '9px', color: '#6b7280', padding: '2px 0', lineHeight: '1.2' }}>
+                           💡 Insp. = Only here • Template = All
                          </div>
                        </div>
                      </div>
