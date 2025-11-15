@@ -514,7 +514,11 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
   } | null>(null);
   const isMovingRef = useRef(false);
   const linesRef = useRef<Line[]>([]);
-  
+
+  // Frame counter for throttling setLines calls to prevent "Maximum update depth exceeded"
+  // By skipping frames, we reduce setLines calls from 60+/sec to ~20/sec
+  const frameCounterRef = useRef(0);
+
   // Keep linesRef in sync with lines state
   useEffect(() => {
     linesRef.current = lines;
@@ -1967,50 +1971,54 @@ const captureImage = () => {
     
     // Handle arrow resizing globally regardless of mode
     if (isResizingArrow && selectedArrowId !== null && arrowResizeEnd && initialShapeData) {
-      setLines(prev => prev.map(line => {
-        if (line.id !== selectedArrowId) return line;
-        if (line.points.length < 2) return line;
-        
-        const initialFrom = initialShapeData.from!;
-        const initialTo = initialShapeData.to!;
-        
-        // Calculate which corner each point is at
-        const minX = Math.min(initialFrom.x, initialTo.x);
-        const maxX = Math.max(initialFrom.x, initialTo.x);
-        const minY = Math.min(initialFrom.y, initialTo.y);
-        const maxY = Math.max(initialFrom.y, initialTo.y);
-        const padding = 10;
-        
-        // Define the 4 bounding box corners
-        const corners = {
-          'top-left': { x: minX - padding, y: minY - padding },
-          'top-right': { x: maxX + padding, y: minY - padding },
-          'bottom-right': { x: maxX + padding, y: maxY + padding },
-          'bottom-left': { x: minX - padding, y: maxY + padding }
-        };
-        
-        // Find which corner we're dragging
-        const draggedCorner = corners[arrowResizeEnd as keyof typeof corners];
-        if (!draggedCorner) return line;
-        
-        // Calculate distance from each arrow endpoint to the dragged corner
-        const distFromToCorner = Math.hypot(initialFrom.x - draggedCorner.x, initialFrom.y - draggedCorner.y);
-        const distToToCorner = Math.hypot(initialTo.x - draggedCorner.x, initialTo.y - draggedCorner.y);
-        
-        // Move the endpoint that's closest to the corner being dragged
-        let newFrom = { ...initialFrom };
-        let newTo = { ...initialTo };
-        
-        if (distFromToCorner < distToToCorner) {
-          // from is closer to the dragged corner, so move from
-          newFrom = { x: mouseX, y: mouseY };
-        } else {
-          // to is closer to the dragged corner, so move to
-          newTo = { x: mouseX, y: mouseY };
-        }
-        
-        return { ...line, points: [newFrom, newTo] };
-      }));
+      // Throttle setLines to prevent "Maximum update depth exceeded"
+      // Only update every 3rd frame (~20fps instead of 60fps)
+      if (frameCounterRef.current++ % 3 === 0) {
+        setLines(prev => prev.map(line => {
+          if (line.id !== selectedArrowId) return line;
+          if (line.points.length < 2) return line;
+
+          const initialFrom = initialShapeData.from!;
+          const initialTo = initialShapeData.to!;
+
+          // Calculate which corner each point is at
+          const minX = Math.min(initialFrom.x, initialTo.x);
+          const maxX = Math.max(initialFrom.x, initialTo.x);
+          const minY = Math.min(initialFrom.y, initialTo.y);
+          const maxY = Math.max(initialFrom.y, initialTo.y);
+          const padding = 10;
+
+          // Define the 4 bounding box corners
+          const corners = {
+            'top-left': { x: minX - padding, y: minY - padding },
+            'top-right': { x: maxX + padding, y: minY - padding },
+            'bottom-right': { x: maxX + padding, y: maxY + padding },
+            'bottom-left': { x: minX - padding, y: maxY + padding }
+          };
+
+          // Find which corner we're dragging
+          const draggedCorner = corners[arrowResizeEnd as keyof typeof corners];
+          if (!draggedCorner) return line;
+
+          // Calculate distance from each arrow endpoint to the dragged corner
+          const distFromToCorner = Math.hypot(initialFrom.x - draggedCorner.x, initialFrom.y - draggedCorner.y);
+          const distToToCorner = Math.hypot(initialTo.x - draggedCorner.x, initialTo.y - draggedCorner.y);
+
+          // Move the endpoint that's closest to the corner being dragged
+          let newFrom = { ...initialFrom };
+          let newTo = { ...initialTo };
+
+          if (distFromToCorner < distToToCorner) {
+            // from is closer to the dragged corner, so move from
+            newFrom = { x: mouseX, y: mouseY };
+          } else {
+            // to is closer to the dragged corner, so move to
+            newTo = { x: mouseX, y: mouseY };
+          }
+
+          return { ...line, points: [newFrom, newTo] };
+        }));
+      }
       return;
     }
 
@@ -2039,17 +2047,20 @@ const captureImage = () => {
           const deltaX = newCenter.x - oldCenter.x;
           const deltaY = newCenter.y - oldCenter.y;
 
-          // Direct setLines update (ultra-smooth movement disabled to prevent infinite loops)
-          setLines(prev => prev.map(line => {
-            if (line.id !== selectedArrowId) return line;
-            return {
-              ...line,
-              points: line.points.map(point => ({
-                x: point.x + deltaX,
-                y: point.y + deltaY
-              }))
-            };
-          }))
+          // Throttle setLines to prevent "Maximum update depth exceeded"
+          // Only update every 3rd frame (~20fps instead of 60fps)
+          if (frameCounterRef.current++ % 3 === 0) {
+            setLines(prev => prev.map(line => {
+              if (line.id !== selectedArrowId) return line;
+              return {
+                ...line,
+                points: line.points.map(point => ({
+                  x: point.x + deltaX,
+                  y: point.y + deltaY
+                }))
+              };
+            }));
+          }
         } else if (interactionMode === 'rotate') {
           // Faster rotation with less easing for more responsive feel
           const angle = Math.atan2(mouseY - center.y, mouseX - center.x);
@@ -2059,15 +2070,19 @@ const captureImage = () => {
           // Reduced easing for faster rotation (from 0.3 to 0.5)
           const easedRotation = currentRotation + rotationDelta * 0.5;
 
-          setLines(prev => prev.map(line =>
-              line.id === selectedArrowId
-                ? {
-                    ...line,
-                    rotation: easedRotation,
-                    points: line.points.map(point => rotatePoint(point, center, easedRotation - currentRotation))
-                  }
-                : line
-          ));
+          // Throttle setLines to prevent "Maximum update depth exceeded"
+          // Only update every 3rd frame (~20fps instead of 60fps)
+          if (frameCounterRef.current++ % 3 === 0) {
+            setLines(prev => prev.map(line =>
+                line.id === selectedArrowId
+                  ? {
+                      ...line,
+                      rotation: easedRotation,
+                      points: line.points.map(point => rotatePoint(point, center, easedRotation - currentRotation))
+                    }
+                  : line
+            ));
+          }
         }
       }
       return;
@@ -2078,47 +2093,51 @@ const captureImage = () => {
       const newCenterX = mouseX - moveOffset.x;
       const newCenterY = mouseY - moveOffset.y;
 
-      setLines(prev => {
-        const updatedLines = prev.map(line => {
-          if (line.id === selectedArrowId) {
-            if (line.type === 'circle') {
-              return {
-                ...line,
-                center: { x: newCenterX, y: newCenterY },
-                points: [
-                  { x: newCenterX - line.width! / 2, y: newCenterY - line.height! / 2 },
-                  { x: newCenterX + line.width! / 2, y: newCenterY + line.height! / 2 }
-                ]
-              };
-            } else if (line.type === 'square') {
-              return {
-                ...line,
-                center: { x: newCenterX, y: newCenterY },
-                points: [
-                  { x: newCenterX - line.width! / 2, y: newCenterY - line.height! / 2 },
-                  { x: newCenterX + line.width! / 2, y: newCenterY + line.height! / 2 }
-                ]
-              };
-            } else if (line.type === 'arrow') {
-              // For arrows, update the points array with the new positions
-              const oldCenter = getArrowCenter(line);
-              const deltaX = newCenterX - oldCenter.x;
-              const deltaY = newCenterY - oldCenter.y;
+      // Throttle setLines to prevent "Maximum update depth exceeded"
+      // Only update every 3rd frame (~20fps instead of 60fps)
+      if (frameCounterRef.current++ % 3 === 0) {
+        setLines(prev => {
+          const updatedLines = prev.map(line => {
+            if (line.id === selectedArrowId) {
+              if (line.type === 'circle') {
+                return {
+                  ...line,
+                  center: { x: newCenterX, y: newCenterY },
+                  points: [
+                    { x: newCenterX - line.width! / 2, y: newCenterY - line.height! / 2 },
+                    { x: newCenterX + line.width! / 2, y: newCenterY + line.height! / 2 }
+                  ]
+                };
+              } else if (line.type === 'square') {
+                return {
+                  ...line,
+                  center: { x: newCenterX, y: newCenterY },
+                  points: [
+                    { x: newCenterX - line.width! / 2, y: newCenterY - line.height! / 2 },
+                    { x: newCenterX + line.width! / 2, y: newCenterY + line.height! / 2 }
+                  ]
+                };
+              } else if (line.type === 'arrow') {
+                // For arrows, update the points array with the new positions
+                const oldCenter = getArrowCenter(line);
+                const deltaX = newCenterX - oldCenter.x;
+                const deltaY = newCenterY - oldCenter.y;
 
-              return {
-                ...line,
-                points: line.points.map(point => ({
-                  x: point.x + deltaX,
-                  y: point.y + deltaY
-                }))
-              };
+                return {
+                  ...line,
+                  points: line.points.map(point => ({
+                    x: point.x + deltaX,
+                    y: point.y + deltaY
+                  }))
+                };
+              }
             }
-          }
-          return line;
-        });
+            return line;
+          });
 
-        return updatedLines;
-      });
+          return updatedLines;
+        });
+      }
       return;
     }
 
@@ -2161,15 +2180,19 @@ const captureImage = () => {
             break;
         }
 
-        setLines(prev => {
-          const updatedLines = prev.map(line =>
-            line.id === initialShapeData.id
-              ? { ...line, width: newWidth, height: newHeight }
-              : line
-          );
+        // Throttle setLines to prevent "Maximum update depth exceeded"
+        // Only update every 3rd frame (~20fps instead of 60fps)
+        if (frameCounterRef.current++ % 3 === 0) {
+          setLines(prev => {
+            const updatedLines = prev.map(line =>
+              line.id === initialShapeData.id
+                ? { ...line, width: newWidth, height: newHeight }
+                : line
+            );
 
-          return updatedLines;
-        });
+            return updatedLines;
+          });
+        }
       } else if (shape?.type === 'square' && initialShapeData.width !== undefined && initialShapeData.height !== undefined) {
         // Square resizing
         let newWidth = initialShapeData.width;
@@ -2206,15 +2229,19 @@ const captureImage = () => {
             break;
         }
 
-        setLines(prev => {
-          const updatedLines = prev.map(line =>
-            line.id === initialShapeData.id
-              ? { ...line, width: newWidth, height: newHeight }
-              : line
-          );
+        // Throttle setLines to prevent "Maximum update depth exceeded"
+        // Only update every 3rd frame (~20fps instead of 60fps)
+        if (frameCounterRef.current++ % 3 === 0) {
+          setLines(prev => {
+            const updatedLines = prev.map(line =>
+              line.id === initialShapeData.id
+                ? { ...line, width: newWidth, height: newHeight }
+                : line
+            );
 
-          return updatedLines;
-        });
+            return updatedLines;
+          });
+        }
       }
       return;
     }
