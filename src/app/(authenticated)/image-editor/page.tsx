@@ -57,10 +57,15 @@ function ImageEditorPageContent() {
   const [preloadedAnnotations, setPreloadedAnnotations] = useState<any[] | undefined>(undefined);
   const [currentAnnotations, setCurrentAnnotations] = useState<any[]>([]);
 
-  // Custom items from localStorage
+  // Custom items from localStorage - TEMPLATE (all inspections)
   const [customLocations, setCustomLocations] = useState<string[]>([]);
   const [customSections, setCustomSections] = useState<string[]>([]);
   const [customSubsections, setCustomSubsections] = useState<{ [key: string]: string[] }>({});
+
+  // Custom items from localStorage - INSPECTION-SPECIFIC (this inspection only)
+  const [inspectionCustomLocations, setInspectionCustomLocations] = useState<string[]>([]);
+  const [inspectionCustomSections, setInspectionCustomSections] = useState<string[]>([]);
+  const [inspectionCustomSubsections, setInspectionCustomSubsections] = useState<{ [key: string]: string[] }>({});
 
   // Add new item states
   const [showAddLocation, setShowAddLocation] = useState(false);
@@ -218,25 +223,26 @@ function ImageEditorPageContent() {
     ]
   };
 
-  // Combine default and custom items, then filter
-  const allSections = [...section, ...customSections];
+  // Combine default, template custom, and inspection-specific items, then filter
+  const allSections = [...section, ...customSections, ...inspectionCustomSections];
   const filteredSections = allSections.filter(sectionItem =>
     sectionItem.toLowerCase().includes(locationSearch.toLowerCase())
   );
 
-  // Combine default and custom subsections for selected section
+  // Combine default, template, and inspection-specific subsections for selected section
   const allSubsectionsForSection = selectedLocation
     ? [
         ...(subsection[selectedLocation as keyof typeof subsection] || []),
-        ...(customSubsections[selectedLocation] || [])
+        ...(customSubsections[selectedLocation] || []),
+        ...(inspectionCustomSubsections[selectedLocation] || [])
       ]
     : [];
   const filteredSubsections = allSubsectionsForSection.filter(subLocation =>
     subLocation.toLowerCase().includes(subLocationSearch.toLowerCase())
   );
 
-  // Combine default and custom locations
-  const allLocations = [...location, ...customLocations];
+  // Combine default, template custom, and inspection-specific locations
+  const allLocations = [...location, ...customLocations, ...inspectionCustomLocations];
   const filteredLocations = allLocations.filter(locationItem =>
     locationItem.toLowerCase().includes(locationSearch2.toLowerCase())
   );
@@ -373,6 +379,7 @@ function ImageEditorPageContent() {
   // Load custom items from localStorage on mount
   useEffect(() => {
     try {
+      // Load TEMPLATE items (global - all inspections)
       const savedLocations = localStorage.getItem('customLocations');
       const savedSections = localStorage.getItem('customSections');
       const savedSubsections = localStorage.getItem('customSubsections');
@@ -380,10 +387,25 @@ function ImageEditorPageContent() {
       if (savedLocations) setCustomLocations(JSON.parse(savedLocations));
       if (savedSections) setCustomSections(JSON.parse(savedSections));
       if (savedSubsections) setCustomSubsections(JSON.parse(savedSubsections));
+
+      // Load INSPECTION-SPECIFIC items (this inspection only)
+      if (selectedInspectionId) {
+        const inspLocKey = `inspection_custom_locations_${selectedInspectionId}`;
+        const inspSecKey = `inspection_custom_sections_${selectedInspectionId}`;
+        const inspSubKey = `inspection_custom_subsections_${selectedInspectionId}`;
+
+        const inspLoc = localStorage.getItem(inspLocKey);
+        const inspSec = localStorage.getItem(inspSecKey);
+        const inspSub = localStorage.getItem(inspSubKey);
+
+        if (inspLoc) setInspectionCustomLocations(JSON.parse(inspLoc));
+        if (inspSec) setInspectionCustomSections(JSON.parse(inspSec));
+        if (inspSub) setInspectionCustomSubsections(JSON.parse(inspSub));
+      }
     } catch (e) {
       console.error('Failed to load custom items from localStorage:', e);
     }
-  }, []);
+  }, [selectedInspectionId]);
 
   const handleActionClick = (mode: 'none' | 'crop' | 'arrow' | 'circle' | 'square') => {
     if (mode === 'arrow') {
@@ -438,77 +460,137 @@ function ImageEditorPageContent() {
   };
 
   // Add new location
-  const handleAddLocation = () => {
-    if (newLocationInput.trim()) {
-      const updated = [...customLocations, newLocationInput.trim()];
+  const handleAddLocation = (isTemplate: boolean) => {
+    if (!newLocationInput.trim()) return;
+
+    const newItem = newLocationInput.trim();
+
+    if (isTemplate) {
+      // Save to Template (all inspections)
+      const updated = [...customLocations, newItem];
       setCustomLocations(updated);
       localStorage.setItem('customLocations', JSON.stringify(updated));
-      setSelectedLocation2(newLocationInput.trim());
-      setNewLocationInput('');
-      setShowAddLocation(false);
-      setShowLocationDropdown2(false);
+    } else {
+      // Add to This Inspection Only
+      const updated = [...inspectionCustomLocations, newItem];
+      setInspectionCustomLocations(updated);
+      localStorage.setItem(`inspection_custom_locations_${selectedInspectionId}`, JSON.stringify(updated));
     }
+
+    setSelectedLocation2(newItem);
+    setNewLocationInput('');
+    setShowAddLocation(false);
+    setShowLocationDropdown2(false);
   };
 
   // Add new section
-  const handleAddSection = () => {
-    if (newSectionInput.trim()) {
-      const updated = [...customSections, newSectionInput.trim()];
+  const handleAddSection = (isTemplate: boolean) => {
+    if (!newSectionInput.trim()) return;
+
+    const newItem = newSectionInput.trim();
+
+    if (isTemplate) {
+      // Save to Template (all inspections)
+      const updated = [...customSections, newItem];
       setCustomSections(updated);
       localStorage.setItem('customSections', JSON.stringify(updated));
-      setSelectedLocation(newSectionInput.trim());
-      setNewSectionInput('');
-      setShowAddSection(false);
-      setShowLocationDropdown(false);
       // Initialize empty subsection array for new section
-      const updatedSubsections = { ...customSubsections, [newSectionInput.trim()]: [] };
+      const updatedSubsections = { ...customSubsections, [newItem]: [] };
       setCustomSubsections(updatedSubsections);
       localStorage.setItem('customSubsections', JSON.stringify(updatedSubsections));
+    } else {
+      // Add to This Inspection Only
+      const updated = [...inspectionCustomSections, newItem];
+      setInspectionCustomSections(updated);
+      localStorage.setItem(`inspection_custom_sections_${selectedInspectionId}`, JSON.stringify(updated));
+      // Initialize empty subsection array for new section
+      const updatedSubsections = { ...inspectionCustomSubsections, [newItem]: [] };
+      setInspectionCustomSubsections(updatedSubsections);
+      localStorage.setItem(`inspection_custom_subsections_${selectedInspectionId}`, JSON.stringify(updatedSubsections));
     }
+
+    setSelectedLocation(newItem);
+    setNewSectionInput('');
+    setShowAddSection(false);
+    setShowLocationDropdown(false);
   };
 
   // Add new subsection
-  const handleAddSubSection = () => {
-    if (newSubSectionInput.trim() && selectedLocation) {
+  const handleAddSubSection = (isTemplate: boolean) => {
+    if (!newSubSectionInput.trim() || !selectedLocation) return;
+
+    const newItem = newSubSectionInput.trim();
+
+    if (isTemplate) {
+      // Save to Template (all inspections)
       const updated = { ...customSubsections };
       if (!updated[selectedLocation]) {
         updated[selectedLocation] = [];
       }
-      updated[selectedLocation] = [...updated[selectedLocation], newSubSectionInput.trim()];
+      updated[selectedLocation] = [...updated[selectedLocation], newItem];
       setCustomSubsections(updated);
       localStorage.setItem('customSubsections', JSON.stringify(updated));
-      setSelectedSubLocation(newSubSectionInput.trim());
-      setNewSubSectionInput('');
-      setShowAddSubSection(false);
-      setShowSubLocationDropdown(false);
+    } else {
+      // Add to This Inspection Only
+      const updated = { ...inspectionCustomSubsections };
+      if (!updated[selectedLocation]) {
+        updated[selectedLocation] = [];
+      }
+      updated[selectedLocation] = [...updated[selectedLocation], newItem];
+      setInspectionCustomSubsections(updated);
+      localStorage.setItem(`inspection_custom_subsections_${selectedInspectionId}`, JSON.stringify(updated));
     }
+
+    setSelectedSubLocation(newItem);
+    setNewSubSectionInput('');
+    setShowAddSubSection(false);
+    setShowSubLocationDropdown(false);
   };
 
   // Delete custom location
-  const handleDeleteLocation = (item: string) => {
-    const updated = customLocations.filter(loc => loc !== item);
-    setCustomLocations(updated);
-    localStorage.setItem('customLocations', JSON.stringify(updated));
+  const handleDeleteLocation = (item: string, isTemplate: boolean) => {
+    if (isTemplate) {
+      const updated = customLocations.filter(loc => loc !== item);
+      setCustomLocations(updated);
+      localStorage.setItem('customLocations', JSON.stringify(updated));
+    } else {
+      const updated = inspectionCustomLocations.filter(loc => loc !== item);
+      setInspectionCustomLocations(updated);
+      localStorage.setItem(`inspection_custom_locations_${selectedInspectionId}`, JSON.stringify(updated));
+    }
     if (selectedLocation2 === item) setSelectedLocation2('');
   };
 
   // Delete custom section
-  const handleDeleteSection = (item: string) => {
-    const updated = customSections.filter(sec => sec !== item);
-    setCustomSections(updated);
-    localStorage.setItem('customSections', JSON.stringify(updated));
+  const handleDeleteSection = (item: string, isTemplate: boolean) => {
+    if (isTemplate) {
+      const updated = customSections.filter(sec => sec !== item);
+      setCustomSections(updated);
+      localStorage.setItem('customSections', JSON.stringify(updated));
+    } else {
+      const updated = inspectionCustomSections.filter(sec => sec !== item);
+      setInspectionCustomSections(updated);
+      localStorage.setItem(`inspection_custom_sections_${selectedInspectionId}`, JSON.stringify(updated));
+    }
     if (selectedLocation === item) setSelectedLocation('');
   };
 
   // Delete custom subsection
-  const handleDeleteSubSection = (item: string) => {
-    if (selectedLocation) {
+  const handleDeleteSubSection = (item: string, isTemplate: boolean) => {
+    if (!selectedLocation) return;
+
+    if (isTemplate) {
       const updated = { ...customSubsections };
       updated[selectedLocation] = updated[selectedLocation].filter(sub => sub !== item);
       setCustomSubsections(updated);
       localStorage.setItem('customSubsections', JSON.stringify(updated));
-      if (selectedSubLocation === item) setSelectedSubLocation('');
+    } else {
+      const updated = { ...inspectionCustomSubsections };
+      updated[selectedLocation] = updated[selectedLocation].filter(sub => sub !== item);
+      setInspectionCustomSubsections(updated);
+      localStorage.setItem(`inspection_custom_subsections_${selectedInspectionId}`, JSON.stringify(updated));
     }
+    if (selectedSubLocation === item) setSelectedSubLocation('');
   };
 
   const handleCropStateChange = (hasFrame: boolean) => {
@@ -1618,46 +1700,73 @@ function ImageEditorPageContent() {
                          className="location-search-input"
                          style={{ marginBottom: '8px' }}
                        />
-                       <div style={{ display: 'flex', gap: '8px' }}>
-                         <button
-                           onClick={handleAddLocation}
-                           style={{
-                             flex: 1,
-                             padding: '6px 12px',
-                             background: '#6a11cb',
-                             color: 'white',
-                             border: 'none',
-                             borderRadius: '6px',
-                             cursor: 'pointer',
-                             fontSize: '14px'
-                           }}
-                         >
-                           Add
-                         </button>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                         <div style={{ display: 'flex', gap: '8px' }}>
+                           <button
+                             onClick={() => handleAddLocation(false)}
+                             style={{
+                               flex: 1,
+                               padding: '8px 12px',
+                               background: '#3b82f6',
+                               color: 'white',
+                               border: 'none',
+                               borderRadius: '6px',
+                               cursor: 'pointer',
+                               fontSize: '13px',
+                               fontWeight: '500'
+                             }}
+                             title="Add only to this inspection"
+                           >
+                             <i className="fas fa-file" style={{ marginRight: '4px', fontSize: '11px' }}></i>
+                             This Inspection
+                           </button>
+                           <button
+                             onClick={() => handleAddLocation(true)}
+                             style={{
+                               flex: 1,
+                               padding: '8px 12px',
+                               background: '#6a11cb',
+                               color: 'white',
+                               border: 'none',
+                               borderRadius: '6px',
+                               cursor: 'pointer',
+                               fontSize: '13px',
+                               fontWeight: '500'
+                             }}
+                             title="Save to template (all inspections)"
+                           >
+                             <i className="fas fa-save" style={{ marginRight: '4px', fontSize: '11px' }}></i>
+                             Template
+                           </button>
+                         </div>
                          <button
                            onClick={() => {
                              setShowAddLocation(false);
                              setNewLocationInput('');
                            }}
                            style={{
-                             flex: 1,
                              padding: '6px 12px',
                              background: '#e5e7eb',
                              color: '#374151',
                              border: 'none',
                              borderRadius: '6px',
                              cursor: 'pointer',
-                             fontSize: '14px'
+                             fontSize: '13px'
                            }}
                          >
                            Cancel
                          </button>
+                         <div style={{ fontSize: '11px', color: '#6b7280', padding: '4px 0', lineHeight: '1.3' }}>
+                           💡 <strong>This Inspection</strong> = Use only here • <strong>Template</strong> = Add permanently for all inspections
+                         </div>
                        </div>
                      </div>
                    )}
 
                    {filteredLocations.map(locationItem => {
-                     const isCustom = customLocations.includes(locationItem);
+                     const isTemplateCustom = customLocations.includes(locationItem);
+                     const isInspectionCustom = inspectionCustomLocations.includes(locationItem);
+                     const isCustom = isTemplateCustom || isInspectionCustom;
                      return (
                        <div
                          key={locationItem}
@@ -1674,6 +1783,11 @@ function ImageEditorPageContent() {
                          >
                            <i className="fas fa-map-marker-alt"></i>
                            <span>{locationItem}</span>
+                           {isInspectionCustom && (
+                             <span style={{ fontSize: '10px', marginLeft: '6px', color: '#3b82f6', fontWeight: '600' }}>
+                               (This Inspection)
+                             </span>
+                           )}
                          </div>
                          {isCustom && (
                            <i
@@ -1681,7 +1795,7 @@ function ImageEditorPageContent() {
                              onClick={(e) => {
                                e.stopPropagation();
                                if (confirm(`Delete "${locationItem}"?`)) {
-                                 handleDeleteLocation(locationItem);
+                                 handleDeleteLocation(locationItem, isTemplateCustom);
                                }
                              }}
                              style={{
@@ -1690,6 +1804,7 @@ function ImageEditorPageContent() {
                                padding: '4px 8px',
                                fontSize: '14px'
                              }}
+                             title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
                            />
                          )}
                        </div>
@@ -1786,46 +1901,73 @@ function ImageEditorPageContent() {
                          className="location-search-input"
                          style={{ marginBottom: '8px' }}
                        />
-                       <div style={{ display: 'flex', gap: '8px' }}>
-                         <button
-                           onClick={handleAddSection}
-                           style={{
-                             flex: 1,
-                             padding: '6px 12px',
-                             background: '#6a11cb',
-                             color: 'white',
-                             border: 'none',
-                             borderRadius: '6px',
-                             cursor: 'pointer',
-                             fontSize: '14px'
-                           }}
-                         >
-                           Add
-                         </button>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                         <div style={{ display: 'flex', gap: '8px' }}>
+                           <button
+                             onClick={() => handleAddSection(false)}
+                             style={{
+                               flex: 1,
+                               padding: '8px 12px',
+                               background: '#3b82f6',
+                               color: 'white',
+                               border: 'none',
+                               borderRadius: '6px',
+                               cursor: 'pointer',
+                               fontSize: '13px',
+                               fontWeight: '500'
+                             }}
+                             title="Add only to this inspection"
+                           >
+                             <i className="fas fa-file" style={{ marginRight: '4px', fontSize: '11px' }}></i>
+                             This Inspection
+                           </button>
+                           <button
+                             onClick={() => handleAddSection(true)}
+                             style={{
+                               flex: 1,
+                               padding: '8px 12px',
+                               background: '#6a11cb',
+                               color: 'white',
+                               border: 'none',
+                               borderRadius: '6px',
+                               cursor: 'pointer',
+                               fontSize: '13px',
+                               fontWeight: '500'
+                             }}
+                             title="Save to template (all inspections)"
+                           >
+                             <i className="fas fa-save" style={{ marginRight: '4px', fontSize: '11px' }}></i>
+                             Template
+                           </button>
+                         </div>
                          <button
                            onClick={() => {
                              setShowAddSection(false);
                              setNewSectionInput('');
                            }}
                            style={{
-                             flex: 1,
                              padding: '6px 12px',
                              background: '#e5e7eb',
                              color: '#374151',
                              border: 'none',
                              borderRadius: '6px',
                              cursor: 'pointer',
-                             fontSize: '14px'
+                             fontSize: '13px'
                            }}
                          >
                            Cancel
                          </button>
+                         <div style={{ fontSize: '11px', color: '#6b7280', padding: '4px 0', lineHeight: '1.3' }}>
+                           💡 <strong>This Inspection</strong> = Use only here • <strong>Template</strong> = Add permanently for all inspections
+                         </div>
                        </div>
                      </div>
                    )}
 
                    {filteredSections.map(sectionItem => {
-                     const isCustom = customSections.includes(sectionItem);
+                     const isTemplateCustom = customSections.includes(sectionItem);
+                     const isInspectionCustom = inspectionCustomSections.includes(sectionItem);
+                     const isCustom = isTemplateCustom || isInspectionCustom;
                      return (
                        <div
                          key={sectionItem}
@@ -1845,6 +1987,11 @@ function ImageEditorPageContent() {
                          >
                            <i className="fas fa-map-marker-alt"></i>
                            <span>{sectionItem}</span>
+                           {isInspectionCustom && (
+                             <span style={{ fontSize: '10px', marginLeft: '6px', color: '#3b82f6', fontWeight: '600' }}>
+                               (This Inspection)
+                             </span>
+                           )}
                          </div>
                          {isCustom && (
                            <i
@@ -1852,7 +1999,7 @@ function ImageEditorPageContent() {
                              onClick={(e) => {
                                e.stopPropagation();
                                if (confirm(`Delete "${sectionItem}"?`)) {
-                                 handleDeleteSection(sectionItem);
+                                 handleDeleteSection(sectionItem, isTemplateCustom);
                                }
                              }}
                              style={{
@@ -1861,6 +2008,7 @@ function ImageEditorPageContent() {
                                padding: '4px 8px',
                                fontSize: '14px'
                              }}
+                             title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
                            />
                          )}
                        </div>
@@ -1955,46 +2103,73 @@ function ImageEditorPageContent() {
                          className="location-search-input"
                          style={{ marginBottom: '8px' }}
                        />
-                       <div style={{ display: 'flex', gap: '8px' }}>
-                         <button
-                           onClick={handleAddSubSection}
-                           style={{
-                             flex: 1,
-                             padding: '6px 12px',
-                             background: '#6a11cb',
-                             color: 'white',
-                             border: 'none',
-                             borderRadius: '6px',
-                             cursor: 'pointer',
-                             fontSize: '14px'
-                           }}
-                         >
-                           Add
-                         </button>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                         <div style={{ display: 'flex', gap: '8px' }}>
+                           <button
+                             onClick={() => handleAddSubSection(false)}
+                             style={{
+                               flex: 1,
+                               padding: '8px 12px',
+                               background: '#3b82f6',
+                               color: 'white',
+                               border: 'none',
+                               borderRadius: '6px',
+                               cursor: 'pointer',
+                               fontSize: '13px',
+                               fontWeight: '500'
+                             }}
+                             title="Add only to this inspection"
+                           >
+                             <i className="fas fa-file" style={{ marginRight: '4px', fontSize: '11px' }}></i>
+                             This Inspection
+                           </button>
+                           <button
+                             onClick={() => handleAddSubSection(true)}
+                             style={{
+                               flex: 1,
+                               padding: '8px 12px',
+                               background: '#6a11cb',
+                               color: 'white',
+                               border: 'none',
+                               borderRadius: '6px',
+                               cursor: 'pointer',
+                               fontSize: '13px',
+                               fontWeight: '500'
+                             }}
+                             title="Save to template (all inspections)"
+                           >
+                             <i className="fas fa-save" style={{ marginRight: '4px', fontSize: '11px' }}></i>
+                             Template
+                           </button>
+                         </div>
                          <button
                            onClick={() => {
                              setShowAddSubSection(false);
                              setNewSubSectionInput('');
                            }}
                            style={{
-                             flex: 1,
                              padding: '6px 12px',
                              background: '#e5e7eb',
                              color: '#374151',
                              border: 'none',
                              borderRadius: '6px',
                              cursor: 'pointer',
-                             fontSize: '14px'
+                             fontSize: '13px'
                            }}
                          >
                            Cancel
                          </button>
+                         <div style={{ fontSize: '11px', color: '#6b7280', padding: '4px 0', lineHeight: '1.3' }}>
+                           💡 <strong>This Inspection</strong> = Use only here • <strong>Template</strong> = Add permanently for all inspections
+                         </div>
                        </div>
                      </div>
                    )}
 
                    {filteredSubsections.map(subLocation => {
-                     const isCustom = selectedLocation && customSubsections[selectedLocation]?.includes(subLocation);
+                     const isTemplateCustom = selectedLocation && customSubsections[selectedLocation]?.includes(subLocation);
+                     const isInspectionCustom = selectedLocation && inspectionCustomSubsections[selectedLocation]?.includes(subLocation);
+                     const isCustom = isTemplateCustom || isInspectionCustom;
                      return (
                        <div
                          key={subLocation}
@@ -2011,6 +2186,11 @@ function ImageEditorPageContent() {
                          >
                            <i className="fas fa-layer-group"></i>
                            <span>{subLocation}</span>
+                           {isInspectionCustom && (
+                             <span style={{ fontSize: '10px', marginLeft: '6px', color: '#3b82f6', fontWeight: '600' }}>
+                               (This Inspection)
+                             </span>
+                           )}
                          </div>
                          {isCustom && (
                            <i
@@ -2018,7 +2198,7 @@ function ImageEditorPageContent() {
                              onClick={(e) => {
                                e.stopPropagation();
                                if (confirm(`Delete "${subLocation}"?`)) {
-                                 handleDeleteSubSection(subLocation);
+                                 handleDeleteSubSection(subLocation, !!isTemplateCustom);
                                }
                              }}
                              style={{
@@ -2027,6 +2207,7 @@ function ImageEditorPageContent() {
                                padding: '4px 8px',
                                fontSize: '14px'
                              }}
+                             title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
                            />
                          )}
                        </div>
