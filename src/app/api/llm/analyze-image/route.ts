@@ -50,9 +50,26 @@ const decodeBase64Image = (dataString: string) => {
 
 export async function POST(request: Request) {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-    if (!baseUrl) {
-      throw new Error("Missing NEXT_PUBLIC_BASE_URL environment variable");
+    // Determine base URL for QStash callback
+    // In development (localhost), use localhost URL
+    // In production, use NEXT_PUBLIC_BASE_URL
+    let baseUrl: string;
+
+    // Check if we're running on localhost
+    const host = request.headers.get('host') || '';
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+
+    if (isLocalhost) {
+      // Development: use localhost
+      baseUrl = `http://${host}`;
+      console.log('🏠 Using localhost URL for QStash:', baseUrl);
+    } else {
+      // Production: use environment variable
+      baseUrl = process.env.NEXT_PUBLIC_BASE_URL || '';
+      if (!baseUrl) {
+        throw new Error("Missing NEXT_PUBLIC_BASE_URL environment variable");
+      }
+      console.log('🌐 Using production URL for QStash:', baseUrl);
     }
 
     const client = getQstashClient();
