@@ -57,7 +57,18 @@ function ImageEditorPageContent() {
   const [preloadedAnnotations, setPreloadedAnnotations] = useState<any[] | undefined>(undefined);
   const [currentAnnotations, setCurrentAnnotations] = useState<any[]>([]);
 
+  // Custom items from localStorage
+  const [customLocations, setCustomLocations] = useState<string[]>([]);
+  const [customSections, setCustomSections] = useState<string[]>([]);
+  const [customSubsections, setCustomSubsections] = useState<{ [key: string]: string[] }>({});
 
+  // Add new item states
+  const [showAddLocation, setShowAddLocation] = useState(false);
+  const [showAddSection, setShowAddSection] = useState(false);
+  const [showAddSubSection, setShowAddSubSection] = useState(false);
+  const [newLocationInput, setNewLocationInput] = useState('');
+  const [newSectionInput, setNewSectionInput] = useState('');
+  const [newSubSectionInput, setNewSubSectionInput] = useState('');
 
   const { updateAnalysisData } = useAnalysisStore();
 
@@ -207,17 +218,26 @@ function ImageEditorPageContent() {
     ]
   };
 
-  const filteredSections = section.filter(sectionItem =>
+  // Combine default and custom items, then filter
+  const allSections = [...section, ...customSections];
+  const filteredSections = allSections.filter(sectionItem =>
     sectionItem.toLowerCase().includes(locationSearch.toLowerCase())
   );
 
-  const filteredSubsections = selectedLocation && subsection[selectedLocation as keyof typeof subsection]
-    ? subsection[selectedLocation as keyof typeof subsection].filter(subLocation =>
-        subLocation.toLowerCase().includes(subLocationSearch.toLowerCase())
-      )
+  // Combine default and custom subsections for selected section
+  const allSubsectionsForSection = selectedLocation
+    ? [
+        ...(subsection[selectedLocation as keyof typeof subsection] || []),
+        ...(customSubsections[selectedLocation] || [])
+      ]
     : [];
+  const filteredSubsections = allSubsectionsForSection.filter(subLocation =>
+    subLocation.toLowerCase().includes(subLocationSearch.toLowerCase())
+  );
 
-  const filteredLocations = location.filter(locationItem =>
+  // Combine default and custom locations
+  const allLocations = [...location, ...customLocations];
+  const filteredLocations = allLocations.filter(locationItem =>
     locationItem.toLowerCase().includes(locationSearch2.toLowerCase())
   );
 
@@ -350,7 +370,20 @@ function ImageEditorPageContent() {
     }
   }, [isDefectMainMode]);
 
+  // Load custom items from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedLocations = localStorage.getItem('customLocations');
+      const savedSections = localStorage.getItem('customSections');
+      const savedSubsections = localStorage.getItem('customSubsections');
 
+      if (savedLocations) setCustomLocations(JSON.parse(savedLocations));
+      if (savedSections) setCustomSections(JSON.parse(savedSections));
+      if (savedSubsections) setCustomSubsections(JSON.parse(savedSubsections));
+    } catch (e) {
+      console.error('Failed to load custom items from localStorage:', e);
+    }
+  }, []);
 
   const handleActionClick = (mode: 'none' | 'crop' | 'arrow' | 'circle' | 'square') => {
     if (mode === 'arrow') {
@@ -402,6 +435,80 @@ function ImageEditorPageContent() {
   const handleDeleteAnnotation = () => {
     const event = new CustomEvent('deleteSelectedAnnotation');
     window.dispatchEvent(event);
+  };
+
+  // Add new location
+  const handleAddLocation = () => {
+    if (newLocationInput.trim()) {
+      const updated = [...customLocations, newLocationInput.trim()];
+      setCustomLocations(updated);
+      localStorage.setItem('customLocations', JSON.stringify(updated));
+      setSelectedLocation2(newLocationInput.trim());
+      setNewLocationInput('');
+      setShowAddLocation(false);
+      setShowLocationDropdown2(false);
+    }
+  };
+
+  // Add new section
+  const handleAddSection = () => {
+    if (newSectionInput.trim()) {
+      const updated = [...customSections, newSectionInput.trim()];
+      setCustomSections(updated);
+      localStorage.setItem('customSections', JSON.stringify(updated));
+      setSelectedLocation(newSectionInput.trim());
+      setNewSectionInput('');
+      setShowAddSection(false);
+      setShowLocationDropdown(false);
+      // Initialize empty subsection array for new section
+      const updatedSubsections = { ...customSubsections, [newSectionInput.trim()]: [] };
+      setCustomSubsections(updatedSubsections);
+      localStorage.setItem('customSubsections', JSON.stringify(updatedSubsections));
+    }
+  };
+
+  // Add new subsection
+  const handleAddSubSection = () => {
+    if (newSubSectionInput.trim() && selectedLocation) {
+      const updated = { ...customSubsections };
+      if (!updated[selectedLocation]) {
+        updated[selectedLocation] = [];
+      }
+      updated[selectedLocation] = [...updated[selectedLocation], newSubSectionInput.trim()];
+      setCustomSubsections(updated);
+      localStorage.setItem('customSubsections', JSON.stringify(updated));
+      setSelectedSubLocation(newSubSectionInput.trim());
+      setNewSubSectionInput('');
+      setShowAddSubSection(false);
+      setShowSubLocationDropdown(false);
+    }
+  };
+
+  // Delete custom location
+  const handleDeleteLocation = (item: string) => {
+    const updated = customLocations.filter(loc => loc !== item);
+    setCustomLocations(updated);
+    localStorage.setItem('customLocations', JSON.stringify(updated));
+    if (selectedLocation2 === item) setSelectedLocation2('');
+  };
+
+  // Delete custom section
+  const handleDeleteSection = (item: string) => {
+    const updated = customSections.filter(sec => sec !== item);
+    setCustomSections(updated);
+    localStorage.setItem('customSections', JSON.stringify(updated));
+    if (selectedLocation === item) setSelectedLocation('');
+  };
+
+  // Delete custom subsection
+  const handleDeleteSubSection = (item: string) => {
+    if (selectedLocation) {
+      const updated = { ...customSubsections };
+      updated[selectedLocation] = updated[selectedLocation].filter(sub => sub !== item);
+      setCustomSubsections(updated);
+      localStorage.setItem('customSubsections', JSON.stringify(updated));
+      if (selectedSubLocation === item) setSelectedSubLocation('');
+    }
   };
 
   const handleCropStateChange = (hasFrame: boolean) => {
@@ -1476,20 +1583,118 @@ function ImageEditorPageContent() {
                   />
                 </div>
                  <div className="location-options">
-                   {filteredLocations.map(locationItem => (
-                     <div 
-                       key={locationItem}
-                       className={`location-option ${selectedLocation2 === locationItem ? 'selected' : ''}`}
-                       onClick={() => {
-                         setSelectedLocation2(locationItem);
-                         setShowLocationDropdown2(false);
-                         setLocationSearch2('');
+                   {/* Add New Location button */}
+                   {!showAddLocation && (
+                     <div
+                       className="location-option add-new-option"
+                       onClick={() => setShowAddLocation(true)}
+                       style={{
+                         borderBottom: '1px solid #e5e7eb',
+                         color: '#6a11cb',
+                         fontWeight: '600'
                        }}
                      >
-                       <i className="fas fa-map-marker-alt"></i>
-                       <span>{locationItem}</span>
+                       <i className="fas fa-plus-circle"></i>
+                       <span>Add New Location</span>
                      </div>
-                   ))}
+                   )}
+
+                   {/* Inline input for adding new location */}
+                   {showAddLocation && (
+                     <div className="add-new-input-container" style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                       <input
+                         type="text"
+                         placeholder="Enter new location..."
+                         value={newLocationInput}
+                         onChange={(e) => setNewLocationInput(e.target.value)}
+                         onKeyDown={(e) => {
+                           if (e.key === 'Enter') handleAddLocation();
+                           if (e.key === 'Escape') {
+                             setShowAddLocation(false);
+                             setNewLocationInput('');
+                           }
+                         }}
+                         autoFocus
+                         className="location-search-input"
+                         style={{ marginBottom: '8px' }}
+                       />
+                       <div style={{ display: 'flex', gap: '8px' }}>
+                         <button
+                           onClick={handleAddLocation}
+                           style={{
+                             flex: 1,
+                             padding: '6px 12px',
+                             background: '#6a11cb',
+                             color: 'white',
+                             border: 'none',
+                             borderRadius: '6px',
+                             cursor: 'pointer',
+                             fontSize: '14px'
+                           }}
+                         >
+                           Add
+                         </button>
+                         <button
+                           onClick={() => {
+                             setShowAddLocation(false);
+                             setNewLocationInput('');
+                           }}
+                           style={{
+                             flex: 1,
+                             padding: '6px 12px',
+                             background: '#e5e7eb',
+                             color: '#374151',
+                             border: 'none',
+                             borderRadius: '6px',
+                             cursor: 'pointer',
+                             fontSize: '14px'
+                           }}
+                         >
+                           Cancel
+                         </button>
+                       </div>
+                     </div>
+                   )}
+
+                   {filteredLocations.map(locationItem => {
+                     const isCustom = customLocations.includes(locationItem);
+                     return (
+                       <div
+                         key={locationItem}
+                         className={`location-option ${selectedLocation2 === locationItem ? 'selected' : ''}`}
+                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                       >
+                         <div
+                           style={{ flex: 1, display: 'flex', alignItems: 'center' }}
+                           onClick={() => {
+                             setSelectedLocation2(locationItem);
+                             setShowLocationDropdown2(false);
+                             setLocationSearch2('');
+                           }}
+                         >
+                           <i className="fas fa-map-marker-alt"></i>
+                           <span>{locationItem}</span>
+                         </div>
+                         {isCustom && (
+                           <i
+                             className="fas fa-trash-alt"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               if (confirm(`Delete "${locationItem}"?`)) {
+                                 handleDeleteLocation(locationItem);
+                               }
+                             }}
+                             style={{
+                               color: '#ef4444',
+                               cursor: 'pointer',
+                               padding: '4px 8px',
+                               fontSize: '14px'
+                             }}
+                           />
+                         )}
+                       </div>
+                     );
+                   })}
                  </div>
               </div>
             )}
@@ -1546,23 +1751,121 @@ function ImageEditorPageContent() {
                   />
                 </div>
                  <div className="location-options">
-                   {filteredSections.map(sectionItem => (
-                     <div 
-                       key={sectionItem}
-                       className={`location-option ${selectedLocation === sectionItem ? 'selected' : ''}`}
-                       onClick={() => {
-                         setSelectedLocation(sectionItem);
-                         setShowLocationDropdown(false);
-                         setLocationSearch('');
-                         setSelectedSubLocation(''); // Reset sub-location when main location changes
-                         setSubLocationSearch(''); // Reset sub-location search
-                         setShowSubLocationDropdown(false); // Hide sub-location dropdown initially
+                   {/* Add New Section button */}
+                   {!showAddSection && (
+                     <div
+                       className="location-option add-new-option"
+                       onClick={() => setShowAddSection(true)}
+                       style={{
+                         borderBottom: '1px solid #e5e7eb',
+                         color: '#6a11cb',
+                         fontWeight: '600'
                        }}
                      >
-                       <i className="fas fa-map-marker-alt"></i>
-                       <span>{sectionItem}</span>
+                       <i className="fas fa-plus-circle"></i>
+                       <span>Add New Section</span>
                      </div>
-                   ))}
+                   )}
+
+                   {/* Inline input for adding new section */}
+                   {showAddSection && (
+                     <div className="add-new-input-container" style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                       <input
+                         type="text"
+                         placeholder="Enter new section..."
+                         value={newSectionInput}
+                         onChange={(e) => setNewSectionInput(e.target.value)}
+                         onKeyDown={(e) => {
+                           if (e.key === 'Enter') handleAddSection();
+                           if (e.key === 'Escape') {
+                             setShowAddSection(false);
+                             setNewSectionInput('');
+                           }
+                         }}
+                         autoFocus
+                         className="location-search-input"
+                         style={{ marginBottom: '8px' }}
+                       />
+                       <div style={{ display: 'flex', gap: '8px' }}>
+                         <button
+                           onClick={handleAddSection}
+                           style={{
+                             flex: 1,
+                             padding: '6px 12px',
+                             background: '#6a11cb',
+                             color: 'white',
+                             border: 'none',
+                             borderRadius: '6px',
+                             cursor: 'pointer',
+                             fontSize: '14px'
+                           }}
+                         >
+                           Add
+                         </button>
+                         <button
+                           onClick={() => {
+                             setShowAddSection(false);
+                             setNewSectionInput('');
+                           }}
+                           style={{
+                             flex: 1,
+                             padding: '6px 12px',
+                             background: '#e5e7eb',
+                             color: '#374151',
+                             border: 'none',
+                             borderRadius: '6px',
+                             cursor: 'pointer',
+                             fontSize: '14px'
+                           }}
+                         >
+                           Cancel
+                         </button>
+                       </div>
+                     </div>
+                   )}
+
+                   {filteredSections.map(sectionItem => {
+                     const isCustom = customSections.includes(sectionItem);
+                     return (
+                       <div
+                         key={sectionItem}
+                         className={`location-option ${selectedLocation === sectionItem ? 'selected' : ''}`}
+                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                       >
+                         <div
+                           style={{ flex: 1, display: 'flex', alignItems: 'center' }}
+                           onClick={() => {
+                             setSelectedLocation(sectionItem);
+                             setShowLocationDropdown(false);
+                             setLocationSearch('');
+                             setSelectedSubLocation(''); // Reset sub-location when main location changes
+                             setSubLocationSearch(''); // Reset sub-location search
+                             setShowSubLocationDropdown(false); // Hide sub-location dropdown initially
+                           }}
+                         >
+                           <i className="fas fa-map-marker-alt"></i>
+                           <span>{sectionItem}</span>
+                         </div>
+                         {isCustom && (
+                           <i
+                             className="fas fa-trash-alt"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               if (confirm(`Delete "${sectionItem}"?`)) {
+                                 handleDeleteSection(sectionItem);
+                               }
+                             }}
+                             style={{
+                               color: '#ef4444',
+                               cursor: 'pointer',
+                               padding: '4px 8px',
+                               fontSize: '14px'
+                             }}
+                           />
+                         )}
+                       </div>
+                     );
+                   })}
                  </div>
               </div>
             )}
@@ -1617,20 +1920,118 @@ function ImageEditorPageContent() {
                   />
                 </div>
                  <div className="location-options">
-                   {filteredSubsections.map(subLocation => (
-                     <div 
-                       key={subLocation}
-                       className={`location-option ${selectedSubLocation === subLocation ? 'selected' : ''}`}
-                       onClick={() => {
-                         setSelectedSubLocation(subLocation);
-                         setShowSubLocationDropdown(false);
-                         setSubLocationSearch('');
+                   {/* Add New Sub-Section button */}
+                   {!showAddSubSection && (
+                     <div
+                       className="location-option add-new-option"
+                       onClick={() => setShowAddSubSection(true)}
+                       style={{
+                         borderBottom: '1px solid #e5e7eb',
+                         color: '#6a11cb',
+                         fontWeight: '600'
                        }}
                      >
-                       <i className="fas fa-layer-group"></i>
-                       <span>{subLocation}</span>
+                       <i className="fas fa-plus-circle"></i>
+                       <span>Add New Sub-Section</span>
                      </div>
-                   ))}
+                   )}
+
+                   {/* Inline input for adding new subsection */}
+                   {showAddSubSection && (
+                     <div className="add-new-input-container" style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                       <input
+                         type="text"
+                         placeholder="Enter new sub-section..."
+                         value={newSubSectionInput}
+                         onChange={(e) => setNewSubSectionInput(e.target.value)}
+                         onKeyDown={(e) => {
+                           if (e.key === 'Enter') handleAddSubSection();
+                           if (e.key === 'Escape') {
+                             setShowAddSubSection(false);
+                             setNewSubSectionInput('');
+                           }
+                         }}
+                         autoFocus
+                         className="location-search-input"
+                         style={{ marginBottom: '8px' }}
+                       />
+                       <div style={{ display: 'flex', gap: '8px' }}>
+                         <button
+                           onClick={handleAddSubSection}
+                           style={{
+                             flex: 1,
+                             padding: '6px 12px',
+                             background: '#6a11cb',
+                             color: 'white',
+                             border: 'none',
+                             borderRadius: '6px',
+                             cursor: 'pointer',
+                             fontSize: '14px'
+                           }}
+                         >
+                           Add
+                         </button>
+                         <button
+                           onClick={() => {
+                             setShowAddSubSection(false);
+                             setNewSubSectionInput('');
+                           }}
+                           style={{
+                             flex: 1,
+                             padding: '6px 12px',
+                             background: '#e5e7eb',
+                             color: '#374151',
+                             border: 'none',
+                             borderRadius: '6px',
+                             cursor: 'pointer',
+                             fontSize: '14px'
+                           }}
+                         >
+                           Cancel
+                         </button>
+                       </div>
+                     </div>
+                   )}
+
+                   {filteredSubsections.map(subLocation => {
+                     const isCustom = selectedLocation && customSubsections[selectedLocation]?.includes(subLocation);
+                     return (
+                       <div
+                         key={subLocation}
+                         className={`location-option ${selectedSubLocation === subLocation ? 'selected' : ''}`}
+                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                       >
+                         <div
+                           style={{ flex: 1, display: 'flex', alignItems: 'center' }}
+                           onClick={() => {
+                             setSelectedSubLocation(subLocation);
+                             setShowSubLocationDropdown(false);
+                             setSubLocationSearch('');
+                           }}
+                         >
+                           <i className="fas fa-layer-group"></i>
+                           <span>{subLocation}</span>
+                         </div>
+                         {isCustom && (
+                           <i
+                             className="fas fa-trash-alt"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               if (confirm(`Delete "${subLocation}"?`)) {
+                                 handleDeleteSubSection(subLocation);
+                               }
+                             }}
+                             style={{
+                               color: '#ef4444',
+                               cursor: 'pointer',
+                               padding: '4px 8px',
+                               fontSize: '14px'
+                             }}
+                           />
+                         )}
+                       </div>
+                     );
+                   })}
                  </div>
               </div>
             )}
