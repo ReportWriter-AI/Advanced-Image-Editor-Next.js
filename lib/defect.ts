@@ -20,6 +20,10 @@ export async function createDefect(data: {
   recommendation: string;
   color?: string; // Add selected arrow color field
   isThreeSixty?: boolean; // Mark as 360° photo
+  additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>; // Multiple location photos (support 360)
+  base_cost?: number; // Initial AI-calculated cost (before multiplying by image count)
+  annotations?: any[]; // Store annotation shapes (arrows, circles, squares, freehand) as JSON
+  originalImage?: string; // Original image without annotations (for re-editing)
 }) {
   const client = await clientPromise;
   const db = client.db(DB_NAME);
@@ -66,6 +70,11 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   hours_required?: number;
   recommendation?: string;
   isThreeSixty?: boolean;
+  additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>; // Multiple location photos (support 360)
+  base_cost?: number; // Base cost for calculation
+  image?: string; // Allow updating the main image
+  annotations?: any[]; // Update annotation shapes
+  originalImage?: string; // Update original image
 }) {
   const client = await clientPromise;
   const db = client.db(DB_NAME);

@@ -2,6 +2,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import FileUpload from './FileUpload';
+import LocationSearch from './LocationSearch';
+import { LOCATION_OPTIONS } from '../constants/locations';
 
 interface ISectionChecklist {
   _id: string;
@@ -10,6 +12,7 @@ interface ISectionChecklist {
   type: 'status' | 'information';
   tab: 'information' | 'limitations'; // Which tab to display this item in
   answer_choices?: string[]; // NEW: Predefined answer choices for this checklist item
+  default_checked?: boolean; // NEW
   order_index: number;
 }
 
@@ -53,6 +56,14 @@ interface InformationSectionsProps {
 
 const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId }) => {
   const router = useRouter();
+  // Mobile detection for responsive tweaks in the inline-styled layout
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(typeof window !== 'undefined' && window.innerWidth <= 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   const [sections, setSections] = useState<ISection[]>([]);
   const [blocks, setBlocks] = useState<IInformationBlock[]>([]);
   const [loadingSections, setLoadingSections] = useState(false);
@@ -65,14 +76,142 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const [saving, setSaving] = useState(false);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
 
+  // Reorder mode (template-level) for Status and Limitations lists
+  const [reorderMode, setReorderMode] = useState<{ status: boolean; limitations: boolean }>({ status: false, limitations: false });
+  const [reorderIds, setReorderIds] = useState<{ status: string[]; limitations: string[] }>({ status: [], limitations: [] });
+  const dragStateRef = useRef<{ kind: 'status' | 'limitations' | null; draggingId: string | null }>({ kind: null, draggingId: null });
+  const reorderDirtyRef = useRef<{ status: boolean; limitations: boolean }>({ status: false, limitations: false });
+  // Drag visuals: track dragging item and current target + insert position for subtle UI
+  const [dragVisual, setDragVisual] = useState<{ kind: 'status' | 'limitations' | null; draggingId: string | null; overId: string | null; position: 'before' | 'after' | null }>({ kind: null, draggingId: null, overId: null, position: null });
+  
+  // Option-level drag state for reordering answer choices (template choices only)
+  const optionDragStateRef = useRef<{ checklistId: string | null; draggingChoice: string | null }>({ checklistId: null, draggingChoice: null });
+  const [optionDragVisual, setOptionDragVisual] = useState<{ checklistId: string | null; draggingChoice: string | null; overChoice: string | null; position: 'before' | 'after' | null; axis: 'horizontal' | 'vertical' | null }>({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+  
+  // Touch drag state for mobile (iOS Safari fix)
+  const optionTouchStateRef = useRef<{
+    isDragging: boolean;
+    checklistId: string | null;
+    draggingChoice: string | null;
+    startY: number;
+    startX: number;
+    currentY: number;
+    currentX: number;
+    allowDrag?: boolean; // do not start drag if touch began on a checkbox or non-draggable control
+    dragEl?: HTMLElement | null; // the label element being dragged for visual feedback
+  }>({
+    isDragging: false,
+    checklistId: null,
+    draggingChoice: null,
+    startY: 0,
+    startX: 0,
+    currentY: 0,
+    currentX: 0,
+    allowDrag: true,
+    dragEl: null,
+  });
+  // Movement threshold in pixels before initiating an option drag on touch
+  const OPTION_TOUCH_DRAG_THRESHOLD = 10;
+  
+  // Auto-scroll during drag
+  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null); // legacy interval (kept for options if ever needed)
+  const modalScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Smooth auto-scroll with requestAnimationFrame for item dragging
+  const scrollRafRef = useRef<number | null>(null);
+  const autoScrollStateRef = useRef<{ active: boolean; dir: 'up' | 'down' | null; speed: number }>({ active: false, dir: null, speed: 0 });
+
+  const stopAutoScroll = () => {
+    autoScrollStateRef.current = { active: false, dir: null, speed: 0 };
+    if (scrollRafRef.current) {
+      cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = null;
+    }
+    // Also clear legacy interval if any
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+  };
+
+  const runAutoScrollLoop = () => {
+    if (scrollRafRef.current) return; // already running
+    const tick = () => {
+      scrollRafRef.current = requestAnimationFrame(() => {
+        const state = autoScrollStateRef.current;
+        const container = modalScrollContainerRef.current;
+        if (!state.active || !state.dir || !container) {
+          // stop loop
+          if (scrollRafRef.current) {
+            cancelAnimationFrame(scrollRafRef.current);
+            scrollRafRef.current = null;
+          }
+          return;
+        }
+        const maxScroll = container.scrollHeight - container.clientHeight;
+        if (state.dir === 'up') {
+          container.scrollTop = Math.max(0, container.scrollTop - state.speed);
+        } else {
+          container.scrollTop = Math.min(maxScroll, container.scrollTop + state.speed);
+        }
+        // continue loop
+        tick();
+      });
+    };
+    tick();
+  };
+
+  // Update auto-scroll speed/direction based on pointer Y
+  const updateItemAutoScroll = (clientY: number) => {
+    const container = modalScrollContainerRef.current;
+    if (!container) return stopAutoScroll();
+    const rect = container.getBoundingClientRect();
+    const zone = Math.max(48, Math.min(120, Math.floor(rect.height * 0.18))); // 18% of height, clamped
+
+    if (clientY < rect.top + zone && clientY > rect.top) {
+      const dist = rect.top + zone - clientY; // 0..zone
+      const t = Math.max(0, Math.min(1, dist / zone));
+      const max = 28; // px per frame
+      const min = 4;
+      const speed = min + Math.pow(t, 1.6) * (max - min); // ease-in
+      autoScrollStateRef.current = { active: true, dir: 'up', speed };
+      runAutoScrollLoop();
+    } else if (clientY > rect.bottom - zone && clientY < rect.bottom) {
+      const dist = clientY - (rect.bottom - zone); // 0..zone
+      const t = Math.max(0, Math.min(1, dist / zone));
+      const max = 28;
+      const min = 4;
+      const speed = min + Math.pow(t, 1.6) * (max - min);
+      autoScrollStateRef.current = { active: true, dir: 'down', speed };
+      runAutoScrollLoop();
+    } else {
+      stopAutoScroll();
+    }
+  };
+
   // Track inspection-specific checklists (not saved to template)
   // Key: sectionId, Value: array of inspection-only checklists for that section
   const [inspectionChecklists, setInspectionChecklists] = useState<Map<string, ISectionChecklist[]>>(new Map());
+
+  // Track hidden template checklist items per inspection/section (persisted in localStorage)
+  // Map key: sectionId, value: array of template checklist IDs hidden for this inspection
+  const [hiddenChecklists, setHiddenChecklists] = useState<Map<string, string[]>>(new Map());
+
+  // UI state: which checklist id currently has the delete options menu open
+  const [deleteMenuForId, setDeleteMenuForId] = useState<string | null>(null);
+
+  // UI state: which answer choice index has the delete options menu open in edit modal
+  const [deleteAnswerMenuForIndex, setDeleteAnswerMenuForIndex] = useState<number | null>(null);
+
+  // UI state: show hidden manager panels inside modal for each area
+  const [showHiddenManagerStatus, setShowHiddenManagerStatus] = useState(false);
+  const [showHiddenManagerLimits, setShowHiddenManagerLimits] = useState(false);
 
   // Auto-save state
   const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const textSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const commentSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Local input values for location fields (to prevent last character issue)
   const [locationInputs, setLocationInputs] = useState<Record<string, string>>({});
@@ -86,24 +225,51 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   // 360° photo checkbox state (key: checklist_id, value: boolean)
   const [isThreeSixtyMap, setIsThreeSixtyMap] = useState<Record<string, boolean>>({});
 
-  // Predefined location options (same as defect upload page)
-  const LOCATION_OPTIONS = [
-    'Addition', 'All Locations', 'Apartment', 'Attic', 'Back Porch', 'Back Room', 'Balcony',
-    'Bedroom 1', 'Bedroom 2', 'Bedroom 3', 'Bedroom 4', 'Bedroom 5', 'Both Locations', 'Breakfast',
-    'Carport', 'Carport Entry', 'Closet', 'Crawlspace', 'Dining', 'Downstairs', 'Downstairs Bathroom',
-    'Downstairs Bathroom Closet', 'Downstairs Hallway', 'Downstairs Hall Closet', 'Driveway', 'Entry',
-    'Family Room', 'Front Entry', 'Front of House', 'Front Porch', 'Front Room', 'Garage', 'Garage Entry',
-    'Garage Storage Closet', 'Guest Bathroom', 'Guest Bedroom', 'Guest Bedroom Closet', 'Half Bathroom',
-    'Hallway', 'Heater Operation Temp', 'HVAC Closet', 'Keeping Room', 'Kitchen', 'Kitchen Pantry',
-    'Left Side of House', 'Left Wall', 'Living Room', 'Living Room Closet', 'Laundry Room',
-    'Laundry Room Closet', 'Master Bathroom', 'Master Bedroom', 'Master Closet', 'Most Locations',
-    'Multiple Locations', 'Office', 'Office Closet', 'Outdoor Storage', 'Patio', 'Rear Entry',
-    'Rear of House', 'Rear Wall', 'Right Side of House', 'Right Wall', 'Shop', 'Side Entry', 'Staircase',
-    'Sun Room', 'Top of Stairs', 'Upstairs Bathroom', 'Upstairs Bedroom 1', 'Upstairs Bedroom 1 Closet',
-    'Upstairs Bedroom 2', 'Upstairs Bedroom 2 Closet', 'Upstairs Bedroom 3', 'Upstairs Bedroom 3 Closet',
-    'Upstairs Bedroom 4', 'Upstairs Bedroom 4 Closet', 'Upstairs Hallway', 'Upstairs Laundry Room',
-    'Utility Room', 'Water Heater Closet', 'Water Heater Output Temp'
-  ];
+  // Collapsed/expanded state for selected Status items in the Add/Edit modal
+  const [expandedStatusIds, setExpandedStatusIds] = useState<Set<string>>(new Set());
+  const isStatusExpanded = useCallback((id: string) => expandedStatusIds.has(id), [expandedStatusIds]);
+  const expandStatus = useCallback((id: string) => {
+    setExpandedStatusIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+  const collapseStatus = useCallback((id: string) => {
+    setExpandedStatusIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  // Collapsed/expanded state for selected Limitations/Information items
+  const [expandedLimitIds, setExpandedLimitIds] = useState<Set<string>>(new Set());
+  const isLimitExpanded = useCallback((id: string) => expandedLimitIds.has(id), [expandedLimitIds]);
+  const expandLimit = useCallback((id: string) => {
+    setExpandedLimitIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }, []);
+  const collapseLimit = useCallback((id: string) => {
+    setExpandedLimitIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  // Proxy helper for reliable image loading
+  const getProxiedSrc = useCallback((url?: string | null) => {
+    if (!url) return '';
+    if (url.startsWith('data:') || url.startsWith('/api/proxy-image?') || url.startsWith('blob:')) return url;
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  }, []);
+
+  // Shared location options
+  
 
   // Admin checklist management
   const [checklistFormOpen, setChecklistFormOpen] = useState(false);
@@ -114,7 +280,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     type: 'status' | 'information';
     tab: 'information' | 'limitations';
     answer_choices: string[];
-  }>({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [] });
+    default_checked: boolean;
+  }>({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [], default_checked: false });
   const [savingChecklist, setSavingChecklist] = useState(false);
   const [newAnswerChoice, setNewAnswerChoice] = useState('');
   const [editingAnswerIndex, setEditingAnswerIndex] = useState<number | null>(null);
@@ -124,7 +291,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     setLoadingSections(true);
     setError(null);
     try {
-  const res = await fetch('/api/information-sections/sections', { cache: 'no-store' });
+      const res = await fetch('/api/information-sections/sections', { cache: 'no-store' });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Failed to load sections');
       setSections(json.data);
@@ -139,7 +306,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     if (!inspectionId) return;
     setLoadingBlocks(true);
     try {
-  const res = await fetch(`/api/information-sections/${inspectionId}`, { cache: 'no-store' });
+      const res = await fetch(`/api/information-sections/${inspectionId}`, { cache: 'no-store' });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Failed to load information blocks');
       setBlocks(json.data);
@@ -170,30 +337,852 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         setInspectionChecklists(checklistsMap);
         console.log('📂 Loaded inspection-specific checklists from localStorage:', checklistsMap);
       }
+
+      // Load hidden template checklist ids map
+      const hiddenKey = `inspection_hidden_checklists_${inspectionId}`;
+      const hiddenStored = localStorage.getItem(hiddenKey);
+      if (hiddenStored) {
+        const parsedHidden = JSON.parse(hiddenStored) as Record<string, string[]>;
+        const hiddenMap = new Map<string, string[]>();
+        Object.entries(parsedHidden).forEach(([secId, ids]) => hiddenMap.set(secId, ids));
+        setHiddenChecklists(hiddenMap);
+      }
     } catch (error) {
-      console.error('Error loading inspection checklists:', error);
+      console.error('Error loading inspection data from localStorage:', error);
     }
   }, [inspectionId]);
 
-  // Save inspection-specific checklists to localStorage whenever they change
+  // Persist inspection-specific checklists to localStorage whenever they change
   useEffect(() => {
-    if (!inspectionId || inspectionChecklists.size === 0) return;
-    
+    if (!inspectionId) return;
     try {
       const storageKey = `inspection_checklists_${inspectionId}`;
-      // Convert Map to plain object for JSON storage
-      const checklistsObj: Record<string, ISectionChecklist[]> = {};
-      inspectionChecklists.forEach((checklists, sectionId) => {
-        if (checklists.length > 0) {
-          checklistsObj[sectionId] = checklists;
-        }
-      });
-      localStorage.setItem(storageKey, JSON.stringify(checklistsObj));
-      console.log('💾 Saved inspection-specific checklists to localStorage');
+      const obj: Record<string, ISectionChecklist[]> = {};
+      inspectionChecklists.forEach((arr, secId) => { obj[secId] = arr; });
+      localStorage.setItem(storageKey, JSON.stringify(obj));
     } catch (error) {
-      console.error('Error saving inspection checklists:', error);
+      console.error('Error saving inspection-specific checklists to localStorage:', error);
     }
   }, [inspectionId, inspectionChecklists]);
+
+  // Persist hidden template checklist ids per inspection
+  useEffect(() => {
+    if (!inspectionId) return;
+    try {
+      const hiddenKey = `inspection_hidden_checklists_${inspectionId}`;
+      const obj: Record<string, string[]> = {};
+      hiddenChecklists.forEach((ids, secId) => { obj[secId] = ids; });
+      localStorage.setItem(hiddenKey, JSON.stringify(obj));
+    } catch (error) {
+      console.error('Error saving hidden checklist ids:', error);
+    }
+  }, [inspectionId, hiddenChecklists]);
+
+  // Helpers for hidden items
+  const getHiddenIdsForSection = (sectionId: string): string[] => {
+    return hiddenChecklists.get(sectionId) || [];
+  };
+
+  const isChecklistHidden = (sectionId: string, checklistId: string): boolean => {
+    const ids = hiddenChecklists.get(sectionId) || [];
+    return ids.includes(checklistId);
+  };
+
+  const hideChecklistForInspection = (sectionId: string, checklistId: string) => {
+    // Only template items can be hidden
+    if (checklistId.startsWith('temp_')) return;
+    const current = hiddenChecklists.get(sectionId) || [];
+    if (current.includes(checklistId)) return;
+    const updated = new Map(hiddenChecklists);
+    updated.set(sectionId, [...current, checklistId]);
+    setHiddenChecklists(updated);
+
+    // Also unselect it in current form state if selected
+    if (formState && formState.section_id === sectionId && formState.selected_checklist_ids.has(checklistId)) {
+      const newIds = new Set(formState.selected_checklist_ids);
+      newIds.delete(checklistId);
+      const newAnswers = new Map(formState.selected_answers);
+      newAnswers.delete(checklistId);
+      const updatedState = { ...formState, selected_checklist_ids: newIds, selected_answers: newAnswers };
+      setFormState(updatedState);
+      setTimeout(() => performAutoSaveWithState(updatedState), 100);
+    }
+  };
+
+  const unhideChecklistForInspection = (sectionId: string, checklistId: string) => {
+    const current = hiddenChecklists.get(sectionId) || [];
+    const updatedIds = current.filter(id => id !== checklistId);
+    const updated = new Map(hiddenChecklists);
+    if (updatedIds.length > 0) updated.set(sectionId, updatedIds); else updated.delete(sectionId);
+    setHiddenChecklists(updated);
+  };
+
+  // -------- Reorder helpers (template-level) --------
+  const beginReorder = (kind: 'status' | 'limitations', section: ISection) => {
+    const base = kind === 'status'
+      ? section.checklists.filter(cl => cl.type === 'status')
+      : section.checklists.filter(cl => cl.tab === 'limitations');
+    const ordered = [...base].sort((a, b) => a.order_index - b.order_index).map(cl => cl._id);
+    setReorderIds(prev => ({ ...prev, [kind]: ordered }));
+    reorderDirtyRef.current[kind] = false;
+    setReorderMode(prev => ({ ...prev, [kind]: true }));
+  };
+
+  const cancelReorder = (kind: 'status' | 'limitations') => {
+    setReorderMode(prev => ({ ...prev, [kind]: false }));
+    setReorderIds(prev => ({ ...prev, [kind]: [] }));
+    reorderDirtyRef.current[kind] = false;
+    dragStateRef.current = { kind: null, draggingId: null };
+    // Clear auto-scroll interval
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+  };
+
+  // Auto-scroll logic during drag (desktop pointer) using smooth RAF
+  const handleDragMove = (e: React.DragEvent<HTMLDivElement>) => {
+    updateItemAutoScroll(e.clientY);
+  };
+
+  const onDragStartItem = (kind: 'status' | 'limitations', id: string) => (
+    (e: React.DragEvent<HTMLDivElement>) => {
+      dragStateRef.current = { kind, draggingId: id };
+      e.dataTransfer.effectAllowed = 'move';
+      // Visual: mark dragging
+      setDragVisual({ kind, draggingId: id, overId: null, position: null });
+      // Slightly better drag image (fallback to element itself)
+      try { e.dataTransfer.setDragImage(e.currentTarget, 10, 10); } catch {}
+    }
+  );
+
+  // --- Touch/Pointer fallback for item reordering (iOS Safari) ---
+  const itemTouchStateRef = useRef<{
+    isDragging: boolean;
+    kind: 'status' | 'limitations' | null;
+    draggingId: string | null;
+  }>({ isDragging: false, kind: null, draggingId: null });
+
+  const lockModalScroll = () => {
+    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
+    if (el) {
+      el.style.touchAction = 'none';
+      // Prevent scroll chaining to the page
+      // @ts-ignore
+      el.style.overscrollBehavior = 'contain';
+      // Keep overflowY as auto for item dragging; we don't want to hide scrollbar here
+    }
+  };
+  const unlockModalScroll = () => {
+    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
+    if (el) {
+      // Restore to default modal values
+      el.style.touchAction = 'pan-y';
+      // @ts-ignore
+      el.style.overscrollBehavior = 'contain';
+      el.style.overflowY = 'auto';
+    }
+  };
+
+  // Stronger scroll lock for option dragging (also disables wheel scrolling)
+  const optionWheelBlockerRef = useRef<((ev: WheelEvent) => void) | null>(null);
+  const itemTouchBlockerRef = useRef<((ev: TouchEvent) => void) | null>(null);
+  const prevDocOverscrollRef = useRef<{ html: string; body: string } | null>(null);
+  const lockModalScrollForOptions = () => {
+    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
+    if (el) {
+      el.style.touchAction = 'none';
+      // @ts-ignore
+      el.style.overscrollBehavior = 'contain';
+      el.style.overflowY = 'hidden';
+    }
+    if (typeof window !== 'undefined' && !optionWheelBlockerRef.current) {
+      const handler = (ev: WheelEvent) => { ev.preventDefault(); };
+      window.addEventListener('wheel', handler, { passive: false });
+      optionWheelBlockerRef.current = handler;
+    }
+  };
+  const unlockModalScrollForOptions = () => {
+    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
+    if (el) {
+      // Restore to modal defaults so scrollbar returns
+      el.style.overflowY = 'auto';
+      el.style.touchAction = 'pan-y';
+      // @ts-ignore
+      el.style.overscrollBehavior = 'contain';
+    }
+    if (typeof window !== 'undefined' && optionWheelBlockerRef.current) {
+      window.removeEventListener('wheel', optionWheelBlockerRef.current as any);
+      optionWheelBlockerRef.current = null;
+    }
+  };
+
+  // Block global touchmove during item drag to prevent page scroll/bounce
+  const lockGlobalScrollDuringItemDrag = () => {
+    if (typeof window !== 'undefined' && !itemTouchBlockerRef.current) {
+      const handler = (ev: TouchEvent) => { ev.preventDefault(); };
+      window.addEventListener('touchmove', handler, { passive: false });
+      itemTouchBlockerRef.current = handler;
+    }
+    // Save previous overscrollBehavior and then disable
+    if (typeof document !== 'undefined') {
+      const html = (document.documentElement as HTMLElement);
+      const body = (document.body as HTMLElement);
+      prevDocOverscrollRef.current = {
+        html: (html.style as any).overscrollBehavior || '',
+        body: (body.style as any).overscrollBehavior || ''
+      };
+      (html.style as any).overscrollBehavior = 'none';
+      (body.style as any).overscrollBehavior = 'none';
+    }
+  };
+  const unlockGlobalScrollDuringItemDrag = () => {
+    if (typeof window !== 'undefined' && itemTouchBlockerRef.current) {
+      window.removeEventListener('touchmove', itemTouchBlockerRef.current as any);
+      itemTouchBlockerRef.current = null;
+    }
+    if (typeof document !== 'undefined') {
+      const html = (document.documentElement as HTMLElement);
+      const body = (document.body as HTMLElement);
+      const prev = prevDocOverscrollRef.current;
+      (html.style as any).overscrollBehavior = prev ? prev.html : '';
+      (body.style as any).overscrollBehavior = prev ? prev.body : '';
+      prevDocOverscrollRef.current = null;
+    }
+  };
+
+  // Ensure no locks linger when modal closes or component unmounts
+  useEffect(() => {
+    if (!modalOpen) {
+      unlockModalScrollForOptions();
+      unlockModalScroll();
+    }
+  }, [modalOpen]);
+  useEffect(() => {
+    return () => {
+      unlockModalScrollForOptions();
+      unlockModalScroll();
+    };
+  }, []);
+
+  const onItemTouchStart = (kind: 'status' | 'limitations', id: string) => (
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      itemTouchStateRef.current = { isDragging: true, kind, draggingId: id };
+      setDragVisual({ kind, draggingId: id, overId: null, position: null });
+      (e.currentTarget as HTMLElement).style.opacity = '0.9';
+      // Mobile: lock native scrolling while dragging items; we'll auto-scroll programmatically near edges
+      lockModalScroll();
+      lockGlobalScrollDuringItemDrag();
+    }
+  );
+
+  const onItemTouchMove = (kind: 'status' | 'limitations') => (
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      if (!itemTouchStateRef.current.isDragging) return;
+      const touch = e.touches[0];
+      // Find target item under finger
+      const el = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
+      const itemEl = el ? el.closest('[data-item-id]') as HTMLElement | null : null;
+      const overId = itemEl?.getAttribute('data-item-id') || null;
+      if (overId) {
+        const rect = itemEl!.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        const position: 'before' | 'after' = touch.clientY < mid ? 'before' : 'after';
+        setDragVisual(prev => ({ ...prev, kind, overId, position }));
+      }
+      // Smooth auto-scroll near edges using RAF with acceleration
+      updateItemAutoScroll(touch.clientY);
+    }
+  );
+
+  const onItemTouchEnd = (kind: 'status' | 'limitations') => (
+    (_e: React.TouchEvent<HTMLDivElement>) => {
+      if (!itemTouchStateRef.current.isDragging) return;
+      const draggingId = itemTouchStateRef.current.draggingId;
+      const overId = dragVisual.overId;
+      const insertPosition = dragVisual.position || 'after';
+      if (draggingId && overId && draggingId !== overId) {
+        setReorderIds(prev => {
+          const list = [...prev[kind]];
+          const fromIndex = list.indexOf(draggingId);
+          let insertIndex = list.indexOf(overId);
+          if (fromIndex === -1 || insertIndex === -1) return prev;
+          const [dragged] = list.splice(fromIndex, 1);
+          insertIndex = list.indexOf(overId);
+          if (insertPosition === 'after') insertIndex += 1;
+          list.splice(insertIndex, 0, dragged);
+          setTimeout(async () => {
+            if (activeSection) await persistChecklistOrder(kind, activeSection._id, list);
+          }, 50);
+          return { ...prev, [kind]: list };
+        });
+      }
+      itemTouchStateRef.current = { isDragging: false, kind: null, draggingId: null };
+      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
+      stopAutoScroll();
+      unlockModalScroll();
+      unlockGlobalScrollDuringItemDrag();
+    }
+  );
+
+  const onItemTouchCancel = () => (
+    () => {
+      if (!itemTouchStateRef.current.isDragging) return;
+      itemTouchStateRef.current = { isDragging: false, kind: null, draggingId: null };
+      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
+      stopAutoScroll();
+      unlockModalScroll();
+      unlockGlobalScrollDuringItemDrag();
+    }
+  );
+
+  const onItemPointerDown = (kind: 'status' | 'limitations', id: string) => (
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== 'touch') return;
+      itemTouchStateRef.current = { isDragging: true, kind, draggingId: id };
+      setDragVisual({ kind, draggingId: id, overId: null, position: null });
+      (e.currentTarget as HTMLElement).style.opacity = '0.9';
+      // Touch: lock native scroll; rely on auto-scroll near edges while dragging items
+      lockModalScroll();
+      lockGlobalScrollDuringItemDrag();
+    }
+  );
+  const onItemPointerUp = (kind: 'status' | 'limitations') => (
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== 'touch') return;
+      if (!itemTouchStateRef.current.isDragging) return;
+      onItemTouchEnd(kind)({} as any);
+      (e.currentTarget as HTMLElement).style.opacity = '1';
+      unlockGlobalScrollDuringItemDrag();
+    }
+  );
+
+  const onDragOverItem = (kind: 'status' | 'limitations', targetId: string) => (
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      
+      // Calculate position (before/after) based on mouse position
+      const targetElement = e.currentTarget;
+      const rect = targetElement.getBoundingClientRect();
+      const mouseY = e.clientY;
+      const elementMiddle = rect.top + rect.height / 2;
+      
+      // If mouse is above middle, insert before; if below, insert after
+      const position = mouseY < elementMiddle ? 'before' : 'after';
+      
+      setDragVisual(prev => ({ ...prev, kind, overId: targetId, position }));
+      // Trigger auto-scroll check
+      handleDragMove(e);
+    }
+  );
+
+  const onDropItem = (kind: 'status' | 'limitations', targetId: string) => (
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const draggingId = dragStateRef.current.draggingId;
+      if (!draggingId || dragStateRef.current.kind !== kind) return;
+      if (draggingId === targetId) return;
+      
+      // Get the position from dragVisual state
+      const insertPosition = dragVisual.position || 'after';
+      
+      setReorderIds(prev => {
+        const list = [...prev[kind]];
+        const fromIndex = list.indexOf(draggingId);
+        const toIndex = list.indexOf(targetId);
+        if (fromIndex === -1 || toIndex === -1) return prev;
+        
+        // INSERT LOGIC (araya ekleme) - Trello/Spotify tarzı
+        // 1. Sürüklenen elemanı listeden çıkar
+        const [draggedItem] = list.splice(fromIndex, 1);
+        
+        // 2. Hedef konuma ekle
+        // 'before' ise hedefin önüne, 'after' ise hedefin arkasına
+        let insertIndex = list.indexOf(targetId);
+        if (insertIndex === -1) return prev; // Güvenlik kontrolü
+        
+        if (insertPosition === 'after') {
+          insertIndex += 1; // Hedefin arkasına ekle
+        }
+        // 'before' ise insertIndex olduğu gibi kalır (hedefin önüne)
+        
+        list.splice(insertIndex, 0, draggedItem);
+        
+        // AUTO-SAVE: Immediately persist the new order after drag and drop
+        setTimeout(async () => {
+          if (activeSection) {
+            try {
+              console.log(`🔄 Auto-saving ${kind} order after drag and drop...`);
+              await persistChecklistOrder(kind, activeSection._id, list);
+              console.log(`✅ ${kind} order auto-saved successfully!`);
+            } catch (error) {
+              console.error(`❌ Failed to auto-save ${kind} order:`, error);
+            }
+          }
+        }, 100); // Small delay to ensure state is updated
+        
+        return { ...prev, [kind]: list };
+      });
+      reorderDirtyRef.current[kind] = true;
+      
+      // Clear visual state
+      dragStateRef.current = { kind: null, draggingId: null };
+      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
+        // Stop any auto-scroll after drop
+        stopAutoScroll();
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
+        scrollIntervalRef.current = null;
+      }
+    }
+  );
+
+  const onDragEndItem = () => (
+    (_e: React.DragEvent<HTMLDivElement>) => {
+      dragStateRef.current = { kind: null, draggingId: null };
+      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
+      // Clear auto-scroll interval
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
+        scrollIntervalRef.current = null;
+      }
+    }
+  );
+
+  const persistChecklistOrder = useCallback(
+    async (kind: 'status' | 'limitations', sectionId: string, orderedIds: string[]) => {
+      const seen = new Set<string>();
+      const sanitized: string[] = [];
+      for (const rawId of orderedIds) {
+        if (typeof rawId !== 'string') continue;
+        const trimmed = rawId.trim();
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        sanitized.push(trimmed);
+      }
+
+      if (!sanitized.length) {
+        reorderDirtyRef.current[kind] = false;
+        return { templateUpdated: false };
+      }
+
+      const orderMap = new Map<string, number>();
+      sanitized.forEach((id, index) => orderMap.set(id, index));
+
+      const templateIds = sanitized.filter(id => !id.startsWith('temp_'));
+      let templateUpdated = false;
+
+      if (templateIds.length) {
+        const res = await fetch('/api/information-sections/sections/reorder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sectionId, kind, orderedIds: templateIds }),
+        });
+        const json = await res.json();
+        if (!json.success) {
+          throw new Error(json.error || 'Failed to save order');
+        }
+        templateUpdated = true;
+      }
+
+      const inspectionOnlyIds = sanitized.filter(id => id.startsWith('temp_'));
+      if (inspectionOnlyIds.length) {
+        setInspectionChecklists(prev => {
+          const existing = prev.get(sectionId);
+          if (!existing || !existing.length) return prev;
+          const next = new Map(prev);
+          const orderedInspection = inspectionOnlyIds
+            .map(id => {
+              const match = existing.find(item => item._id === id);
+              if (!match) return null;
+              return { ...match, order_index: orderMap.get(id)! };
+            })
+            .filter((item): item is ISectionChecklist => !!item);
+          const remainingInspection = existing.filter(item => !inspectionOnlyIds.includes(item._id));
+          next.set(sectionId, [...orderedInspection, ...remainingInspection]);
+          return next;
+        });
+      }
+
+      setActiveSection(prev => {
+        if (!prev || prev._id !== sectionId) return prev;
+        const source = prev.checklists || [];
+        const checklistMap = new Map(source.map(item => [item._id, item]));
+        const ordered = sanitized
+          .map(id => checklistMap.get(id))
+          .filter((item): item is ISectionChecklist => !!item)
+          .map(item => ({ ...item, order_index: orderMap.get(item._id)! }));
+        const remaining = source.filter(item => !orderMap.has(item._id));
+        return {
+          ...prev,
+          checklists: [...ordered, ...remaining],
+        };
+      });
+
+      setReorderIds(prev => ({ ...prev, [kind]: sanitized }));
+      reorderDirtyRef.current[kind] = false;
+
+      return { templateUpdated };
+    },
+    [setActiveSection, setInspectionChecklists, setReorderIds]
+  );
+
+  // Persist reordered template options for a checklist item
+  const persistOptionOrder = useCallback(
+    async (checklistId: string, orderedChoices: string[]) => {
+      try {
+        // Optimistically update activeSection
+        setActiveSection(prev => {
+          if (!prev) return prev;
+          const updated = prev.checklists.map(cl => {
+            if (cl._id === checklistId) {
+              return { ...cl, answer_choices: orderedChoices };
+            }
+            return cl;
+          });
+          return { ...prev, checklists: updated };
+        });
+
+        // Save to template via API (only answer_choices field)
+        const res = await fetch(`/api/checklists/${checklistId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answer_choices: orderedChoices }),
+        });
+        const json = await res.json();
+        if (!json.success) {
+          throw new Error(json.error || 'Failed to save option order');
+        }
+        // No need to refetch sections immediately; UI already updated
+      } catch (err) {
+        console.error('Failed to persist option order:', err);
+        alert('Failed to save option order. Please try again.');
+      }
+    },
+    [setActiveSection]
+  );
+
+  // --- Option drag handlers (template answer choices only) ---
+  const onOptionDragStart = (checklistId: string, choice: string, isCustom: boolean) => (
+    (e: React.DragEvent<HTMLLabelElement>) => {
+      // Only allow dragging template choices
+      if (isCustom) return;
+      // Don't start drag if initiated on checkbox or interactive control
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.closest('input[type="checkbox"]'))) {
+        return;
+      }
+      // Prevent parent checklist drag handlers
+      e.stopPropagation();
+      // Hard lock modal/page scroll while dragging options (desktop)
+      lockModalScrollForOptions();
+      optionDragStateRef.current = { checklistId, draggingChoice: choice };
+      setOptionDragVisual({ checklistId, draggingChoice: choice, overChoice: null, position: null, axis: null });
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setDragImage(e.currentTarget, 10, 10); } catch {}
+    }
+  );
+
+  const onOptionDragOver = (checklistId: string, targetChoice: string, isTargetCustom: boolean) => (
+    (e: React.DragEvent<HTMLLabelElement>) => {
+  const { checklistId: draggingChecklistId, draggingChoice } = optionDragStateRef.current;
+      // Only allow drop on template choices
+      if (isTargetCustom) return;
+      // Prevent parent checklist drag handlers
+      e.stopPropagation();
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseY = e.clientY;
+      const mouseX = e.clientX;
+      const centerY = rect.top + rect.height / 2;
+      const centerX = rect.left + rect.width / 2;
+      const distY = Math.abs(mouseY - centerY);
+      const distX = Math.abs(mouseX - centerX);
+      const axis: 'horizontal' | 'vertical' = distX >= distY ? 'horizontal' : 'vertical';
+      const position: 'before' | 'after' = axis === 'horizontal'
+        ? (mouseX < centerX ? 'before' : 'after')
+        : (mouseY < centerY ? 'before' : 'after');
+      setOptionDragVisual({ checklistId, draggingChoice, overChoice: targetChoice, position, axis });
+    }
+  );
+
+  const onOptionDrop = (checklistId: string, targetChoice: string, isTargetCustom: boolean, templateChoices: string[]) => (
+    async (e: React.DragEvent<HTMLLabelElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const { checklistId: draggingChecklistId, draggingChoice } = optionDragStateRef.current;
+      const insertPos = optionDragVisual.position || 'after';
+      if (!draggingChoice || draggingChecklistId !== checklistId) return;
+      // Only move within template choices
+      if (isTargetCustom) return;
+      if (!templateChoices || !templateChoices.length) return;
+      if (!templateChoices.includes(draggingChoice) || !templateChoices.includes(targetChoice)) return;
+      if (draggingChoice === targetChoice) return;
+
+      const list = [...templateChoices];
+      const fromIndex = list.indexOf(draggingChoice);
+      let toIndex = list.indexOf(targetChoice);
+      if (fromIndex === -1 || toIndex === -1) return;
+
+      // Remove from original
+      list.splice(fromIndex, 1);
+      // Recompute target index after removal if needed
+      toIndex = list.indexOf(targetChoice);
+      if (insertPos === 'after') toIndex += 1;
+      // Insert at new index
+      list.splice(toIndex, 0, draggingChoice);
+
+      // Persist and update UI
+      await persistOptionOrder(checklistId, list);
+
+      // Clear visuals
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+      unlockModalScrollForOptions();
+    }
+  );
+
+  const onOptionDragEnd = () => (
+    (_e: React.DragEvent<HTMLLabelElement>) => {
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+      unlockModalScrollForOptions();
+    }
+  );
+
+  // Touch handlers for iOS Safari compatibility
+  const onOptionTouchStart = (checklistId: string, choice: string, isCustom: boolean) => (
+    (e: React.TouchEvent<HTMLLabelElement>) => {
+      if (isCustom) return;
+      // Do not allow drag to begin from checkbox taps
+      const target = e.target as HTMLElement;
+      const beganOnCheckbox = target?.tagName === 'INPUT' || !!target.closest('input[type="checkbox"]');
+      const touch = e.touches[0];
+      optionTouchStateRef.current = {
+        isDragging: false, // start as not dragging; wait for threshold
+        checklistId,
+        draggingChoice: choice,
+        startY: touch.clientY,
+        startX: touch.clientX,
+        currentY: touch.clientY,
+        currentX: touch.clientX,
+        allowDrag: !beganOnCheckbox,
+        dragEl: e.currentTarget as unknown as HTMLElement,
+      };
+    }
+  );
+
+  const onOptionTouchMove = (checklistId: string, templateChoices: string[]) => (
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      const touchState = optionTouchStateRef.current;
+      // Update current coords
+      const touch = e.touches[0];
+      touchState.currentY = touch.clientY;
+      touchState.currentX = touch.clientX;
+
+      // If not yet dragging, check if we crossed the threshold and are allowed to drag
+      if (!touchState.isDragging) {
+        const dx = Math.abs(touchState.currentX - touchState.startX);
+        const dy = Math.abs(touchState.currentY - touchState.startY);
+        const movedEnough = Math.max(dx, dy) >= OPTION_TOUCH_DRAG_THRESHOLD;
+        if (!movedEnough || !touchState.allowDrag) {
+          return; // still a tap/scroll gesture, do nothing
+        }
+        // Start drag officially
+        touchState.isDragging = true;
+        optionDragStateRef.current = { checklistId: touchState.checklistId, draggingChoice: touchState.draggingChoice };
+        setOptionDragVisual({ checklistId, draggingChoice: touchState.draggingChoice!, overChoice: null, position: null, axis: null });
+        // Lock modal scroll hard (also blocks wheel) and set visual
+        lockModalScrollForOptions();
+        if (touchState.dragEl) {
+          try { touchState.dragEl.style.opacity = '0.5'; } catch {}
+        }
+      }
+      // We're dragging now: prevent page scroll via CSS lock and continue
+      
+      // Find element under touch point
+  const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!elementUnderTouch) return;
+      
+      // Find closest label with data-choice attribute
+      const targetLabel = elementUnderTouch.closest('[data-choice]') as HTMLElement;
+      if (!targetLabel) return;
+      
+      const targetChoice = targetLabel.getAttribute('data-choice');
+      if (!targetChoice || !templateChoices.includes(targetChoice)) return;
+      
+      const { draggingChoice } = touchState;
+      if (targetChoice === draggingChoice) return;
+      
+      // Calculate position
+      const rect = targetLabel.getBoundingClientRect();
+      const centerY = rect.top + rect.height / 2;
+      const centerX = rect.left + rect.width / 2;
+      const distY = Math.abs(touch.clientY - centerY);
+      const distX = Math.abs(touch.clientX - centerX);
+      const axis: 'horizontal' | 'vertical' = distX >= distY ? 'horizontal' : 'vertical';
+      const position: 'before' | 'after' = axis === 'horizontal'
+        ? (touch.clientX < centerX ? 'before' : 'after')
+        : (touch.clientY < centerY ? 'before' : 'after');
+      
+      setOptionDragVisual({ 
+        checklistId, 
+        draggingChoice, 
+        overChoice: targetChoice, 
+        position, 
+        axis 
+      });
+    }
+  );
+
+  const onOptionTouchEnd = (checklistId: string, templateChoices: string[]) => (
+    async (e: React.TouchEvent<HTMLLabelElement>) => {
+      const touchState = optionTouchStateRef.current;
+      // Always cleanup visual if we had a reference
+      try { if (touchState.dragEl) touchState.dragEl.style.opacity = '1'; } catch {}
+      if (!touchState.isDragging) {
+        // Not a drag, just a tap – nothing to reorder
+        // Ensure scroll is unlocked in case it was changed elsewhere
+  unlockModalScrollForOptions();
+        // Reset state below
+      } else {
+        // Perform drop logic
+        const { draggingChoice } = touchState;
+        const { overChoice, position } = optionDragVisual;
+        
+        if (draggingChoice && overChoice && draggingChoice !== overChoice) {
+          const list = [...templateChoices];
+          const fromIndex = list.indexOf(draggingChoice);
+          let toIndex = list.indexOf(overChoice);
+          
+          if (fromIndex !== -1 && toIndex !== -1) {
+            list.splice(fromIndex, 1);
+            toIndex = list.indexOf(overChoice);
+            if (position === 'after') toIndex += 1;
+            list.splice(toIndex, 0, draggingChoice);
+            
+            await persistOptionOrder(checklistId, list);
+          }
+        }
+      }
+      
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+      
+      // Reset state
+      optionTouchStateRef.current = {
+        isDragging: false,
+        checklistId: null,
+        draggingChoice: null,
+        startY: 0,
+        startX: 0,
+        currentY: 0,
+        currentX: 0,
+        allowDrag: true,
+        dragEl: null,
+      };
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+    }
+  );
+
+  // Touch cancel safety for iOS (e.g., interruption, scroll bounce)
+  const onOptionTouchCancel = () => (
+    (_e: React.TouchEvent<any>) => {
+      if (!optionTouchStateRef.current.isDragging) return;
+      // Restore visual and unlock scroll
+      try { if (optionTouchStateRef.current.dragEl) optionTouchStateRef.current.dragEl.style.opacity = '1'; } catch {}
+  unlockModalScrollForOptions();
+      // Reset state
+      optionTouchStateRef.current = {
+        isDragging: false,
+        checklistId: null,
+        draggingChoice: null,
+        startY: 0,
+        startX: 0,
+        currentY: 0,
+        currentX: 0,
+        allowDrag: true,
+        dragEl: null,
+      };
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+    }
+  );
+
+  // Pointer events fallback (iOS supports PointerEvents) – treat touch pointer as drag
+  const onOptionPointerDown = (checklistId: string, choice: string, isCustom: boolean) => (
+    (e: React.PointerEvent<HTMLLabelElement>) => {
+      if (e.pointerType !== 'touch') return; // only handle touch via pointer events
+      if (isCustom) return;
+      const target = e.target as HTMLElement;
+      const beganOnCheckbox = target?.tagName === 'INPUT' || !!target.closest('input[type="checkbox"]');
+      optionTouchStateRef.current = {
+        isDragging: false, // wait for threshold like touch logic
+        checklistId,
+        draggingChoice: choice,
+        startY: e.clientY,
+        startX: e.clientX,
+        currentY: e.clientY,
+        currentX: e.clientX,
+        allowDrag: !beganOnCheckbox,
+        dragEl: e.currentTarget as unknown as HTMLElement,
+      };
+    }
+  );
+
+  const onOptionPointerUp = (checklistId: string, templateChoices: string[]) => (
+    async (e: React.PointerEvent<HTMLElement>) => {
+      if (e.pointerType !== 'touch') return;
+      if (!optionTouchStateRef.current.isDragging) return;
+      (e.currentTarget as HTMLElement).style.opacity = '1';
+      const draggingChoice = optionTouchStateRef.current.draggingChoice;
+      const { overChoice, position } = optionDragVisual;
+      if (draggingChoice && overChoice && draggingChoice !== overChoice) {
+        const list = [...templateChoices];
+        const fromIndex = list.indexOf(draggingChoice);
+        let toIndex = list.indexOf(overChoice);
+        if (fromIndex !== -1 && toIndex !== -1) {
+          list.splice(fromIndex, 1);
+          toIndex = list.indexOf(overChoice);
+          if (position === 'after') toIndex += 1;
+          list.splice(toIndex, 0, draggingChoice);
+          await persistOptionOrder(checklistId, list);
+        }
+      }
+      // Unlock scroll and reset state
+  unlockModalScrollForOptions();
+      optionTouchStateRef.current = {
+        isDragging: false,
+        checklistId: null,
+        draggingChoice: null,
+        startY: 0,
+        startX: 0,
+        currentY: 0,
+        currentX: 0,
+        allowDrag: true,
+        dragEl: null,
+      };
+      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
+      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
+    }
+  );
+
+  const saveReorder = async (kind: 'status' | 'limitations', section: ISection) => {
+    try {
+      const sectionId = section._id;
+      const currentIds = reorderIds[kind] || [];
+      const { templateUpdated } = await persistChecklistOrder(kind, sectionId, currentIds);
+      if (templateUpdated) {
+        await fetchSections();
+      }
+      cancelReorder(kind);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save order');
+    }
+  };
 
   // Helper function to get all checklist items for a block (including inspection-only)
   const getBlockChecklists = (block: IInformationBlock): any[] => {
@@ -219,6 +1208,126 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     
     // Merge with existing checklists
     return [...existingIds, ...selectedInspectionChecklists];
+  };
+
+  // Resolve a checklist reference (object or string id) to full metadata from section/template or inspection-only
+  const resolveChecklist = (sectionId: string, cl: any): ISectionChecklist | null => {
+    if (cl && typeof cl === 'object' && cl._id) return cl as ISectionChecklist;
+    const section = sections.find(s => s._id === sectionId);
+    const fromTemplate = section?.checklists.find(c => c._id === cl) || null;
+    if (fromTemplate) return fromTemplate;
+    const fromInspection = (inspectionChecklists.get(sectionId) || []).find(c => c._id === cl) || null;
+    return fromInspection;
+  };
+
+  // Quick toggle for a selected checklist inside an existing block (outside modal)
+  const toggleChecklistInBlock = async (block: IInformationBlock, cl: any) => {
+    try {
+      const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
+      const clId: string = typeof cl === 'string' ? cl : cl._id;
+
+      // Find the section to determine if this is a template item or inspection-only
+      const section = sections.find(s => s._id === sectionId);
+      const isTemplateItem = !!section?.checklists.some(c => c._id === clId);
+
+      // Helper: backup/restore answers like modal does
+      const backupKey = `checklist_backup_${inspectionId}_${clId}`;
+
+      if (isTemplateItem) {
+        // Build updated arrays for block
+        const currentSelected = Array.isArray(block.selected_checklist_ids) ? block.selected_checklist_ids : [];
+        const isCurrentlySelected = currentSelected.some((sel: any) => (typeof sel === 'string' ? sel === clId : sel._id === clId));
+
+        let nextSelected: Array<any> = [];
+        if (isCurrentlySelected) {
+          // Unselect: remove from selected list
+          nextSelected = currentSelected.filter((sel: any) => (typeof sel === 'string' ? sel !== clId : sel._id !== clId));
+
+          // Backup selected answers for this checklist and remove from block
+          const existingAnswersArr = Array.isArray(block.selected_answers) ? block.selected_answers : [];
+          const answersForId = existingAnswersArr.find(a => a && a.checklist_id === clId);
+          if (answersForId && Array.isArray(answersForId.selected_answers) && answersForId.selected_answers.length > 0) {
+            localStorage.setItem(backupKey, JSON.stringify(answersForId.selected_answers));
+          }
+          const cleanedAnswers = existingAnswersArr.filter(a => a && a.checklist_id !== clId);
+
+          // Persist to server
+          const body = {
+            selected_checklist_ids: nextSelected.map((sel: any) => (typeof sel === 'string' ? sel : sel._id)).filter(Boolean),
+            selected_answers: cleanedAnswers,
+            custom_text: block.custom_text || '',
+            images: Array.isArray(block.images) ? block.images : [],
+          };
+
+          const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${block._id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const json = await res.json();
+          if (!json.success) throw new Error(json.error || 'Failed to update block');
+
+          // Update local state with server result
+          setBlocks(prev => prev.map(b => (b._id === block._id ? json.data : b)));
+        } else {
+          // Select: add to selected list
+          const checklistObj = section?.checklists.find(c => c._id === clId);
+          nextSelected = [...currentSelected, checklistObj || clId];
+
+          // Try to restore answers from backup
+          const existingAnswersArr = Array.isArray(block.selected_answers) ? block.selected_answers : [];
+          let nextAnswers = existingAnswersArr;
+          try {
+            const backup = localStorage.getItem(backupKey);
+            if (backup) {
+              const parsed = JSON.parse(backup);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                // Merge restored answers (avoid duplicate entry for checklist_id)
+                nextAnswers = existingAnswersArr.filter(a => a && a.checklist_id !== clId);
+                nextAnswers = [...nextAnswers, { checklist_id: clId, selected_answers: parsed }];
+              }
+            }
+          } catch (e) {
+            // ignore backup issues
+          }
+
+          // Persist to server
+          const body = {
+            selected_checklist_ids: nextSelected.map((sel: any) => (typeof sel === 'string' ? sel : sel._id)).filter(Boolean),
+            selected_answers: nextAnswers,
+            custom_text: block.custom_text || '',
+            images: Array.isArray(block.images) ? block.images : [],
+          };
+
+          const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${block._id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const json = await res.json();
+          if (!json.success) throw new Error(json.error || 'Failed to update block');
+
+          // Update local state with server result
+          setBlocks(prev => prev.map(b => (b._id === block._id ? json.data : b)));
+        }
+      } else {
+        // Inspection-only checklist: maintain selection in localStorage only
+        const storageKey = `inspection_selections_${inspectionId}_${sectionId}`;
+        const raw = localStorage.getItem(storageKey);
+        const arr: string[] = raw ? JSON.parse(raw) : [];
+        const idx = arr.indexOf(clId);
+        if (idx >= 0) {
+          arr.splice(idx, 1);
+        } else {
+          arr.push(clId);
+        }
+        localStorage.setItem(storageKey, JSON.stringify(arr));
+        // Force re-render so getBlockChecklists() re-evaluates
+        setBlocks(prev => [...prev]);
+      }
+    } catch (e: any) {
+      alert(e.message || 'Failed to update selection');
+    }
   };
 
   // Initialize locationInputs from formState when images load
@@ -522,6 +1631,22 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     
     setActiveSection(mergedSection);
 
+    // Initialize drag order for Status and Limitations lists on modal open
+    try {
+      const statusOrdered = [...mergedSection.checklists]
+        .filter(cl => cl.type === 'status')
+        .sort((a, b) => a.order_index - b.order_index)
+        .map(cl => cl._id);
+      const limitationsOrdered = [...mergedSection.checklists]
+        .filter(cl => cl.tab === 'limitations')
+        .sort((a, b) => a.order_index - b.order_index)
+        .map(cl => cl._id);
+      setReorderIds({ status: statusOrdered, limitations: limitationsOrdered });
+      reorderDirtyRef.current = { status: false, limitations: false };
+    } catch (e) {
+      // Fallback silently if anything goes wrong
+    }
+
     if (existingBlock) {
       // Editing existing block - fetch the latest data from the database to ensure we have the most recent version
       console.log('📂 Opening existing block, fetching latest data...');
@@ -626,10 +1751,25 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     } else {
       // Creating new block
       setEditingBlockId(null);
+      // Pre-select any checklist items marked as default_checked in the template/merged section
+      const defaultSelectedIds = new Set(
+        mergedSection.checklists
+          .filter(cl => !!cl.default_checked)
+          .map(cl => cl._id)
+      );
+
+      // Build default selected answers map from template defaults
+      const defaultAnswers = new Map<string, Set<string>>();
+      mergedSection.checklists.forEach((cl) => {
+        if (cl.default_checked && Array.isArray((cl as any).default_selected_answers) && (cl as any).default_selected_answers.length > 0) {
+          defaultAnswers.set(cl._id, new Set((cl as any).default_selected_answers));
+        }
+      });
+
       setFormState({
         section_id: section._id,
-        selected_checklist_ids: new Set(),
-        selected_answers: new Map(), // Empty for new blocks
+        selected_checklist_ids: defaultSelectedIds,
+        selected_answers: defaultAnswers,
         custom_answers: new Map(), // Empty for new blocks
         custom_text: '',
         images: [],
@@ -643,19 +1783,96 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     if (!formState) return;
     const setIds = new Set(formState.selected_checklist_ids);
     if (setIds.has(id)) {
-      // Unchecking - clear answers for this checklist
+      // Unchecking - backup current answers to localStorage before clearing
       setIds.delete(id);
+      // If this item was marked as default-checked, uncheck the default toggle too
+      const cl = activeSection?.checklists.find(c => c._id === id);
+      if (cl?.default_checked) {
+        // This will persist to template or local temp checklist item as needed
+        toggleDefaultCheckedFor(id, false);
+      }
+  // Also collapse if it was expanded (Status or Limitations)
+      collapseStatus(id);
+  collapseLimit(id);
+      
+      // Backup selected answers for this checklist in localStorage
+      const currentAnswers = formState.selected_answers.get(id);
+      if (currentAnswers && currentAnswers.size > 0) {
+        const backupKey = `checklist_backup_${inspectionId}_${id}`;
+        localStorage.setItem(backupKey, JSON.stringify(Array.from(currentAnswers)));
+        console.log('💾 Backed up answers to localStorage:', Array.from(currentAnswers));
+      }
+      
+      // Clear from selected_answers
       const newAnswers = new Map(formState.selected_answers);
       newAnswers.delete(id);
-      const updatedFormState = { ...formState, selected_checklist_ids: setIds, selected_answers: newAnswers };
+      
+      const updatedFormState = { 
+        ...formState, 
+        selected_checklist_ids: setIds, 
+        selected_answers: newAnswers
+      };
       setFormState(updatedFormState);
-      setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
+      
+      // Cancel any pending auto-save and schedule a new one
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = setTimeout(() => {
+        performAutoSaveWithState(updatedFormState);
+        autoSaveTimerRef.current = null;
+      }, 500);
     } else {
-      // Checking - just add to selected
+      // Checking - restore from localStorage backup if exists
       setIds.add(id);
-      const updatedFormState = { ...formState, selected_checklist_ids: setIds };
+      
+      // Try to restore answers from localStorage backup
+      const backupKey = `checklist_backup_${inspectionId}_${id}`;
+      const backupData = localStorage.getItem(backupKey);
+      let updatedFormState = { ...formState, selected_checklist_ids: setIds };
+      
+      if (backupData) {
+        try {
+          const backedUpAnswers = JSON.parse(backupData);
+          if (Array.isArray(backedUpAnswers) && backedUpAnswers.length > 0) {
+            // Restore backed-up answers (includes both template AND custom answers)
+            const newAnswers = new Map(formState.selected_answers);
+            newAnswers.set(id, new Set(backedUpAnswers)); // Restore from localStorage
+            updatedFormState = { 
+              ...formState, 
+              selected_checklist_ids: setIds, 
+              selected_answers: newAnswers 
+            };
+            console.log('♻️ Restored answers from localStorage backup:', backedUpAnswers);
+          }
+        } catch (e) {
+          console.error('Error parsing localStorage backup:', e);
+        }
+      }
+      
       setFormState(updatedFormState);
-      setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
+
+      // Auto-expand the item's options immediately upon checking
+      try {
+        const cl = activeSection?.checklists.find(c => c._id === id);
+        if (cl) {
+          if (cl.type === 'status') {
+            expandStatus(id);
+          } else {
+            // Applies to both limitations and information tabs
+            expandLimit(id);
+          }
+        }
+      } catch {}
+      
+      // Cancel any pending auto-save and schedule a new one
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = setTimeout(() => {
+        performAutoSaveWithState(updatedFormState);
+        autoSaveTimerRef.current = null;
+      }, 500);
     }
   };
 
@@ -946,6 +2163,22 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }));
 
     try {
+      let templateOrderUpdated = false;
+      if (activeSection) {
+        const sectionId = activeSection._id;
+        if (reorderIds.status && reorderIds.status.length && reorderDirtyRef.current.status) {
+          const result = await persistChecklistOrder('status', sectionId, reorderIds.status);
+          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
+        }
+        if (reorderIds.limitations && reorderIds.limitations.length && reorderDirtyRef.current.limitations) {
+          const result = await persistChecklistOrder('limitations', sectionId, reorderIds.limitations);
+          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
+        }
+        if (templateOrderUpdated) {
+          await fetchSections();
+        }
+      }
+
       if (editingBlockId) {
         // Update existing block (only save template IDs to database)
         const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${editingBlockId}`, {
@@ -1046,6 +2279,22 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }));
 
     try {
+      let templateOrderUpdated = false;
+      if (activeSection) {
+        const sectionId = activeSection._id;
+        if (reorderIds.status && reorderIds.status.length && reorderDirtyRef.current.status) {
+          const result = await persistChecklistOrder('status', sectionId, reorderIds.status);
+          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
+        }
+        if (reorderIds.limitations && reorderIds.limitations.length && reorderDirtyRef.current.limitations) {
+          const result = await persistChecklistOrder('limitations', sectionId, reorderIds.limitations);
+          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
+        }
+        if (templateOrderUpdated) {
+          await fetchSections();
+        }
+      }
+
       // Check if the block is now empty (no template items and no custom text)
       const hasSelectedItems = templateIds.length > 0;
       const hasCustomText = stateToSave.custom_text && stateToSave.custom_text.trim().length > 0;
@@ -1127,6 +2376,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
+      // Cleanup scroll interval
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
+      }
     };
   }, []);
 
@@ -1147,16 +2400,28 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }
   };
 
-  // Image handling for checklist items
+  // Image handling for checklist items (single file)
   const handleImageSelect = async (checklistId: string, file: File) => {
     if (!formState) return;
 
     console.log('📸 File selected for checklist:', checklistId, 'type:', file.type);
 
     // Check file size and warn for large files (360° photos)
-    const fileSizeMB = file.size / (1024 * 1024);
-    if (fileSizeMB > 100) {
-      alert(`File size (${fileSizeMB.toFixed(1)}MB) exceeds the 100MB limit. Please compress the image or choose a smaller file.`);
+        const fileSizeMB = file.size / (1024 * 1024);
+        // Vercel has a 100MB body size limit on Pro plan, 4.5MB on Hobby
+        // Cloudflare has similar limits. Warn at 150MB to avoid upload failures.
+        if (fileSizeMB > 150) {
+          const proceed = confirm(
+            `⚠️ Large file detected (${fileSizeMB.toFixed(1)}MB)\n\n` +
+            `Files over 150MB may fail to upload due to server limits.\n` +
+            `Recommended: Compress the image before uploading.\n\n` +
+            `Tools: TinyPNG, Squoosh, IrfanView, or ImageOptim\n\n` +
+            `Continue upload anyway?`
+          );
+          if (!proceed) return;
+        }
+        if (fileSizeMB > 200) {
+          alert(`File size (${fileSizeMB.toFixed(1)}MB) exceeds the absolute 200MB limit. Please compress the image.`);
       return;
     }
 
@@ -1212,24 +2477,78 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       console.log(`⏳ Uploading large file (${fileSizeMB.toFixed(1)}MB), this may take a minute...`);
     }
 
-    try {
-      // Upload image to R2
-      const formData = new FormData();
-      formData.append('file', file);
+    // Normalize smartphone EXIF orientation for JPEG/PNG before upload (HEIC handled on server)
+    const fixOrientationIfNeeded = async (f: File): Promise<File> => {
+      try {
+        if (!f.type.startsWith('image/') || /heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)) return f;
+  // Use ESM build to avoid UMD warning
+  const exifr: any = (await import('exifr/dist/full.esm.mjs')) as any;
+        const orientation: number | undefined = await exifr.orientation(f);
+        if (!orientation || orientation === 1) return f;
 
-      const uploadRes = await fetch('/api/r2api', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `Upload failed with status ${uploadRes.status}`);
+        const imgUrl = URL.createObjectURL(f);
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const i = new Image();
+          i.onload = () => resolve(i);
+          i.onerror = reject;
+          i.src = imgUrl;
+        });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { URL.revokeObjectURL(imgUrl); return f; }
+        const w = img.naturalWidth || img.width; const h = img.naturalHeight || img.height;
+        switch (orientation) {
+          case 2: canvas.width=w; canvas.height=h; ctx.translate(w,0); ctx.scale(-1,1); break;
+          case 3: canvas.width=w; canvas.height=h; ctx.translate(w,h); ctx.rotate(Math.PI); break;
+          case 4: canvas.width=w; canvas.height=h; ctx.translate(0,h); ctx.scale(1,-1); break;
+          case 5: canvas.width=h; canvas.height=w; ctx.rotate(0.5*Math.PI); ctx.scale(1,-1); ctx.translate(0,-h); break;
+          case 6: canvas.width=h; canvas.height=w; ctx.rotate(0.5*Math.PI); ctx.translate(0,-h); break;
+          case 7: canvas.width=h; canvas.height=w; ctx.rotate(0.5*Math.PI); ctx.translate(w,-h); ctx.scale(-1,1); break;
+          case 8: canvas.width=h; canvas.height=w; ctx.rotate(-0.5*Math.PI); ctx.translate(-w,0); break;
+          default: canvas.width=w; canvas.height=h; break;
+        }
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(imgUrl);
+        const blob: Blob = await new Promise((resolve)=> canvas.toBlob((b)=> resolve(b || new Blob()), 'image/jpeg', 0.95));
+        return new File([blob], f.name.replace(/\.(png|jpg|jpeg|webp)$/i,'') + '.jpg', { type: 'image/jpeg' });
+      } catch (e) {
+        console.warn('EXIF normalize skipped:', e); return f;
       }
+    };
 
-      const uploadData = await uploadRes.json();
-
-      console.log('✅ File uploaded to R2:', uploadData.url, 'kind:', uploadData.type);
+    try {
+      file = await fixOrientationIfNeeded(file);
+      
+      // NEW: Direct R2 upload using presigned URL (bypasses Vercel's 4.5MB body limit)
+      console.log('🚀 Starting direct R2 upload for file:', file.name, 'size:', file.size);
+      
+      // Step 1: Get presigned upload URL from server
+      const presignedRes = await fetch(
+        `/api/r2api?action=presigned&fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type)}`
+      );
+      
+      if (!presignedRes.ok) {
+        throw new Error('Failed to get presigned upload URL');
+      }
+      
+      const { uploadUrl, publicUrl } = await presignedRes.json();
+      console.log('✅ Got presigned URL, uploading directly to R2...');
+      
+      // Step 2: Upload file DIRECTLY to R2 using presigned URL
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+      
+      if (!uploadRes.ok) {
+        throw new Error(`Direct R2 upload failed with status ${uploadRes.status}`);
+      }
+      
+      console.log('✅ File uploaded directly to R2:', publicUrl);
 
       // Check if this should be a 360° photo
       const isThreeSixty = isThreeSixtyMap[checklistId] || false;
@@ -1237,7 +2556,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       // Add image to formState
       const newImage: IBlockImage = {
-        url: uploadData.url,
+        url: publicUrl, // Use the public URL from presigned response
         annotations: undefined,
         checklist_id: checklistId,
         isThreeSixty: isThreeSixty, // Include 360° flag
@@ -1247,35 +2566,69 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       console.log('💾 Adding image to formState:', newImage);
       console.log('📸 isThreeSixty field value:', newImage.isThreeSixty);
 
-      const updatedFormState = {
-        ...formState,
-        images: [...formState.images, newImage],
-      };
-      
-      setFormState(updatedFormState);
+      // Use functional update to avoid stale state when batching multiple uploads
+      let committedState: AddBlockFormState | null = null;
+      setFormState(prev => {
+        if (!prev) return prev as any;
+        const nextState: AddBlockFormState = {
+          ...prev,
+          images: [...prev.images, newImage],
+        };
+        committedState = nextState;
+        return nextState;
+      });
 
       // DON'T reset the 360° checkbox - keep it checked for multiple uploads
       // User can manually uncheck if they want to upload regular images
       // setIsThreeSixtyMap(prev => ({ ...prev, [checklistId]: false }));
 
-      console.log('✅ FormState updated, total images:', formState.images.length + 1);
+  console.log('✅ FormState updated with new image');
       console.log('📌 Image uploaded successfully. Auto-saving now...');
 
       // Save immediately with the updated state
-      await performAutoSaveWithState(updatedFormState);
+      if (committedState) {
+        await performAutoSaveWithState(committedState);
+      } else if (formState) {
+        await performAutoSaveWithState({ ...formState });
+      }
 
     } catch (error: any) {
       console.error('❌ Error uploading file:', error);
       
       // Show user-friendly error message
       const errorMessage = error.message || 'Unknown error occurred';
-      if (errorMessage.includes('100MB')) {
-        alert('File is too large. 360° photos should be compressed to under 100MB.');
+      if (errorMessage.includes('100MB') || errorMessage.includes('200MB')) {
+        alert('File is too large. 360° photos should be compressed to under 200MB for reliable uploads.');
       } else if (errorMessage.includes('File size exceeds')) {
         alert('File size exceeds the limit. Please compress the image or choose a smaller file.');
+      } else if (errorMessage.includes('413') || errorMessage.toLowerCase().includes('payload') || errorMessage.toLowerCase().includes('too large')) {
+        alert(
+          `Upload failed: Server rejected the file (too large).\n\n` +
+          `This usually happens with files over 200MB.\n` +
+          `Please compress the image using:\n` +
+          `• TinyPNG (online)\n` +
+          `• Squoosh (online)\n` +
+          `• ImageOptim (Mac)\n` +
+          `• IrfanView (Windows)\n\n` +
+          `Target: Under 10MB for best performance.`
+        );
       } else {
-        alert(`Failed to upload image/video: ${errorMessage}\n\nFor large 360° photos, please ensure they are under 100MB.`);
+        alert(`Failed to upload image/video: ${errorMessage}\n\nFor large files, please compress them to under 200MB.`);
       }
+    }
+  };
+
+  // New: batch handler for multiple selected files
+  const handleImagesSelect = async (checklistId: string, files: File[] | FileList) => {
+    const fileArray = Array.from(files || []);
+    if (!fileArray.length) return;
+    console.log(`📦 ${fileArray.length} file(s) selected for checklist ${checklistId}`);
+    // Process sequentially to preserve formState consistency and avoid race conditions
+    for (let i = 0; i < fileArray.length; i++) {
+      const f = fileArray[i];
+      console.log(`⬆️ Uploading ${i + 1}/${fileArray.length}: ${f.name}`);
+      // Intentionally await to ensure state updates are serialized
+      await handleImageSelect(checklistId, f);
     }
   };
 
@@ -1341,6 +2694,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         type: existingChecklist.type,
         tab: existingChecklist.tab || 'information',
         answer_choices: allChoices,
+        default_checked: !!existingChecklist.default_checked,
       });
     } else {
       setEditingChecklistId(null);
@@ -1349,7 +2703,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         comment: '', 
         type, 
         tab: tab || 'information',
-        answer_choices: [] 
+        answer_choices: [],
+        default_checked: false,
       });
     }
     setNewAnswerChoice('');
@@ -1358,8 +2713,220 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     setChecklistFormOpen(true);
   };
 
-  // Admin: Add new answer choice
-  const handleAddAnswerChoice = () => {
+  // Admin: Toggle default_checked with immediate persistence for template items
+  const handleDefaultCheckedToggle = async (checked: boolean) => {
+    // Update local form state immediately for snappy UI
+    setChecklistFormData(prev => ({ ...prev, default_checked: checked }));
+
+    // If turning default ON from the edit modal, ensure the field is selected in current inspection
+    if (checked && editingChecklistId && formState && !formState.selected_checklist_ids.has(editingChecklistId)) {
+      toggleChecklist(editingChecklistId);
+    }
+
+    // If we're editing an existing checklist, persist change
+    if (editingChecklistId) {
+      const isTemporary = editingChecklistId.startsWith('temp_');
+      if (isTemporary) {
+        // Update inspection-only (local) checklist instances
+        if (activeSection) {
+          const sectionId = activeSection._id;
+          const currentInspectionChecklists = inspectionChecklists.get(sectionId) || [];
+          const updatedInspectionChecklists = currentInspectionChecklists.map(cl =>
+            cl._id === editingChecklistId ? { ...cl, default_checked: checked } : cl
+          );
+          const newInspectionChecklistsMap = new Map(inspectionChecklists);
+          newInspectionChecklistsMap.set(sectionId, updatedInspectionChecklists);
+          setInspectionChecklists(newInspectionChecklistsMap);
+
+          // Update activeSection immediately
+          const updatedChecklists = activeSection.checklists.map(cl =>
+            cl._id === editingChecklistId ? { ...cl, default_checked: checked } : cl
+          );
+          setActiveSection({ ...activeSection, checklists: updatedChecklists });
+        }
+        return; // Nothing to save to server for temp items
+      }
+
+      // Persist to server for template items
+      try {
+        const res = await fetch(`/api/checklists/${editingChecklistId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ default_checked: checked }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to update');
+
+        // Update local activeSection copy so the change is visible when reopening
+        if (activeSection) {
+          const updatedChecklists = activeSection.checklists.map(cl =>
+            cl._id === editingChecklistId ? { ...cl, default_checked: checked } : cl
+          );
+          setActiveSection({ ...activeSection, checklists: updatedChecklists });
+        }
+      } catch (err) {
+        console.error('Auto-save default_checked failed:', err);
+        alert('Failed to auto-save "Default to checked?". Please try again.');
+      }
+    }
+  };
+
+  // Toggle default_checked from the main Information Block modal for any checklist item
+  const toggleDefaultCheckedFor = async (checklistId: string, checked: boolean) => {
+    // Update UI immediately
+    if (activeSection) {
+      const updatedChecklists = activeSection.checklists.map(cl =>
+        cl._id === checklistId ? { ...cl, default_checked: checked } : cl
+      );
+      setActiveSection({ ...activeSection, checklists: updatedChecklists });
+    }
+
+    // If turning default ON, ensure the field is selected in the current inspection
+    if (checked && formState && !formState.selected_checklist_ids.has(checklistId)) {
+      // Reuse existing toggle logic to select and restore any backed up answers
+      toggleChecklist(checklistId);
+    }
+
+    // If this is an inspection-only temp item, persist only to local state
+    if (checklistId.startsWith('temp_')) {
+      if (activeSection) {
+        const sectionId = activeSection._id;
+        const currentInspectionChecklists = inspectionChecklists.get(sectionId) || [];
+        const updatedInspectionChecklists = currentInspectionChecklists.map(cl =>
+          cl._id === checklistId ? { ...cl, default_checked: checked } : cl
+        );
+        const newInspectionChecklistsMap = new Map(inspectionChecklists);
+        newInspectionChecklistsMap.set(sectionId, updatedInspectionChecklists);
+        setInspectionChecklists(newInspectionChecklistsMap);
+      }
+      return;
+    }
+
+    // Persist to server for template items
+    try {
+      // If turning default ON, capture current selected template answers for this checklist
+      let default_selected_answers: string[] | undefined = undefined;
+      if (checked && formState && activeSection) {
+        const answers = Array.from(formState.selected_answers.get(checklistId) || []);
+        const templateChoices = activeSection.checklists.find(cl => cl._id === checklistId)?.answer_choices || [];
+        default_selected_answers = answers.filter(a => templateChoices.includes(a));
+      }
+      // If turning default OFF, clear any stored default_selected_answers
+      if (!checked) {
+        default_selected_answers = [];
+      }
+
+      const res = await fetch(`/api/checklists/${checklistId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_checked: checked, default_selected_answers }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to update');
+    } catch (err) {
+      console.error('Failed to update default_checked:', err);
+      alert('Failed to update "Default to checked?". Please try again.');
+      // Revert UI on failure
+      if (activeSection) {
+        const updatedChecklists = activeSection.checklists.map(cl =>
+          cl._id === checklistId ? { ...cl, default_checked: !checked } : cl
+        );
+        setActiveSection({ ...activeSection, checklists: updatedChecklists });
+      }
+    }
+  };
+
+  // Admin: Auto-save checklist text changes
+  const handleChecklistTextChange = async (newText: string) => {
+    // Update local form state immediately
+    setChecklistFormData(prev => ({ ...prev, text: newText }));
+
+    // If we're editing an existing checklist, auto-save after a delay
+    if (editingChecklistId && newText.trim()) {
+      // Debounce the save to avoid too many API calls
+      if (textSaveTimeoutRef.current) {
+        clearTimeout(textSaveTimeoutRef.current);
+      }
+      textSaveTimeoutRef.current = setTimeout(async () => {
+        await autoSaveChecklistField('text', newText.trim());
+      }, 1000); // Save 1 second after user stops typing
+    }
+  };
+
+  // Admin: Auto-save checklist comment changes
+  const handleChecklistCommentChange = async (newComment: string) => {
+    // Update local form state immediately
+    setChecklistFormData(prev => ({ ...prev, comment: newComment }));
+
+    // If we're editing an existing checklist, auto-save after a delay
+    if (editingChecklistId) {
+      // Debounce the save to avoid too many API calls
+      if (commentSaveTimeoutRef.current) {
+        clearTimeout(commentSaveTimeoutRef.current);
+      }
+      commentSaveTimeoutRef.current = setTimeout(async () => {
+        await autoSaveChecklistField('comment', newComment.trim());
+      }, 1000); // Save 1 second after user stops typing
+    }
+  };
+
+  // Admin: Generic auto-save function for checklist fields
+  const autoSaveChecklistField = async (field: string, value: any) => {
+    if (!editingChecklistId) return;
+
+    const isTemporary = editingChecklistId.startsWith('temp_');
+    
+    if (isTemporary) {
+      // Update inspection-only (local) checklist instances
+      if (activeSection) {
+        const sectionId = activeSection._id;
+        const currentInspectionChecklists = inspectionChecklists.get(sectionId) || [];
+        const updatedInspectionChecklists = currentInspectionChecklists.map(cl =>
+          cl._id === editingChecklistId ? { ...cl, [field]: value } : cl
+        );
+        const newInspectionChecklistsMap = new Map(inspectionChecklists);
+        newInspectionChecklistsMap.set(sectionId, updatedInspectionChecklists);
+        setInspectionChecklists(newInspectionChecklistsMap);
+
+        // Update activeSection immediately
+        const updatedChecklists = activeSection.checklists.map(cl =>
+          cl._id === editingChecklistId ? { ...cl, [field]: value } : cl
+        );
+        setActiveSection({ ...activeSection, checklists: updatedChecklists });
+      }
+      console.log(`✅ Auto-saved ${field} for inspection-only checklist`);
+      return;
+    }
+
+    // Persist to server for template items
+    try {
+      const body: any = {};
+      body[field] = value;
+      
+      const res = await fetch(`/api/checklists/${editingChecklistId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to update');
+
+      // Update local activeSection copy so the change is visible when reopening
+      if (activeSection) {
+        const updatedChecklists = activeSection.checklists.map(cl =>
+          cl._id === editingChecklistId ? { ...cl, [field]: value } : cl
+        );
+        setActiveSection({ ...activeSection, checklists: updatedChecklists });
+      }
+      console.log(`✅ Auto-saved ${field} to server`);
+    } catch (err) {
+      console.error(`Auto-save ${field} failed:`, err);
+      // Don't show alert for auto-save failures to avoid interrupting user flow
+    }
+  };
+
+  // Admin: Add new answer choice with auto-save
+  const handleAddAnswerChoice = async () => {
     const trimmed = newAnswerChoice.trim();
     if (!trimmed) return;
     
@@ -1368,11 +2935,17 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       return;
     }
 
+    const updatedChoices = [...checklistFormData.answer_choices, trimmed];
     setChecklistFormData({
       ...checklistFormData,
-      answer_choices: [...checklistFormData.answer_choices, trimmed]
+      answer_choices: updatedChoices
     });
     setNewAnswerChoice('');
+
+    // Auto-save the new answer choices if editing existing checklist
+    if (editingChecklistId) {
+      await autoSaveChecklistField('answer_choices', updatedChoices);
+    }
   };
 
   // Admin: Start editing an answer choice
@@ -1381,8 +2954,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     setEditingAnswerValue(checklistFormData.answer_choices[index]);
   };
 
-  // Admin: Save edited answer choice
-  const saveEditedAnswer = () => {
+  // Admin: Save edited answer choice with auto-save
+  const saveEditedAnswer = async () => {
     if (editingAnswerIndex === null) return;
     
     const trimmed = editingAnswerValue.trim();
@@ -1397,15 +2970,48 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     });
     setEditingAnswerIndex(null);
     setEditingAnswerValue('');
+
+    // Auto-save the updated answer choices if editing existing checklist
+    if (editingChecklistId) {
+      await autoSaveChecklistField('answer_choices', updatedChoices);
+    }
   };
 
-  // Admin: Delete answer choice
+  // Admin: Delete answer choice - show delete options menu
   const deleteAnswerChoice = (index: number) => {
+    setDeleteAnswerMenuForIndex(index);
+  };
+
+  // Admin: Hide answer choice for this inspection only
+  const hideAnswerChoiceForInspection = async (index: number) => {
+    // For now, just remove it locally since this is in the edit modal
+    // In a full implementation, you might want to track hidden choices separately
     const updatedChoices = checklistFormData.answer_choices.filter((_, i) => i !== index);
     setChecklistFormData({
       ...checklistFormData,
       answer_choices: updatedChoices
     });
+    setDeleteAnswerMenuForIndex(null);
+
+    // Auto-save the updated answer choices if editing existing checklist
+    if (editingChecklistId) {
+      await autoSaveChecklistField('answer_choices', updatedChoices);
+    }
+  };
+
+  // Admin: Delete answer choice from template permanently
+  const deleteAnswerChoiceFromTemplate = async (index: number) => {
+    const updatedChoices = checklistFormData.answer_choices.filter((_, i) => i !== index);
+    setChecklistFormData({
+      ...checklistFormData,
+      answer_choices: updatedChoices
+    });
+    setDeleteAnswerMenuForIndex(null);
+
+    // Auto-save the updated answer choices if editing existing checklist
+    if (editingChecklistId) {
+      await autoSaveChecklistField('answer_choices', updatedChoices);
+    }
   };
 
   // Admin: Save checklist (create or update)
@@ -1434,7 +3040,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 comment: checklistFormData.comment,
                 type: checklistFormData.type,
                 tab: checklistFormData.tab,
-                answer_choices: checklistFormData.answer_choices
+                answer_choices: checklistFormData.answer_choices,
+                default_checked: checklistFormData.default_checked,
               };
             }
             return cl;
@@ -1453,7 +3060,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 comment: checklistFormData.comment,
                 type: checklistFormData.type,
                 tab: checklistFormData.tab,
-                answer_choices: checklistFormData.answer_choices
+                answer_choices: checklistFormData.answer_choices,
+                default_checked: checklistFormData.default_checked,
               };
             }
             return cl;
@@ -1496,6 +3104,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               type: checklistFormData.type,
               tab: checklistFormData.tab,
               answer_choices: templateChoices,
+              default_checked: checklistFormData.default_checked,
             }),
           });
           const json = await res.json();
@@ -1564,6 +3173,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             ...activeSection,
             checklists: [...activeSection.checklists, newChecklist]
           });
+          // Ensure it appears in the currently displayed order list without reopening modal
+          setReorderIds(prev => {
+            const isStatus = newChecklist.type === 'status';
+            const isLimitation = newChecklist.tab === 'limitations';
+            if (isStatus) {
+              const current = prev.status && prev.status.length ? [...prev.status] : activeSection.checklists.filter(c => c.type === 'status').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
+              return { ...prev, status: [...current, newChecklist._id] };
+            }
+            if (isLimitation) {
+              const current = prev.limitations && prev.limitations.length ? [...prev.limitations] : activeSection.checklists.filter(c => c.tab === 'limitations').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
+              return { ...prev, limitations: [...current, newChecklist._id] };
+            }
+            return prev;
+          });
           
           console.log('✅ Created template checklist:', newChecklist._id);
         } else {
@@ -1577,6 +3200,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             type: checklistFormData.type,
             tab: checklistFormData.tab,
             answer_choices: checklistFormData.answer_choices,
+            default_checked: checklistFormData.default_checked,
             order_index: activeSection.checklists.length
           };
           
@@ -1594,6 +3218,37 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             checklists: [...activeSection.checklists, newChecklist]
           });
           
+          // IMPORTANT: Add to formState.selected_checklist_ids so it appears immediately
+          if (formState) {
+            const newSelectedIds = new Set(formState.selected_checklist_ids);
+            newSelectedIds.add(tempId);
+            setFormState({
+              ...formState,
+              selected_checklist_ids: newSelectedIds
+            });
+          }
+
+          // Also push into reorderIds for the correct list so it renders in current view immediately
+          setReorderIds(prev => {
+            const isStatus = newChecklist.type === 'status';
+            const isLimitation = newChecklist.tab === 'limitations';
+            if (isStatus) {
+              const current = prev.status && prev.status.length ? [...prev.status] : activeSection.checklists.filter(c => c.type === 'status').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
+              return { ...prev, status: [...current, tempId] };
+            }
+            if (isLimitation) {
+              const current = prev.limitations && prev.limitations.length ? [...prev.limitations] : activeSection.checklists.filter(c => c.tab === 'limitations').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
+              return { ...prev, limitations: [...current, tempId] };
+            }
+            return prev;
+          });
+          if (newChecklist.type === 'status') {
+            reorderDirtyRef.current.status = true;
+          }
+          if (newChecklist.tab === 'limitations') {
+            reorderDirtyRef.current.limitations = true;
+          }
+          
           console.log('✅ Added inspection-only checklist:', tempId);
           console.log('💾 Will be saved to localStorage for this inspection only');
         }
@@ -1601,10 +3256,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       setChecklistFormOpen(false);
       setEditingChecklistId(null);
-      setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [] });
+      setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [], default_checked: false });
       setNewAnswerChoice('');
       setEditingAnswerIndex(null);
       setEditingAnswerValue('');
+      setDeleteAnswerMenuForIndex(null);
+      // Clear any pending auto-save timers
+      if (textSaveTimeoutRef.current) {
+        clearTimeout(textSaveTimeoutRef.current);
+        textSaveTimeoutRef.current = null;
+      }
+      if (commentSaveTimeoutRef.current) {
+        clearTimeout(commentSaveTimeoutRef.current);
+        commentSaveTimeoutRef.current = null;
+      }
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -1620,63 +3285,110 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     
     if (isTemporary) {
       // Delete from inspection-specific checklists (localStorage)
-      if (!confirm('Are you sure you want to delete this checklist item from this inspection?')) return;
-      
+      if (!confirm('Remove this inspection-only item? It will be deleted only from this inspection.')) return;
       if (!activeSection) return;
-      
-      // Find and remove from inspectionChecklists
       const currentInspectionChecklists = inspectionChecklists.get(activeSection._id) || [];
       const updatedInspectionChecklists = currentInspectionChecklists.filter(cl => cl._id !== checklistId);
-      
       const newInspectionChecklistsMap = new Map(inspectionChecklists);
-      if (updatedInspectionChecklists.length > 0) {
-        newInspectionChecklistsMap.set(activeSection._id, updatedInspectionChecklists);
-      } else {
-        newInspectionChecklistsMap.delete(activeSection._id);
-      }
+      if (updatedInspectionChecklists.length > 0) newInspectionChecklistsMap.set(activeSection._id, updatedInspectionChecklists); else newInspectionChecklistsMap.delete(activeSection._id);
       setInspectionChecklists(newInspectionChecklistsMap);
-      
-      // Update activeSection to remove it from UI
-      setActiveSection({
-        ...activeSection,
-        checklists: activeSection.checklists.filter(cl => cl._id !== checklistId)
-      });
-      
+      setActiveSection({ ...activeSection, checklists: activeSection.checklists.filter(cl => cl._id !== checklistId) });
       console.log('✅ Deleted inspection-only checklist:', checklistId);
     } else {
-      // Delete from template (database)
-      if (!confirm('Are you sure you want to delete this checklist item? This will remove it from all inspections.')) return;
+      // For template items, show two explicit choices via inline menu
+      setDeleteMenuForId(checklistId);
+    }
+  };
 
-      try {
-        const res = await fetch(`/api/checklists/${checklistId}`, {
-          method: 'DELETE',
+  // Execute the global template delete (with confirm)
+  const performGlobalChecklistDelete = async (checklistId: string) => {
+    if (!confirm('Delete from template? This removes the item from ALL inspections.')) return;
+    try {
+      const res = await fetch(`/api/checklists/${checklistId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to delete checklist');
+      
+      // Update sections data
+      await fetchSections();
+      
+      // IMMEDIATELY UPDATE activeSection to reflect the deletion in the current modal
+      if (activeSection) {
+        const updatedChecklists = activeSection.checklists.filter(cl => cl._id !== checklistId);
+        setActiveSection({
+          ...activeSection,
+          checklists: updatedChecklists
         });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.error || 'Failed to delete checklist');
-
-        // Refresh sections to get updated checklists
-        await fetchSections();
-      } catch (e: any) {
-        alert(e.message);
+        
+        // Update reorderIds to remove the deleted item
+        setReorderIds(prev => ({
+          status: prev.status.filter(id => id !== checklistId),
+          limitations: prev.limitations.filter(id => id !== checklistId)
+        }));
+        
+        // Also remove from formState if it was selected
+        if (formState && formState.selected_checklist_ids.has(checklistId)) {
+          const newSelectedIds = new Set(formState.selected_checklist_ids);
+          newSelectedIds.delete(checklistId);
+          const newAnswers = new Map(formState.selected_answers);
+          newAnswers.delete(checklistId);
+          setFormState({
+            ...formState,
+            selected_checklist_ids: newSelectedIds,
+            selected_answers: newAnswers
+          });
+        }
+        
+        console.log('✅ Template checklist deleted and UI updated immediately');
       }
+      
+      // Also close any open menu
+      setDeleteMenuForId(null);
+    } catch (e: any) {
+      alert(e.message);
     }
   };
 
   const sectionBlocks = (sectionId: string) =>
     blocks.filter(b => (typeof b.section_id === 'string' ? b.section_id === sectionId : (b.section_id as ISection)._id === sectionId));
 
-  // Helper function to check if a section is complete
-  // A section is complete when it has at least one block with selected checklist items
+  // Helper: Section is complete ONLY when ALL Status fields for that section
+  // (template + inspection-only) are either selected in some block OR hidden.
+  // Limitations/Information do NOT affect completion.
   const isSectionComplete = useCallback((sectionId: string): boolean => {
     const sectionBlocksList = sectionBlocks(sectionId);
     if (sectionBlocksList.length === 0) return false;
-    
-    // Check if at least one block has selected items
-    return sectionBlocksList.some(block => {
-      const checklists = getBlockChecklists(block);
-      return checklists.length > 0;
-    });
-  }, [blocks, inspectionChecklists]);
+
+    // Build the complete set of Status checklist IDs for this section
+    const sectionObj = sections.find(s => s._id === sectionId);
+    const templateStatusIds = (sectionObj?.checklists || [])
+      .filter(cl => cl.type === 'status')
+      .map(cl => cl._id);
+    const inspectionStatusIds = (inspectionChecklists.get(sectionId) || [])
+      .filter(cl => cl.type === 'status')
+      .map(cl => cl._id);
+    const allStatusIds = Array.from(new Set([...
+      templateStatusIds, ...inspectionStatusIds
+    ]));
+
+    // If there are no status fields in the section, treat as incomplete
+    if (allStatusIds.length === 0) return false;
+
+    // Union of all selected checklist IDs across all blocks in this section
+    const selectedIds = new Set<string>();
+    for (const block of sectionBlocksList) {
+      const raw = getBlockChecklists(block);
+      for (const entry of raw) {
+        const id = typeof entry === 'string' ? entry : entry?._id;
+        if (id) selectedIds.add(id);
+      }
+    }
+
+    // Hidden items for this inspection (count as satisfied)
+    const hiddenIds = new Set<string>(getHiddenIdsForSection(sectionId) || []);
+
+    // Completion rule: every Status ID must be either selected somewhere or hidden
+    return allStatusIds.every(id => selectedIds.has(id) || hiddenIds.has(id));
+  }, [blocks, inspectionChecklists, sections]);
 
   return (
     <div style={{ padding: '1rem' }}>
@@ -1708,25 +3420,32 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {sections.filter(section => section.order_index !== 17).map(section => {
+        {sections.map(section => {
           const isComplete = isSectionComplete(section._id);
           
           return (
           <div key={section._id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.375rem', padding: '1rem', backgroundColor: 'white', boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <h3 style={{ fontWeight: 500, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {isComplete && <span style={{ fontSize: '1.25rem', color: '#22c55e' }}>✅</span>}
-                {section.name}
-                {section.order_index === 1 && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#6b7280', fontWeight: 400 }}></span>}
+              <h3 style={{ fontWeight: 500, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                {/* Spectora-style completion indicator: empty circle or green checkmark */}
+                <span style={{ 
+                  fontSize: '1rem',
+                  color: isComplete ? '#22c55e' : '#d1d5db',
+                  lineHeight: 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '18px',
+                  height: '18px',
+                  marginRight: '0.25rem'
+                }}>
+                  {isComplete ? '✓' : '○'}
+                </span>
+                <span style={{ color: isComplete ? '#22c55e' : '#374151' }}>
+                  {section.name}
+                </span>
               </h3>
-              <button
-                onClick={() => openAddModal(section)}
-                style={{ padding: '0.375rem 0.75rem', fontSize: '0.875rem', borderRadius: '0.25rem', backgroundColor: '#2563eb', color: 'white', border: 'none', cursor: 'pointer' }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-              >
-                Add Information Block
-              </button>
+              {/* Header-level Add button removed by request; users can use per-block Add or the empty-state button below */}
             </div>
 
             {/* Existing blocks */}
@@ -1736,39 +3455,111 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 <div key={block._id} style={{ border: '1px solid #e5e7eb', borderRadius: '0.25rem', padding: '0.75rem', backgroundColor: '#f9fafb' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                     <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>Selected Items:</div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {!isMobile && (
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => openAddModal(section, block)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.75rem',
+                            borderRadius: '0.25rem',
+                            backgroundColor: '#a466da',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#934ad3'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#a466da'}
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(block._id)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.75rem',
+                            borderRadius: '0.25rem',
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {isMobile && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
                       <button
-                        onClick={() => openAddModal(section, block)}
+                        onClick={() => openAddModal(section)}
                         style={{
-                          padding: '0.25rem 0.5rem',
-                          fontSize: '0.75rem',
-                          borderRadius: '0.25rem',
-                          backgroundColor: '#3b82f6',
+                          width: '100%',
+                          padding: '0.75rem 1rem',
+                          fontSize: '0.9rem',
+                          borderRadius: '0.5rem',
+                          backgroundColor: '#8230c9',
                           color: 'white',
                           border: 'none',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '0.25rem'
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          boxShadow: '0 2px 8px rgba(130,48,201,0.25)'
                         }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#6f29ac'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8230c9'}
+                      >
+                        Add Information Block
+                      </button>
+                      <button
+                        onClick={() => openAddModal(section, block)}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem 1rem',
+                          fontSize: '0.9rem',
+                          borderRadius: '0.5rem',
+                          backgroundColor: '#a466da',
+                          color: 'white',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          boxShadow: '0 2px 8px rgba(164,102,218,0.25)'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#934ad3'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#a466da'}
                       >
                         ✏️ Edit
                       </button>
                       <button
                         onClick={() => handleDelete(block._id)}
                         style={{
-                          padding: '0.25rem 0.5rem',
-                          fontSize: '0.75rem',
-                          borderRadius: '0.25rem',
+                          width: '100%',
+                          padding: '0.75rem 1rem',
+                          fontSize: '0.9rem',
+                          borderRadius: '0.5rem',
                           backgroundColor: '#ef4444',
                           color: 'white',
                           border: 'none',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '0.25rem'
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          boxShadow: '0 2px 8px rgba(239,68,68,0.25)'
                         }}
                         onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
                         onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
@@ -1776,46 +3567,171 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                         🗑️ Delete
                       </button>
                     </div>
-                  </div>
+                  )}
                   <div style={{ fontSize: '0.875rem', color: '#374151' }}>
-                    <div style={{ marginLeft: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {getBlockChecklists(block).map((cl: any) => (
-                        <div key={cl._id || cl} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{
-                              fontSize: '0.7rem',
-                              padding: '0.1rem 0.4rem',
-                              borderRadius: '0.25rem',
-                              backgroundColor: cl.type === 'status' ? '#dbeafe' : '#d1fae5',
-                              color: cl.type === 'status' ? '#1e40af' : '#065f46',
-                              fontWeight: 600,
-                              textTransform: 'uppercase' as const
-                            }}>
-                              {cl.type || 'info'}
-                            </span>
-                            <span style={{ fontWeight: 'bold' }}>{cl.text || cl}</span>
-                          </div>
-                          {cl.comment && cl.comment.trim() !== '' && (
-                            <div style={{ 
-                              marginLeft: '1rem', 
-                              color: '#6b7280',
-                              fontSize: '0.875rem',
-                              paddingTop: '0.125rem'
-                            }}>
-                              {cl.comment}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                    <div style={{ marginLeft: '0rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                      {(() => {
+                        const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
+                        const rawItems = getBlockChecklists(block);
+                        // Resolve to full objects so we can reliably read type/tab/text/comment
+                        const resolved = rawItems
+                          .map((cl: any) => resolveChecklist(sectionId, cl))
+                          .filter(Boolean) as ISectionChecklist[];
+                        // Split into Status and Other (Limitations/Information)
+                        const statusItems = resolved.filter(item => item.type === 'status');
+                        const otherItems = resolved.filter(item => item.type !== 'status');
+
+                        return (
+                          <>
+                            {/* Status items displayed in a compact 2-column grid to save space */}
+                            {statusItems.length > 0 && (
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+                                  gap: '0.5rem 1rem',
+                                  paddingBottom: otherItems.length ? '0.5rem' : 0,
+                                  borderBottom: otherItems.length ? '1px solid #f1f5f9' : 'none'
+                                }}
+                              >
+                                {statusItems.map(item => (
+                                  <div key={item._id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={true}
+                                        readOnly
+                                        aria-readonly="true"
+                                        style={{ width: '18px', height: '18px', cursor: 'default', accentColor: '#3b82f6', flexShrink: 0 }}
+                                        title="Maintenance Item (selected)"
+                                      />
+                                      <span style={{ fontWeight: 600, color: '#111827', lineHeight: 1.45, whiteSpace: 'normal' }}>{item.text}</span>
+                                    </div>
+                                    {item.comment && item.comment.trim() !== '' && (
+                                      <div style={{ marginLeft: '2rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.6 }} title={item.comment}>
+                                        {item.comment.length > 150 ? item.comment.slice(0, 150) + '…' : item.comment}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Limitations / Information remain full width list */}
+                            {otherItems.map(item => (
+                              <div key={item._id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 0', borderBottom: '1px solid #f1f5f9' }}>
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: isMobile ? '0.5rem' : '0.625rem',
+                                  flexDirection: 'row',
+                                  flexWrap: 'wrap'
+                                }}>
+                                  <span style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '0.25rem',
+                                    backgroundColor: '#f59e0b',
+                                    color: 'white',
+                                    fontWeight: 600,
+                                    textTransform: 'capitalize' as const,
+                                    flexShrink: 0,
+                                    lineHeight: 1.2,
+                                    minWidth: isMobile ? undefined : '120px',
+                                    textAlign: isMobile ? 'left' : 'center',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}>
+                                    {item.tab === 'limitations' ? 'Limitation' : 'Information'}
+                                  </span>
+                                  <span style={{ fontWeight: 600, color: '#111827', lineHeight: 1.45, whiteSpace: 'normal', flex: 1, minWidth: 0 }}>{item.text}</span>
+                                </div>
+                                {item.comment && item.comment.trim() !== '' && (
+                                  <div style={{ 
+                                    marginLeft: isMobile ? 0 : '8.125rem',
+                                    color: '#6b7280',
+                                    fontSize: '0.8125rem',
+                                    paddingTop: '0.125rem',
+                                    lineHeight: 1.6,
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-word'
+                                  }} title={item.comment}>
+                                    {item.comment.length > 150 ? item.comment.slice(0, 150) + '…' : item.comment}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                     {block.custom_text && (
                       <div style={{ marginTop: '0.5rem' }}><span style={{ fontWeight: 600 }}>Custom Text:</span> {block.custom_text}</div>
+                    )}
+                    {isMobile && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+                        <button
+                          onClick={() => openAddModal(section, block)}
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem 1rem',
+                            fontSize: '0.9rem',
+                            borderRadius: '0.5rem',
+                            backgroundColor: '#a466da',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            boxShadow: '0 2px 8px rgba(164,102,218,0.25)'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#934ad3'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#a466da'}
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(block._id)}
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem 1rem',
+                            fontSize: '0.9rem',
+                            borderRadius: '0.5rem',
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            boxShadow: '0 2px 8px rgba(239,68,68,0.25)'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
               ))}
               {sectionBlocks(section._id).length === 0 && (
-                <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>No information blocks yet.</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#6b7280', fontStyle: 'italic' }}>No information blocks yet.</div>
+                  <button
+                    onClick={() => openAddModal(section)}
+                    style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem', borderRadius: '0.5rem', backgroundColor: '#8230c9', color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(130,48,201,0.2)' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#6f29ac'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8230c9'}
+                  >
+                    Add Information Block
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1861,9 +3777,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               <h4 style={{ fontWeight: 600, fontSize: '1.125rem' }}>
                 {editingBlockId ? 'Edit' : 'Add'} Information Block - {activeSection.name}
               </h4>
-              <button onClick={() => { setModalOpen(false); setActiveSection(null); setEditingBlockId(null); }} style={{ color: '#6b7280', cursor: 'pointer', border: 'none', background: 'none', fontSize: '1.25rem' }}>✕</button>
+              <button onClick={() => { setModalOpen(false); setActiveSection(null); setEditingBlockId(null); setDeleteMenuForId(null); setDeleteAnswerMenuForIndex(null); }} style={{ color: '#6b7280', cursor: 'pointer', border: 'none', background: 'none', fontSize: '1.25rem' }}>✕</button>
             </div>
-            <div style={{
+            <div
+              ref={modalScrollContainerRef}
+              style={{
               flex: 1,
               overflowY: 'auto',
               padding: '1.5rem 1rem', // Increased top/bottom padding
@@ -1882,7 +3800,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                      <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #3b82f6', paddingBottom: '0.5rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #a466da', paddingBottom: '0.5rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         {hasStatusSelected && <span style={{ fontSize: '1.125rem', color: '#22c55e' }}>✅</span>}
                         Status Fields
                       </h5>
@@ -1909,31 +3827,167 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 })()}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {activeSection.checklists
-                    .filter(cl => cl.type === 'status')
+                  {(reorderIds.status && reorderIds.status.length
+                      ? reorderIds.status.map(id => activeSection.checklists.find(c => c._id === id)).filter(Boolean) as ISectionChecklist[]
+                      : activeSection.checklists.filter(cl => cl.type === 'status'))
+                    .filter(cl => !isChecklistHidden(activeSection._id, cl._id))
                     .map(cl => {
                       const isSelected = formState.selected_checklist_ids.has(cl._id);
                       const checklistImages = getChecklistImages(cl._id);
 
                       return (
-                        <div key={cl._id} style={{ padding: '0.5rem', borderRadius: '0.25rem', backgroundColor: isSelected ? '#eff6ff' : 'transparent', border: '1px solid #e5e7eb' }}>
-                          {/* Header - clickable to toggle selection */}
-                          <label style={{ display: 'flex', fontSize: '0.875rem', cursor: 'pointer', alignItems: 'flex-start', gap: '0.5rem' }}>
+                        <div
+                          key={cl._id}
+                          draggable={true}
+                          onDragStart={onDragStartItem('status', cl._id)}
+                          onDragOver={onDragOverItem('status', cl._id)}
+                          onDrop={onDropItem('status', cl._id)}
+                          onDragEnd={onDragEndItem()}
+                          onTouchStart={onItemTouchStart('status', cl._id)}
+                          onTouchMove={onItemTouchMove('status')}
+                          onTouchEnd={onItemTouchEnd('status')}
+                          onTouchCancel={onItemTouchCancel()}
+                          onPointerDown={onItemPointerDown('status', cl._id)}
+                          onPointerUp={onItemPointerUp('status')}
+                          style={{
+                            padding: '0.5rem',
+                            borderRadius: '0.25rem',
+                            backgroundColor: dragVisual.draggingId === cl._id ? '#eef2ff' : (isSelected ? '#eff6ff' : 'transparent'),
+                            border: `1px solid ${dragVisual.draggingId === cl._id ? '#a466da' : '#e5e7eb'}`,
+                            boxShadow: dragVisual.draggingId === cl._id ? '0 2px 8px rgba(59,130,246,0.20)' : 'none',
+                            cursor: dragVisual.draggingId === cl._id ? 'grabbing' : 'grab',
+                            transition: 'box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
+                            position: 'relative',
+                            touchAction: 'manipulation'
+                          }}
+                          data-item-id={cl._id}
+                        >
+                          {/* Insertion line indicator - BEFORE */}
+                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'before' && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              top: '-2px', 
+                              left: '0', 
+                              right: '0', 
+                              height: '3px', 
+                              backgroundColor: '#a466da',
+                              borderRadius: '2px',
+                              boxShadow: '0 0 4px rgba(59,130,246,0.5)',
+                              zIndex: 10,
+                              pointerEvents: 'none'
+                            }} />
+                          )}
+                          
+                          {/* Insertion line indicator - AFTER */}
+                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'after' && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              bottom: '-2px', 
+                              left: '0', 
+                              right: '0', 
+                              height: '3px', 
+                              backgroundColor: '#a466da',
+                              borderRadius: '2px',
+                              boxShadow: '0 0 4px rgba(59,130,246,0.5)',
+                              zIndex: 10,
+                              pointerEvents: 'none'
+                            }} />
+                          )}
+                          
+                          {/* Header - selection checkbox + title row (click to expand when collapsed) */}
+                          <div style={{ display: 'flex', fontSize: '0.875rem', alignItems: 'flex-start', gap: '0.625rem', padding: '0.125rem 0' }}>
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => toggleChecklist(cl._id)}
-                              style={{ marginTop: '0.2rem', cursor: 'pointer' }}
+                              style={{ marginTop: '0.25rem', cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
                             />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 600, color: '#1f2937' }}>{cl.text}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}
+                              onClick={() => { if (isSelected && !isStatusExpanded(cl._id)) { expandStatus(cl._id); } }}
+                              role="button"
+                              title={isSelected ? (isStatusExpanded(cl._id) ? 'Expanded' : 'Click to expand') : 'Select the checkbox to enable'}
+                            >
+                              <div style={{ fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem', lineHeight: 1.5 }}>
+                                <span style={{ cursor: 'grab', color: '#9ca3af', fontSize: '1rem', flexShrink: 0 }}>⋮⋮</span> 
+                                <span style={{ flex: 1 }}>{cl.text}</span>
+                                {isSelected && isStatusExpanded(cl._id) && (
+                                  <button
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); collapseStatus(cl._id); }}
+                                    title="Collapse"
+                                    style={{
+                                      backgroundColor: 'transparent',
+                                      border: '2px solid #d1d5db',
+                                      color: '#6b7280',
+                                      cursor: 'pointer',
+                                      fontSize: '1rem',
+                                      fontWeight: 700,
+                                      padding: '0.15rem 0.4rem',
+                                      borderRadius: '0.25rem'
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                                {!isMobile && (
+                                  <label
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
+                                    title="When enabled and saved to the template, new inspections will start with this item pre-selected"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!cl.default_checked}
+                                      onChange={(e) => { e.stopPropagation(); toggleDefaultCheckedFor(cl._id, e.target.checked); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    Default to checked?
+                                  </label>
+                                )}
+                              </div>
+                              {isMobile && (
+                                <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  {isSelected && isStatusExpanded(cl._id) && (
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); collapseStatus(cl._id); }}
+                                      title="Collapse"
+                                      style={{
+                                        backgroundColor: 'transparent',
+                                        border: '2px solid #d1d5db',
+                                        color: '#6b7280',
+                                        cursor: 'pointer',
+                                        fontSize: '1rem',
+                                        fontWeight: 700,
+                                        padding: '0.15rem 0.4rem',
+                                        borderRadius: '0.25rem'
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                  <label
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
+                                    title="When enabled and saved to the template, new inspections will start with this item pre-selected"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!cl.default_checked}
+                                      onChange={(e) => { e.stopPropagation(); toggleDefaultCheckedFor(cl._id, e.target.checked); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    Default to checked?
+                                  </label>
+                                </div>
+                              )}
                               {cl.comment && (
-                                <div style={{ marginLeft: '0rem', marginTop: '0.25rem', color: '#6b7280', fontSize: '0.8rem' }}>
+                                <div style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                                   {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
                                 </div>
                               )}
                             </div>
-                            <div style={{ display: 'flex', gap: '0.25rem', marginLeft: '0.5rem' }} onClick={(e) => e.preventDefault()}>
+                            <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}>
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
@@ -1941,13 +3995,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   openChecklistForm('status', cl);
                                 }}
                                 style={{
-                                  padding: '0.2rem 0.35rem',
-                                  fontSize: '0.7rem',
-                                  borderRadius: '0.2rem',
+                                  padding: '0.3rem 0.45rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
                                   backgroundColor: '#f59e0b',
                                   color: 'white',
                                   border: 'none',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  lineHeight: 1
                                 }}
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
@@ -1962,13 +4017,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   handleDeleteChecklist(cl._id);
                                 }}
                                 style={{
-                                  padding: '0.2rem 0.35rem',
-                                  fontSize: '0.7rem',
-                                  borderRadius: '0.2rem',
+                                  padding: '0.3rem 0.45rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
                                   backgroundColor: '#ef4444',
                                   color: 'white',
                                   border: 'none',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  lineHeight: 1
                                 }}
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
@@ -1976,253 +4032,364 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               >
                                 🗑️
                               </button>
+                              {/* Inline delete options menu for template items */}
+                              {deleteMenuForId === cl._id && !cl._id.startsWith('temp_') && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  right: 0,
+                                  backgroundColor: 'white',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '0.375rem',
+                                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                  padding: '0.5rem',
+                                  zIndex: 10,
+                                  width: '240px'
+                                }}>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>Delete Options</div>
+                                  <div style={{ fontSize: '0.75rem', color: '#374151', marginBottom: '0.5rem' }}>Choose how to remove this item:</div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                    {activeSection && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          if (!activeSection) return;
+                                          hideChecklistForInspection(activeSection._id, cl._id);
+                                          setDeleteMenuForId(null);
+                                        }}
+                                        style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#f59e0b', color: 'white', border: 'none', cursor: 'pointer' }}
+                                      >
+                                        Hide in this inspection
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); performGlobalChecklistDelete(cl._id); }}
+                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      Delete from template (all)
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteMenuForId(null); }}
+                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </label>
+                          </div>
 
                           {/* Content area - NOT clickable to toggle */}
                           <div>
-                                
-                                {/* Answer Choices & Custom Answer - show when selected */}
-                                {isSelected && (
-                                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                                    {getAllAnswers(cl._id, cl.answer_choices || []).length > 0 && (
-                                      <>
-                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
-                                          Select Options:
-                                        </div>
-                                        <div style={{ 
-                                          display: 'grid', 
-                                          gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', 
-                                          gap: '0.5rem' 
-                                        }}>
-                                          {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
-                                            const selectedAnswers = getSelectedAnswers(cl._id);
-                                            const isAnswerSelected = selectedAnswers.has(choice);
-                                            const isCustom = isCustomAnswer(cl._id, choice, cl.answer_choices || []);
-                                            
-                                            return (
-                                              <label 
-                                                key={idx}
-                                                style={{ 
-                                                  display: 'flex', 
-                                                  alignItems: 'center',
-                                                  gap: '0.4rem',
-                                                  padding: '0.4rem 0.5rem',
-                                                  borderRadius: '0.25rem',
-                                                  backgroundColor: isAnswerSelected ? '#dbeafe' : '#f9fafb',
-                                                  border: `1px solid ${isAnswerSelected ? '#3b82f6' : '#e5e7eb'}`,
-                                                  cursor: 'pointer',
-                                                  fontSize: '0.75rem',
-                                                  transition: 'all 0.15s ease',
-                                                  position: 'relative'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                  if (!isAnswerSelected) {
-                                                    e.currentTarget.style.backgroundColor = '#f3f4f6';
-                                                    e.currentTarget.style.borderColor = '#d1d5db';
-                                                  }
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                  if (!isAnswerSelected) {
-                                                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                                                    e.currentTarget.style.borderColor = '#e5e7eb';
-                                                  }
-                                                }}
-                                              >
-                                                <input
-                                                  type="checkbox"
-                                                  checked={isAnswerSelected}
-                                                  onChange={() => toggleAnswer(cl._id, choice)}
-                                                  style={{ cursor: 'pointer' }}
-                                                  onClick={(e) => e.stopPropagation()}
-                                                />
-                                                <span style={{ color: '#374151', userSelect: 'none', flex: 1 }}>
-                                                  {choice}
-                                                </span>
-                                                {isCustom && (
-                                                  <span style={{ 
-                                                    fontSize: '0.6rem', 
-                                                    backgroundColor: '#fbbf24', 
-                                                    color: '#78350f',
-                                                    padding: '0.1rem 0.3rem',
-                                                    borderRadius: '0.2rem',
-                                                    fontWeight: 600
-                                                  }}>
-                                                    Custom
-                                                  </span>
-                                                )}
-                                              </label>
-                                            );
-                                          })}
-                                        </div>
-                                      </>
-                                    )}
+                                {/* Expanded details: answers and custom answer input */}
+                                {isSelected && isStatusExpanded(cl._id) && (
+                                  <>
+                                    <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #e5e7eb' }}>
+                                      {getAllAnswers(cl._id, cl.answer_choices || []).length > 0 && (() => {
+                                        const templateChoices = cl.answer_choices || [];
+                                        return (
+                                          <>
+                                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
+                                              Select Options:
+                                            </div>
+                                            <div
+                                              className="checklist-options-grid"
+                                              onTouchMove={onOptionTouchMove(cl._id, templateChoices)}
+                                              onTouchCancel={onOptionTouchCancel()}
+                                              onPointerUp={onOptionPointerUp(cl._id, templateChoices)}
+                                              style={{ touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'manipulation', overscrollBehavior: 'contain' }}
+                                            >
+                                              {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
+                                                const selectedAnswers = getSelectedAnswers(cl._id);
+                                                const isAnswerSelected = selectedAnswers.has(choice);
+                                                const isCustom = isCustomAnswer(cl._id, choice, cl.answer_choices || []);
+                                                return (
+                                                  <label 
+                                                    key={idx}
+                                                    data-choice={choice}
+                                                    style={{ 
+                                                      display: 'flex', 
+                                                      alignItems: 'center',
+                                                      gap: '0.4rem',
+                                                      padding: '0.4rem 0.5rem',
+                                                      borderRadius: '0.25rem',
+                                                      backgroundColor: isAnswerSelected ? '#dbeafe' : '#f9fafb',
+                                                      border: `1px solid ${isAnswerSelected ? '#a466da' : '#e5e7eb'}`,
+                                                      cursor: 'pointer',
+                                                      fontSize: '0.75rem',
+                                                      transition: 'all 0.15s ease',
+                                                      position: 'relative',
+                                                      touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto',
+                                                      WebkitTapHighlightColor: 'transparent',
+                                                      color: isAnswerSelected ? '#111827' : '#374151'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                      if (!isAnswerSelected) {
+                                                        e.currentTarget.style.backgroundColor = '#f3f4f6';
+                                                        e.currentTarget.style.borderColor = '#d1d5db';
+                                                      }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      if (!isAnswerSelected) {
+                                                        e.currentTarget.style.backgroundColor = '#f9fafb';
+                                                        e.currentTarget.style.borderColor = '#e5e7eb';
+                                                      }
+                                                    }}
+                                                    draggable={!isCustom}
+                                                    onDragStart={onOptionDragStart(cl._id, choice, isCustom)}
+                                                    onDragOver={onOptionDragOver(cl._id, choice, isCustom)}
+                                                    onDrop={onOptionDrop(cl._id, choice, isCustom, templateChoices)}
+                                                    onDragEnd={onOptionDragEnd()}
+                                                    onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
+                                                    onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
+                                                    onPointerDown={onOptionPointerDown(cl._id, choice, isCustom)}
+                                                  >
+                                                    {/* Insertion line indicators for options */}
+                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
+                                                      <div style={{ position: 'absolute', top: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
+                                                    )}
+                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'after' && (
+                                                      <div style={{ position: 'absolute', bottom: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
+                                                    )}
+                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'before' && (
+                                                      <div style={{ position: 'absolute', left: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
+                                                    )}
+                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'after' && (
+                                                      <div style={{ position: 'absolute', right: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
+                                                    )}
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={isAnswerSelected}
+                                                      onChange={() => toggleAnswer(cl._id, choice)}
+                                                      style={{ cursor: 'pointer' }}
+                                                      onClick={(e) => e.stopPropagation()}
+                                                    />
+                                                    <span style={{ color: isAnswerSelected ? '#111827' : '#374151', userSelect: 'none', flex: 1 }}>
+                                                      {choice}
+                                                    </span>
+                                                    {isCustom && (
+                                                      <span style={{ 
+                                                        fontSize: '0.6rem', 
+                                                        backgroundColor: '#fbbf24', 
+                                                        color: '#78350f',
+                                                        padding: '0.1rem 0.3rem',
+                                                        borderRadius: '0.2rem',
+                                                        fontWeight: 600
+                                                      }}>
+                                                        Custom
+                                                      </span>
+                                                    )}
+                                                    {!isCustom && (
+                                                      <span title="Drag to reorder" style={{ fontSize: '0.9rem', color: '#9ca3af', cursor: 'grab' }}>⋮⋮</span>
+                                                    )}
+                                                  </label>
+                                                );
+                                              })}
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
 
-                                    {/* Custom Answer Input */}
-                                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
-                                        Add Custom Answer:
-                                      </div>
-                                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                                        <input
-                                          type="text"
-                                          placeholder="Type custom answer..."
-                                          value={customAnswerInputs[`custom-${cl._id}`] || ''}
-                                          onChange={(e) => setCustomAnswerInputs(prev => ({
-                                            ...prev,
-                                            [`custom-${cl._id}`]: e.target.value
-                                          }))}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                              e.preventDefault();
-                                              addCustomAnswer(cl._id);
-                                            }
-                                          }}
-                                          style={{
-                                            flex: 1,
-                                            padding: '0.5rem',
-                                            fontSize: '0.75rem',
-                                            borderRadius: '0.25rem',
-                                            border: '1px solid #d1d5db',
-                                            outline: 'none'
-                                          }}
-                                        />
-                                        <button
-                                          onClick={() => addCustomAnswer(cl._id)}
-                                          style={{
-                                            padding: '0.5rem 0.75rem',
-                                            fontSize: '0.7rem',
-                                            borderRadius: '0.25rem',
-                                            backgroundColor: '#3b82f6',
-                                            color: 'white',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            whiteSpace: 'nowrap',
-                                            fontWeight: 600
-                                          }}
-                                          title="Add answer for this inspection only"
-                                        >
-                                          Add
-                                        </button>
-                                        <button
-                                          onClick={() => addCustomAnswerPermanently(cl._id)}
-                                          style={{
-                                            padding: '0.5rem 0.75rem',
-                                            fontSize: '0.7rem',
-                                            borderRadius: '0.25rem',
-                                            backgroundColor: '#10b981',
-                                            color: 'white',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            whiteSpace: 'nowrap',
-                                            fontWeight: 600
-                                          }}
-                                          title="Save to template permanently for all future inspections"
-                                        >
-                                          Save to Template
-                                        </button>
-                                      </div>
-                                      <div style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.375rem', fontStyle: 'italic' }}>
-                                        💡 <strong>Add</strong> = Use only for this inspection • <strong>Save to Template</strong> = Add permanently for all inspections
+                                      {/* Custom Answer Input */}
+                                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
+                                          Add Custom Answer:
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                                          <input
+                                            type="text"
+                                            placeholder="Type custom answer..."
+                                            value={customAnswerInputs[`custom-${cl._id}`] || ''}
+                                            onChange={(e) => setCustomAnswerInputs(prev => ({
+                                              ...prev,
+                                              [`custom-${cl._id}`]: e.target.value
+                                            }))}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                addCustomAnswer(cl._id);
+                                              }
+                                            }}
+                                            style={{
+                                              flex: 1,
+                                              padding: '0.5rem',
+                                              fontSize: '0.75rem',
+                                              borderRadius: '0.25rem',
+                                              border: '1px solid #d1d5db',
+                                              outline: 'none'
+                                            }}
+                                          />
+                                          <button
+                                            onClick={() => addCustomAnswer(cl._id)}
+                                            style={{
+                                              padding: '0.5rem 0.75rem',
+                                              fontSize: '0.7rem',
+                                              borderRadius: '0.25rem',
+                                              backgroundColor: '#a466da',
+                                              color: 'white',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              whiteSpace: 'nowrap',
+                                              fontWeight: 600
+                                            }}
+                                            title="Add answer for this inspection only"
+                                          >
+                                            Add
+                                          </button>
+                                          <button
+                                            onClick={() => addCustomAnswerPermanently(cl._id)}
+                                            style={{
+                                              padding: '0.5rem 0.75rem',
+                                              fontSize: '0.7rem',
+                                              borderRadius: '0.25rem',
+                                              backgroundColor: '#10b981',
+                                              color: 'white',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              whiteSpace: 'nowrap',
+                                              fontWeight: 600
+                                            }}
+                                            title="Save to template permanently for all future inspections"
+                                          >
+                                            Save to Template
+                                          </button>
+                                        </div>
+                                        <div style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.375rem', fontStyle: 'italic' }}>
+                                          💡 <strong>Add</strong> = Use only for this inspection • <strong>Save to Template</strong> = Add permanently for all inspections
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
+                                  </>
                                 )}
 
-                          {/* Image upload section - show only when item is selected */}
-                          {isSelected && (
-                            <div style={{ marginTop: '0.75rem', marginLeft: '1.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                              {/* 360° Photo Checkbox */}
-                              <div style={{
-                                background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
-                                padding: '10px 16px',
-                                borderRadius: '8px',
-                                marginBottom: '12px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                boxShadow: '0 2px 8px rgba(124, 58, 237, 0.2)'
-                              }}>
-                                <input
-                                  type="checkbox"
-                                  id={`isThreeSixty-info-${cl._id}`}
-                                  checked={isThreeSixtyMap[cl._id] || false}
-                                  onChange={(e) => setIsThreeSixtyMap(prev => ({
-                                    ...prev,
-                                    [cl._id]: e.target.checked
-                                  }))}
-                                  style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    cursor: 'pointer',
-                                    accentColor: '#ffffff'
-                                  }}
-                                />
-                                <label 
-                                  htmlFor={`isThreeSixty-info-${cl._id}`} 
-                                  style={{
-                                    color: 'white',
-                                    fontSize: '14px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px'
-                                  }}
-                                >
-                                  <i className="fas fa-sync" style={{ fontSize: '16px' }}></i>
-                                  This is a 360° photo
-                                </label>
-                              </div>
-
-                              {/* Help text for 360° photos */}
-                              {isThreeSixtyMap[cl._id] && (
-                                <div style={{
-                                  backgroundColor: '#fef3c7',
-                                  border: '1px solid #fbbf24',
-                                  borderRadius: '6px',
-                                  padding: '8px 12px',
-                                  marginBottom: '12px',
-                                  fontSize: '12px',
-                                  color: '#92400e'
-                                }}>
-                                  <strong>📸 360° Photo Tips:</strong>
-                                  <ul style={{ margin: '4px 0 0 20px', paddingLeft: 0 }}>
-                                    <li>File size limit: <strong>100 MB</strong></li>
-                                    <li><strong>⚠️ Recommended dimensions: 8192×4096 (33 MP max)</strong></li>
-                                    <li>Optimal: <strong>4096×2048</strong> at <strong>85% quality</strong> (~5-10 MB)</li>
-                                    <li>Images larger than 50 MP may fail to load in browser</li>
-                                    <li>Compress large files using: TinyPNG, Squoosh, or IrfanView</li>
-                                  </ul>
-                                </div>
-                              )}
-                              
+                          {/* Image upload section - show only when item is selected and expanded */}
+                          {isSelected && isStatusExpanded(cl._id) && (
+                            <div style={{ marginTop: '0.75rem', marginLeft: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                              {/* Replaced 360° banner and tips with a compact button + upload actions in a 2x2 grid */}
                               <div style={{ marginBottom: '0.5rem' }}>
                                 <FileUpload
-                                  onFileSelect={(file) => handleImageSelect(cl._id, file)}
+                                  onFilesSelect={(files) => handleImagesSelect(cl._id, files)}
                                   id={`file-upload-${cl._id}`}
+                                  labels={{ upload: 'Upload', photo: 'Photo', video: 'Video' }}
+                                  layoutColumns={2}
+                                  extraButtons={[
+                                    (
+                                      <button
+                                        key={`btn-360-${cl._id}`}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          setIsThreeSixtyMap(prev => ({ ...prev, [cl._id]: !prev[cl._id] }));
+                                        }}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: '0.5rem',
+                                          padding: '0.55rem 0.75rem',
+                                          backgroundColor: isThreeSixtyMap[cl._id] ? '#ef4444' : 'transparent',
+                                          color: isThreeSixtyMap[cl._id] ? '#ffffff' : '#ef4444',
+                                          borderRadius: '0.375rem',
+                                          cursor: 'pointer',
+                                          fontSize: '0.85rem',
+                                          fontWeight: 700,
+                                          border: `1px solid #ef4444`,
+                                          transition: 'background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s',
+                                          whiteSpace: 'nowrap',
+                                          width: '100%',
+                                          minHeight: '42px',
+                                          boxShadow: isThreeSixtyMap[cl._id] ? '0 1px 2px rgba(0,0,0,0.08)' : '0 1px 2px rgba(0,0,0,0.04)'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isThreeSixtyMap[cl._id]) {
+                                            e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.06)';
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.backgroundColor = isThreeSixtyMap[cl._id] ? '#ef4444' : 'transparent';
+                                        }}
+                                        aria-pressed={isThreeSixtyMap[cl._id] ? 'true' : 'false'}
+                                        title="Toggle 360° picture"
+                                      >
+                                        <span
+                                          aria-hidden
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '16px',
+                                            height: '16px',
+                                            borderRadius: '9999px',
+                                            border: isThreeSixtyMap[cl._id] ? '2px solid #ffffff' : '2px solid #ef4444',
+                                            backgroundColor: isThreeSixtyMap[cl._id] ? '#ffffff' : 'transparent',
+                                            color: '#ef4444',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 900,
+                                            lineHeight: 1
+                                          }}
+                                        >
+                                          {isThreeSixtyMap[cl._id] ? '✓' : ''}
+                                        </span>
+                                        <span>360° Picture</span>
+                                      </button>
+                                    )
+                                  ]}
                                 />
                               </div>
 
                               {/* Display existing images */}
                               {checklistImages.length > 0 && (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
-                                  {checklistImages.map((img, idx) => (
+                                  {checklistImages.map((img, idx) => {
+                                    // Generate preview URL - handle both string URLs and File objects
+                                    const getPreviewUrl = (imgData: any) => {
+                                      console.log('🖼️ Image data:', imgData);
+                                      console.log('🔍 URL type:', typeof imgData.url);
+                                      console.log('📦 URL value:', imgData.url);
+                                      
+                                      if (typeof imgData.url === 'string') {
+                                        // String URL from database - use proxy
+                                        const proxied = getProxiedSrc(imgData.url);
+                                        console.log('✅ String URL proxied:', proxied);
+                                        return proxied;
+                                      } else if (imgData.url && typeof imgData.url === 'object' && imgData.url instanceof File) {
+                                        // File object - create blob URL
+                                        const blobUrl = URL.createObjectURL(imgData.url);
+                                        console.log('✅ File object blob URL:', blobUrl);
+                                        return blobUrl;
+                                      }
+                                      console.warn('⚠️ No valid URL found');
+                                      return '';
+                                    };
+                                    
+                                    const previewUrl = getPreviewUrl(img);
+                                    console.log('🎨 Final preview URL:', previewUrl);
+                                    const isVideo = /\.(mp4|mov|webm|3gp|3gpp|m4v)(\?.*)?$/i.test(previewUrl);
+                                    
+                                    return (
                                     <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '180px' }}>
-                                      <div style={{ position: 'relative', width: '180px', height: '180px', borderRadius: '0.375rem', overflow: 'hidden', border: '2px solid #3b82f6' }}>
-                                        {/\.(mp4|mov|webm|3gp|3gpp|m4v)(\?.*)?$/i.test(img.url) ? (
+                                      <div style={{ position: 'relative', width: '180px', height: '180px', borderRadius: '0.375rem', overflow: 'hidden', border: '2px solid #a466da' }}>
+                                        {isVideo ? (
                                           <video
-                                            src={img.url}
+                                            src={previewUrl}
                                             controls
                                             style={{ width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#000' }}
                                           />
-                                        ) : (
+                                        ) : previewUrl ? (
                                           <img
-                                            src={img.url}
+                                            src={previewUrl}
                                             alt={`Image ${idx + 1}`}
                                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            onError={(e) => {
+                                              console.error('Image preview failed:', previewUrl);
+                                              (e.target as HTMLImageElement).style.display = 'none';
+                                            }}
                                           />
+                                        ) : (
+                                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6', color: '#9ca3af' }}>
+                                            No preview
+                                          </div>
                                         )}
                                         <button
                                           onClick={() => handleImageDelete(cl._id, idx)}
@@ -2246,53 +4413,24 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                         </button>
                                       </div>
 
-                                      {/* Location Dropdown */}
+                                      {/* Location Smart Search */}
                                       <div style={{ position: 'relative', width: '180px' }}>
-                                        <select
+                                        <LocationSearch
+                                          options={LOCATION_OPTIONS}
                                           value={locationInputs[`${cl._id}-${idx}`] ?? img.location ?? ''}
-                                          onChange={(e) => {
-                                            const newLocation = e.target.value;
+                                          onChangeAction={(newLocation) => {
                                             const inputKey = `${cl._id}-${idx}`;
-                                            
-                                            // Update local input state immediately for instant feedback
-                                            setLocationInputs(prev => ({
-                                              ...prev,
-                                              [inputKey]: newLocation
-                                            }));
-                                            
-                                            // Update formState
+                                            setLocationInputs(prev => ({ ...prev, [inputKey]: newLocation }));
                                             const checklistImages = formState.images.filter(i => i.checklist_id === cl._id);
                                             const imageToUpdate = checklistImages[idx];
-                                            const updatedImages = formState.images.map(i =>
-                                              i === imageToUpdate ? { ...i, location: newLocation } : i
-                                            );
-                                            const updatedFormState = {
-                                              ...formState,
-                                              images: updatedImages,
-                                            };
+                                            const updatedImages = formState.images.map(i => i === imageToUpdate ? { ...i, location: newLocation } : i);
+                                            const updatedFormState = { ...formState, images: updatedImages };
                                             setFormState(updatedFormState);
-                                            
-                                            // Trigger auto-save
                                             setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
                                           }}
-                                          style={{
-                                            padding: '0.5rem',
-                                            fontSize: '0.75rem',
-                                            borderRadius: '0.25rem',
-                                            border: '1px solid #d1d5db',
-                                            width: '180px',
-                                            outline: 'none',
-                                            backgroundColor: 'white',
-                                            cursor: 'pointer'
-                                          }}
-                                          onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                                        >
-                                          <option value="">Select Location</option>
-                                          {LOCATION_OPTIONS.map((loc) => (
-                                            <option key={loc} value={loc}>{loc}</option>
-                                          ))}
-                                        </select>
+                                          placeholder="Select Location"
+                                          width={180}
+                                        />
                                       </div>
 
                                       <button
@@ -2305,28 +4443,29 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                           }));
                                           
                                           // Navigate to image editor with the image URL and inspectionId
-                                          const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(img.url)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${cl._id}&inspectionId=${inspectionId}`;
+                                          const imageUrl = typeof img.url === 'string' ? img.url : previewUrl;
+                                          const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(imageUrl)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${cl._id}&inspectionId=${inspectionId}`;
                                           router.push(editorUrl);
                                         }}
                                         style={{
                                           padding: '0.5rem 0.75rem',
                                           fontSize: '0.75rem',
                                           borderRadius: '0.25rem',
-                                          backgroundColor: '#3b82f6',
+                                          backgroundColor: '#a466da',
                                           color: 'white',
                                           border: 'none',
                                           cursor: 'pointer',
                                           width: '180px',
                                           fontWeight: 600
                                         }}
-                                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-                                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+                                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#934ad3'}
+                                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#a466da'}
                                         title="Annotate image with arrows, circles, and highlights"
                                       >
                                         🖊️ Annotate
                                       </button>
                                     </div>
-                                  ))}
+                                  )})}
                                 </div>
                               )}
                             </div>
@@ -2338,20 +4477,39 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   {activeSection.checklists.filter(cl => cl.type === 'status').length === 0 && (
                     <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>No status fields available</div>
                   )}
+                  {/* Hidden manager for Status */}
+                  {showHiddenManagerStatus && (
+                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '0.375rem' }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>Hidden items (this inspection only)</div>
+                      {(() => {
+                        const hiddenIds = getHiddenIdsForSection(activeSection._id);
+                        const hiddenItems = activeSection.checklists.filter(cl => cl.type === 'status' && hiddenIds.includes(cl._id));
+                        if (hiddenItems.length === 0) return <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>No hidden status items.</div>;
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {hiddenItems.map(item => (
+                              <div key={item._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem', borderRadius: '0.25rem', backgroundColor: 'white', border: '1px solid #e5e7eb' }}>
+                                <span style={{ fontSize: '0.85rem', color: '#374151' }}>{item.text}</span>
+                                <button
+                                  onClick={() => unhideChecklistForInspection(activeSection._id, item._id)}
+                                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#10b981', color: 'white', border: 'none', cursor: 'pointer' }}
+                                >Unhide</button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Limitations/Information Section */}
               <div>
                 {(() => {
-                  // Check if any limitations/information checklist item is selected
-                  const limitationsChecklists = activeSection.checklists.filter(cl => cl.tab === 'limitations');
-                  const hasLimitationsSelected = limitationsChecklists.some(cl => formState.selected_checklist_ids.has(cl._id));
-                  
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                       <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #10b981', paddingBottom: '0.5rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {hasLimitationsSelected && <span style={{ fontSize: '1.125rem', color: '#22c55e' }}>✅</span>}
                         Limitations / Information
                       </h5>
                       <button
@@ -2377,31 +4535,168 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 })()}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {activeSection.checklists
-                    .filter(cl => cl.tab === 'limitations')
+                  {(reorderIds.limitations && reorderIds.limitations.length
+                      ? reorderIds.limitations.map(id => activeSection.checklists.find(c => c._id === id)).filter(Boolean) as ISectionChecklist[]
+                      : activeSection.checklists.filter(cl => cl.tab === 'limitations'))
+                    .filter(cl => !isChecklistHidden(activeSection._id, cl._id))
                     .map(cl => {
                       const isSelected = formState.selected_checklist_ids.has(cl._id);
                       const checklistImages = getChecklistImages(cl._id);
 
                       return (
-                        <div key={cl._id} style={{ padding: '0.5rem', borderRadius: '0.25rem', backgroundColor: isSelected ? '#f0fdf4' : 'transparent', border: '1px solid #e5e7eb' }}>
-                          {/* Header - clickable to toggle selection */}
-                          <label style={{ display: 'flex', fontSize: '0.875rem', cursor: 'pointer', alignItems: 'flex-start', gap: '0.5rem' }}>
+                        <div
+                          key={cl._id}
+                          draggable={true}
+                          onDragStart={onDragStartItem('limitations', cl._id)}
+                          onDragOver={onDragOverItem('limitations', cl._id)}
+                          onDrop={onDropItem('limitations', cl._id)}
+                          onDragEnd={onDragEndItem()}
+                          onTouchStart={onItemTouchStart('limitations', cl._id)}
+                          onTouchMove={onItemTouchMove('limitations')}
+                          onTouchEnd={onItemTouchEnd('limitations')}
+                          onTouchCancel={onItemTouchCancel()}
+                          onPointerDown={onItemPointerDown('limitations', cl._id)}
+                          onPointerUp={onItemPointerUp('limitations')}
+                          style={{
+                            padding: '0.5rem',
+                            borderRadius: '0.25rem',
+                            backgroundColor: dragVisual.draggingId === cl._id ? '#ecfdf5' : (isSelected ? '#f0fdf4' : 'transparent'),
+                            border: `1px solid ${dragVisual.draggingId === cl._id ? '#10b981' : '#e5e7eb'}`,
+                            boxShadow: dragVisual.draggingId === cl._id ? '0 2px 8px rgba(16,185,129,0.18)' : 'none',
+                            cursor: dragVisual.draggingId === cl._id ? 'grabbing' : 'grab',
+                            transition: 'box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
+                            position: 'relative',
+                            touchAction: 'manipulation'
+                          }}
+                          data-item-id={cl._id}
+                        >
+                          {/* Insertion line indicator - BEFORE */}
+                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'before' && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              top: '-2px', 
+                              left: '0', 
+                              right: '0', 
+                              height: '3px', 
+                              backgroundColor: '#10b981',
+                              borderRadius: '2px',
+                              boxShadow: '0 0 4px rgba(16,185,129,0.5)',
+                              zIndex: 10,
+                              pointerEvents: 'none'
+                            }} />
+                          )}
+                          
+                          {/* Insertion line indicator - AFTER */}
+                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'after' && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              bottom: '-2px', 
+                              left: '0', 
+                              right: '0', 
+                              height: '3px', 
+                              backgroundColor: '#10b981',
+                              borderRadius: '2px',
+                              boxShadow: '0 0 4px rgba(16,185,129,0.5)',
+                              zIndex: 10,
+                              pointerEvents: 'none'
+                            }} />
+                          )}
+                          
+                          {/* Header - selection checkbox + title (click to expand when collapsed) */}
+                          <div style={{ display: 'flex', fontSize: '0.875rem', alignItems: 'flex-start', gap: '0.625rem', padding: '0.125rem 0' }}>
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => toggleChecklist(cl._id)}
-                              style={{ marginTop: '0.2rem', cursor: 'pointer' }}
+                              style={{ marginTop: '0.25rem', cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
                             />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 600, color: '#1f2937' }}>{cl.text}</div>
+                            <div
+                              style={{ flex: 1, minWidth: 0 }}
+                              onClick={() => { if (isSelected && !isLimitExpanded(cl._id)) { expandLimit(cl._id); } }}
+                              role="button"
+                              title={isSelected ? (isLimitExpanded(cl._id) ? 'Expanded' : 'Click to expand') : 'Select the checkbox to enable'}
+                            >
+                              <div style={{ fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem', lineHeight: 1.5 }}>
+                                <span style={{ cursor: 'grab', color: '#9ca3af', fontSize: '1rem', flexShrink: 0 }}>⋮⋮</span>
+                                <span style={{ flex: 1 }}>{cl.text}</span>
+                                {isSelected && isLimitExpanded(cl._id) && (
+                                  <button
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); collapseLimit(cl._id); }}
+                                    title="Collapse"
+                                    style={{
+                                      backgroundColor: 'transparent',
+                                      border: '2px solid #d1d5db',
+                                      color: '#6b7280',
+                                      cursor: 'pointer',
+                                      fontSize: '1rem',
+                                      fontWeight: 700,
+                                      padding: '0.15rem 0.4rem',
+                                      borderRadius: '0.25rem'
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                                {!isMobile && (
+                                  <label
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
+                                    title="When enabled and saved to the template, new inspections will start with this item pre-selected"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!cl.default_checked}
+                                      onChange={(e) => { e.stopPropagation(); toggleDefaultCheckedFor(cl._id, e.target.checked); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    Default to checked?
+                                  </label>
+                                )}
+                              </div>
+                              {isMobile && (
+                                <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  {isSelected && isLimitExpanded(cl._id) && (
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); collapseLimit(cl._id); }}
+                                      title="Collapse"
+                                      style={{
+                                        backgroundColor: 'transparent',
+                                        border: '2px solid #d1d5db',
+                                        color: '#6b7280',
+                                        cursor: 'pointer',
+                                        fontSize: '1rem',
+                                        fontWeight: 700,
+                                        padding: '0.15rem 0.4rem',
+                                        borderRadius: '0.25rem'
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                  <label
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
+                                    title="When enabled and saved to the template, new inspections will start with this item pre-selected"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={!!cl.default_checked}
+                                      onChange={(e) => { e.stopPropagation(); toggleDefaultCheckedFor(cl._id, e.target.checked); }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                    />
+                                    Default to checked?
+                                  </label>
+                                </div>
+                              )}
                               {cl.comment && (
-                                <div style={{ marginLeft: '0rem', marginTop: '0.25rem', color: '#6b7280', fontSize: '0.8rem' }}>
+                                <div style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                                   {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
                                 </div>
                               )}
                             </div>
-                            <div style={{ display: 'flex', gap: '0.25rem', marginLeft: '0.5rem' }} onClick={(e) => e.preventDefault()}>
+                            <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}>
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
@@ -2409,13 +4704,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   openChecklistForm('information', cl);
                                 }}
                                 style={{
-                                  padding: '0.2rem 0.35rem',
-                                  fontSize: '0.7rem',
-                                  borderRadius: '0.2rem',
+                                  padding: '0.3rem 0.45rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
                                   backgroundColor: '#f59e0b',
                                   color: 'white',
                                   border: 'none',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  lineHeight: 1
                                 }}
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
@@ -2430,13 +4726,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   handleDeleteChecklist(cl._id);
                                 }}
                                 style={{
-                                  padding: '0.2rem 0.35rem',
-                                  fontSize: '0.7rem',
-                                  borderRadius: '0.2rem',
+                                  padding: '0.3rem 0.45rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
                                   backgroundColor: '#ef4444',
                                   color: 'white',
                                   border: 'none',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  lineHeight: 1
                                 }}
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
@@ -2444,31 +4741,68 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               >
                                 🗑️
                               </button>
+                              {/* Inline delete options menu for template items */}
+                              {deleteMenuForId === cl._id && !cl._id.startsWith('temp_') && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  right: 0,
+                                  backgroundColor: 'white',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '0.375rem',
+                                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                  padding: '0.5rem',
+                                  zIndex: 10,
+                                  width: '240px'
+                                }}>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>Delete Options</div>
+                                  <div style={{ fontSize: '0.75rem', color: '#374151', marginBottom: '0.5rem' }}>Choose how to remove this item:</div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); performGlobalChecklistDelete(cl._id); }}
+                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      Delete from template (all)
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteMenuForId(null); }}
+                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </label>
+                          </div>
 
                           {/* Content area - NOT clickable to toggle */}
                           <div>
                                 
-                                {/* Answer Choices - show when selected */}
-                                {isSelected && (cl.answer_choices && cl.answer_choices.length > 0 || getSelectedAnswers(cl._id).size > 0) && (
+                                {/* Answer Choices - show when selected and expanded */}
+                                {isSelected && isLimitExpanded(cl._id) && ((cl.answer_choices && cl.answer_choices.length > 0) || getSelectedAnswers(cl._id).size > 0) && (
                                   <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
                                     <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', marginBottom: '0.5rem' }}>
                                       Select Options:
                                     </div>
-                                    <div style={{ 
-                                      display: 'grid', 
-                                      gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', 
-                                      gap: '0.5rem' 
-                                    }}>
+                                    <div
+                                      className="checklist-options-grid"
+                                      onTouchMove={onOptionTouchMove(cl._id, cl.answer_choices || [])}
+                                      onTouchCancel={onOptionTouchCancel()}
+                                      onPointerUp={onOptionPointerUp(cl._id, cl.answer_choices || [])}
+                                      style={{ touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'manipulation', overscrollBehavior: 'contain' }}
+                                    >
                                       {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
                                         const selectedAnswers = getSelectedAnswers(cl._id);
                                         const isAnswerSelected = selectedAnswers.has(choice);
                                         const isCustom = isCustomAnswer(cl._id, choice, cl.answer_choices || []);
+                                        const isTemplateChoice = Array.isArray(cl.answer_choices) && cl.answer_choices.includes(choice);
+                                        const templateChoices = cl.answer_choices || [];
                                         
                                         return (
                                           <label 
                                             key={idx}
+                                            data-choice={choice}
                                             style={{ 
                                               display: 'flex', 
                                               alignItems: 'center',
@@ -2480,7 +4814,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                               cursor: 'pointer',
                                               fontSize: '0.75rem',
                                               transition: 'all 0.15s ease',
-                                              position: 'relative'
+                                              position: 'relative',
+                                              touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto',
+                                              WebkitTapHighlightColor: 'transparent',
+                                              color: isAnswerSelected ? '#111827' : '#374151'
                                             }}
                                             onMouseEnter={(e) => {
                                               if (!isAnswerSelected) {
@@ -2494,7 +4831,28 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                 e.currentTarget.style.borderColor = '#e5e7eb';
                                               }
                                             }}
+                                            draggable={!isCustom}
+                                            onDragStart={onOptionDragStart(cl._id, choice, isCustom)}
+                                            onDragOver={onOptionDragOver(cl._id, choice, isCustom)}
+                                            onDrop={onOptionDrop(cl._id, choice, isCustom, templateChoices)}
+                                            onDragEnd={onOptionDragEnd()}
+                                            onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
+                                            onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
+                                            onPointerDown={onOptionPointerDown(cl._id, choice, isCustom)}
                                           >
+                                            {/* Insertion line indicators for options */}
+                                            {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
+                                              <div style={{ position: 'absolute', top: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#10b981', borderRadius: '2px', boxShadow: '0 0 4px rgba(16,185,129,0.5)', pointerEvents: 'none' }} />
+                                            )}
+                                            {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'after' && (
+                                              <div style={{ position: 'absolute', bottom: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#10b981', borderRadius: '2px', boxShadow: '0 0 4px rgba(16,185,129,0.5)', pointerEvents: 'none' }} />
+                                            )}
+                                            {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'before' && (
+                                              <div style={{ position: 'absolute', left: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#10b981', borderRadius: '2px', boxShadow: '0 0 4px rgba(16,185,129,0.5)', pointerEvents: 'none' }} />
+                                            )}
+                                            {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'after' && (
+                                              <div style={{ position: 'absolute', right: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#10b981', borderRadius: '2px', boxShadow: '0 0 4px rgba(16,185,129,0.5)', pointerEvents: 'none' }} />
+                                            )}
                                             <input
                                               type="checkbox"
                                               checked={isAnswerSelected}
@@ -2502,7 +4860,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                               style={{ cursor: 'pointer' }}
                                               onClick={(e) => e.stopPropagation()}
                                             />
-                                            <span style={{ color: '#374151', userSelect: 'none', flex: 1 }}>
+                                            <span style={{ color: isAnswerSelected ? '#111827' : '#374151', userSelect: 'none', flex: 1 }}>
                                               {choice}
                                             </span>
                                             {isCustom && (
@@ -2516,6 +4874,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                               }}>
                                                 Custom
                                               </span>
+                                            )}
+                                            {!isCustom && (
+                                              <span title="Drag to reorder" style={{ fontSize: '0.9rem', color: '#9ca3af', cursor: 'grab' }}>⋮⋮</span>
                                             )}
                                           </label>
                                         );
@@ -2593,93 +4954,125 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   </div>
                                 )}
 
-                          {/* Image upload section - show only when item is selected */}
-                          {isSelected && (
-                            <div style={{ marginTop: '0.75rem', marginLeft: '1.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                              {/* 360° Photo Checkbox */}
-                              <div style={{
-                                background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
-                                padding: '10px 16px',
-                                borderRadius: '8px',
-                                marginBottom: '12px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                boxShadow: '0 2px 8px rgba(124, 58, 237, 0.2)'
-                              }}>
-                                <input
-                                  type="checkbox"
-                                  id={`isThreeSixty-limit-${cl._id}`}
-                                  checked={isThreeSixtyMap[cl._id] || false}
-                                  onChange={(e) => setIsThreeSixtyMap(prev => ({
-                                    ...prev,
-                                    [cl._id]: e.target.checked
-                                  }))}
-                                  style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    cursor: 'pointer',
-                                    accentColor: '#ffffff'
-                                  }}
-                                />
-                                <label 
-                                  htmlFor={`isThreeSixty-limit-${cl._id}`} 
-                                  style={{
-                                    color: 'white',
-                                    fontSize: '14px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px'
-                                  }}
-                                >
-                                  <i className="fas fa-sync" style={{ fontSize: '16px' }}></i>
-                                  This is a 360° photo
-                                </label>
-                              </div>
-
-                              {/* Help text for 360° photos */}
-                              {isThreeSixtyMap[cl._id] && (
-                                <div style={{
-                                  backgroundColor: '#fef3c7',
-                                  border: '1px solid #fbbf24',
-                                  borderRadius: '6px',
-                                  padding: '8px 12px',
-                                  marginBottom: '12px',
-                                  fontSize: '12px',
-                                  color: '#92400e'
-                                }}>
-                                  <strong>📸 360° Photo Tips:</strong>
-                                  <ul style={{ margin: '4px 0 0 20px', paddingLeft: 0 }}>
-                                    <li>File size limit: <strong>100 MB</strong></li>
-                                    <li><strong>⚠️ Recommended dimensions: 8192×4096 (33 MP max)</strong></li>
-                                    <li>Optimal: <strong>4096×2048</strong> at <strong>85% quality</strong> (~5-10 MB)</li>
-                                    <li>Images larger than 50 MP may fail to load in browser</li>
-                                    <li>Compress large files using: TinyPNG, Squoosh, or IrfanView</li>
-                                  </ul>
-                                </div>
-                              )}
-                              
+                          {/* Image upload section - show only when item is selected and expanded */}
+                          {isSelected && isLimitExpanded(cl._id) && (
+                            <div style={{ marginTop: '0.75rem', marginLeft: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
                               <div style={{ marginBottom: '0.5rem' }}>
                                 <FileUpload
-                                  onFileSelect={(file) => handleImageSelect(cl._id, file)}
+                                  onFilesSelect={(files) => handleImagesSelect(cl._id, files)}
                                   id={`file-upload-${cl._id}`}
+                                  labels={{ upload: 'Upload', photo: 'Photo', video: 'Video' }}
+                                  layoutColumns={2}
+                                  extraButtons={[
+                                    (
+                                      <button
+                                        key={`btn-360-limit-${cl._id}`}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          setIsThreeSixtyMap(prev => ({ ...prev, [cl._id]: !prev[cl._id] }));
+                                        }}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: '0.5rem',
+                                          padding: '0.55rem 0.75rem',
+                                          backgroundColor: isThreeSixtyMap[cl._id] ? '#ef4444' : 'transparent',
+                                          color: isThreeSixtyMap[cl._id] ? '#ffffff' : '#ef4444',
+                                          borderRadius: '0.375rem',
+                                          cursor: 'pointer',
+                                          fontSize: '0.85rem',
+                                          fontWeight: 700,
+                                          border: `1px solid #ef4444`,
+                                          transition: 'background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s',
+                                          whiteSpace: 'nowrap',
+                                          width: '100%',
+                                          minHeight: '42px',
+                                          boxShadow: isThreeSixtyMap[cl._id] ? '0 1px 2px rgba(0,0,0,0.08)' : '0 1px 2px rgba(0,0,0,0.04)'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isThreeSixtyMap[cl._id]) {
+                                            e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.06)';
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.backgroundColor = isThreeSixtyMap[cl._id] ? '#ef4444' : 'transparent';
+                                        }}
+                                        aria-pressed={isThreeSixtyMap[cl._id] ? 'true' : 'false'}
+                                        title="Toggle 360° picture"
+                                      >
+                                        <span
+                                          aria-hidden
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '16px',
+                                            height: '16px',
+                                            borderRadius: '9999px',
+                                            border: isThreeSixtyMap[cl._id] ? '2px solid #ffffff' : '2px solid #ef4444',
+                                            backgroundColor: isThreeSixtyMap[cl._id] ? '#ffffff' : 'transparent',
+                                            color: '#ef4444',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 900,
+                                            lineHeight: 1
+                                          }}
+                                        >
+                                          {isThreeSixtyMap[cl._id] ? '✓' : ''}
+                                        </span>
+                                        <span>360° Pic</span>
+                                      </button>
+                                    )
+                                  ]}
                                 />
                               </div>
 
                               {/* Display existing images */}
                               {checklistImages.length > 0 && (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
-                                  {checklistImages.map((img, idx) => (
+                                  {checklistImages.map((img, idx) => {
+                                    // Generate preview URL - handle both string URLs and File objects
+                                    const getPreviewUrl = (imgData: any) => {
+                                      console.log('🖼️ Limitations Image data:', imgData);
+                                      console.log('🔍 Limitations URL type:', typeof imgData.url);
+                                      console.log('📦 Limitations URL value:', imgData.url);
+                                      
+                                      if (typeof imgData.url === 'string') {
+                                        // String URL from database - use proxy
+                                        const proxied = getProxiedSrc(imgData.url);
+                                        console.log('✅ Limitations String URL proxied:', proxied);
+                                        return proxied;
+                                      } else if (imgData.url && typeof imgData.url === 'object' && imgData.url instanceof File) {
+                                        // File object - create blob URL
+                                        const blobUrl = URL.createObjectURL(imgData.url);
+                                        console.log('✅ Limitations File object blob URL:', blobUrl);
+                                        return blobUrl;
+                                      }
+                                      console.warn('⚠️ Limitations No valid URL found');
+                                      return '';
+                                    };
+                                    
+                                    const previewUrl = getPreviewUrl(img);
+                                    console.log('🎨 Limitations Final preview URL:', previewUrl);
+                                    
+                                    return (
                                     <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '180px' }}>
                                       <div style={{ position: 'relative', width: '180px', height: '180px', borderRadius: '0.375rem', overflow: 'hidden', border: '2px solid #10b981' }}>
-                                        <img
-                                          src={img.url}
-                                          alt={`Image ${idx + 1}`}
-                                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                        />
+                                        {previewUrl ? (
+                                          <img
+                                            src={previewUrl}
+                                            alt={`Image ${idx + 1}`}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            onError={(e) => {
+                                              console.error('Image preview failed:', previewUrl);
+                                              (e.target as HTMLImageElement).style.display = 'none';
+                                            }}
+                                          />
+                                        ) : (
+                                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6', color: '#9ca3af' }}>
+                                            No preview
+                                          </div>
+                                        )}
                                         <button
                                           onClick={() => handleImageDelete(cl._id, idx)}
                                           style={{
@@ -2702,53 +5095,24 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                         </button>
                                       </div>
 
-                                      {/* Location Dropdown */}
+                                      {/* Location Smart Search */}
                                       <div style={{ position: 'relative', width: '180px' }}>
-                                        <select
+                                        <LocationSearch
+                                          options={LOCATION_OPTIONS}
                                           value={locationInputs[`${cl._id}-${idx}`] ?? img.location ?? ''}
-                                          onChange={(e) => {
-                                            const newLocation = e.target.value;
+                                          onChangeAction={(newLocation) => {
                                             const inputKey = `${cl._id}-${idx}`;
-                                            
-                                            // Update local input state immediately for instant feedback
-                                            setLocationInputs(prev => ({
-                                              ...prev,
-                                              [inputKey]: newLocation
-                                            }));
-                                            
-                                            // Update formState
+                                            setLocationInputs(prev => ({ ...prev, [inputKey]: newLocation }));
                                             const checklistImages = formState.images.filter(i => i.checklist_id === cl._id);
                                             const imageToUpdate = checklistImages[idx];
-                                            const updatedImages = formState.images.map(i =>
-                                              i === imageToUpdate ? { ...i, location: newLocation } : i
-                                            );
-                                            const updatedFormState = {
-                                              ...formState,
-                                              images: updatedImages,
-                                            };
+                                            const updatedImages = formState.images.map(i => i === imageToUpdate ? { ...i, location: newLocation } : i);
+                                            const updatedFormState = { ...formState, images: updatedImages };
                                             setFormState(updatedFormState);
-                                            
-                                            // Trigger auto-save
                                             setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
                                           }}
-                                          style={{
-                                            padding: '0.5rem',
-                                            fontSize: '0.75rem',
-                                            borderRadius: '0.25rem',
-                                            border: '1px solid #d1d5db',
-                                            width: '180px',
-                                            outline: 'none',
-                                            backgroundColor: 'white',
-                                            cursor: 'pointer'
-                                          }}
-                                          onFocus={(e) => e.currentTarget.style.borderColor = '#10b981'}
-                                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                                        >
-                                          <option value="">Select Location</option>
-                                          {LOCATION_OPTIONS.map((loc) => (
-                                            <option key={loc} value={loc}>{loc}</option>
-                                          ))}
-                                        </select>
+                                          placeholder="Select Location"
+                                          width={180}
+                                        />
                                       </div>
 
                                       <button
@@ -2761,28 +5125,29 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                           }));
                                           
                                           // Navigate to image editor with the image URL and inspectionId
-                                          const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(img.url)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${cl._id}&inspectionId=${inspectionId}`;
+                                          const imageUrl = typeof img.url === 'string' ? img.url : previewUrl;
+                                          const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(imageUrl)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${cl._id}&inspectionId=${inspectionId}`;
                                           router.push(editorUrl);
                                         }}
                                         style={{
                                           padding: '0.5rem 0.75rem',
                                           fontSize: '0.75rem',
                                           borderRadius: '0.25rem',
-                                          backgroundColor: '#3b82f6',
+                                          backgroundColor: '#a466da',
                                           color: 'white',
                                           border: 'none',
                                           cursor: 'pointer',
                                           width: '180px',
                                           fontWeight: 600
                                         }}
-                                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-                                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
+                                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#934ad3'}
+                                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#a466da'}
                                         title="Annotate image with arrows, circles, and highlights"
                                       >
                                         🖊️ Annotate
                                       </button>
                                     </div>
-                                  ))}
+                                  )})}
                                 </div>
                               )}
                             </div>
@@ -2794,6 +5159,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   {activeSection.checklists.filter(cl => cl.type === 'information').length === 0 && (
                     <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>No information items available</div>
                   )}
+                  {/* Hidden manager for Limitations/Information removed: Limitations do not affect completion, so hiding UI is unnecessary */}
                 </div>
               </div>
             </div>
@@ -2807,33 +5173,35 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               flexShrink: 0,
               backgroundColor: 'white'
             }}>
-              {/* Auto-save status indicator */}
-              <div style={{ 
-                fontSize: '13px',
-                color: autoSaving ? '#f59e0b' : '#10b981',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}>
-                {autoSaving ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin"></i>
-                    <span>Saving...</span>
-                  </>
-                ) : lastSaved ? (
-                  <>
-                    <i className="fas fa-check-circle"></i>
-                    <span>Saved at {lastSaved}</span>
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-info-circle"></i>
-                    <span>Changes auto-save</span>
-                  </>
-                )}
-              </div>
-              
-              <button
+              {/* Left group: status + Done button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {/* Auto-save status indicator */}
+                <div style={{ 
+                  fontSize: '13px',
+                  color: autoSaving ? '#f59e0b' : '#10b981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}>
+                  {autoSaving ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin"></i>
+                      <span>Saving...</span>
+                    </>
+                  ) : lastSaved ? (
+                    <>
+                      <i className="fas fa-check-circle"></i>
+                      <span>Saved at {lastSaved}</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-info-circle"></i>
+                      <span>Changes auto-save</span>
+                    </>
+                  )}
+                </div>
+
+                <button
                 onClick={async () => { 
                   // Save before closing
                   if (formState && (formState.selected_checklist_ids.size > 0 || formState.custom_text || formState.images.length > 0)) {
@@ -2844,6 +5212,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                     setActiveSection(null); 
                     setEditingBlockId(null);
                     setLastSaved(null);
+                    setDeleteMenuForId(null);
                     // Clear any pending auto-save timer
                     if (autoSaveTimerRef.current) {
                       clearTimeout(autoSaveTimerRef.current);
@@ -2864,6 +5233,15 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 onMouseOver={(e) => !saving && (e.currentTarget.style.backgroundColor = '#059669')}
                 onMouseOut={(e) => !saving && (e.currentTarget.style.backgroundColor = '#10b981')}
               >{saving ? 'Saving...' : '✓ Done'}</button>
+              </div>
+              {/* Manage hidden toggles when modal open */}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={() => setShowHiddenManagerStatus(v => !v)}
+                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', cursor: 'pointer' }}
+                  title="Manage hidden Status items for this inspection"
+                >{showHiddenManagerStatus ? 'Hide Status Manager' : 'Manage Hidden Status'}</button>
+              </div>
             </div>
           </div>
         </div>
@@ -2881,10 +5259,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 onClick={() => {
                   setChecklistFormOpen(false);
                   setEditingChecklistId(null);
-                  setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [] });
+                  setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [], default_checked: false });
                   setNewAnswerChoice('');
                   setEditingAnswerIndex(null);
                   setEditingAnswerValue('');
+                  setDeleteAnswerMenuForIndex(null);
+                  // Clear any pending auto-save timers
+                  if (textSaveTimeoutRef.current) {
+                    clearTimeout(textSaveTimeoutRef.current);
+                    textSaveTimeoutRef.current = null;
+                  }
+                  if (commentSaveTimeoutRef.current) {
+                    clearTimeout(commentSaveTimeoutRef.current);
+                    commentSaveTimeoutRef.current = null;
+                  }
                 }}
                 style={{ color: '#6b7280', cursor: 'pointer', border: 'none', background: 'none', fontSize: '1.25rem' }}
               >✕</button>
@@ -2901,10 +5289,26 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   fontSize: '0.875rem',
                   fontWeight: 600,
                   textTransform: 'uppercase',
-                  backgroundColor: checklistFormData.type === 'status' ? '#dbeafe' : '#d1fae5',
-                  color: checklistFormData.type === 'status' ? '#1e40af' : '#065f46'
+                  backgroundColor: checklistFormData.type === 'status' ? '#e8dff5' : '#d1fae5',
+                  color: checklistFormData.type === 'status' ? '#5d228f' : '#065f46'
                 }}>
                   {checklistFormData.type}
+                </div>
+              </div>
+
+              {/* Default to checked? */}
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!checklistFormData.default_checked}
+                    onChange={(e) => handleDefaultCheckedToggle(e.target.checked)}
+                    style={{ width: '1rem', height: '1rem' }}
+                  />
+                  Default to checked?
+                </label>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                  When enabled and saved to the template, new inspections will start with this item pre-selected.
                 </div>
               </div>
 
@@ -2916,7 +5320,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 <input
                   type="text"
                   value={checklistFormData.text}
-                  onChange={(e) => setChecklistFormData({ ...checklistFormData, text: e.target.value })}
+                  onChange={(e) => handleChecklistTextChange(e.target.value)}
                   placeholder="Enter checklist name..."
                   style={{
                     width: '100%',
@@ -2926,7 +5330,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                     fontSize: '0.875rem',
                     outline: 'none'
                   }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                  onFocus={(e) => e.currentTarget.style.borderColor = '#a466da'}
                   onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                 />
               </div>
@@ -2938,19 +5342,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 </label>
                 <textarea
                   value={checklistFormData.comment}
-                  onChange={(e) => setChecklistFormData({ ...checklistFormData, comment: e.target.value })}
+                  onChange={(e) => handleChecklistCommentChange(e.target.value)}
                   placeholder="Enter optional comment or description..."
                   style={{
                     width: '100%',
                     border: '1px solid #d1d5db',
                     borderRadius: '0.375rem',
-                    padding: '0.5rem 0.75rem',
-                    fontSize: '0.875rem',
-                    minHeight: '100px',
+                    padding: '0.6rem 0.8rem',
+                    fontSize: isMobile ? '0.95rem' : '0.875rem',
+                    minHeight: isMobile ? '200px' : '100px',
+                    lineHeight: isMobile ? 1.6 : 1.5,
                     outline: 'none',
                     resize: 'vertical'
                   }}
-                  onFocus={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                  onFocus={(e) => e.currentTarget.style.borderColor = '#a466da'}
                   onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                 />
               </div>
@@ -2970,8 +5375,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                     display: 'flex', 
                     flexDirection: 'column', 
                     gap: '0.5rem',
-                    maxHeight: '200px',
-                    overflowY: 'auto',
                     border: '1px solid #e5e7eb',
                     borderRadius: '0.375rem',
                     padding: '0.75rem'
@@ -3012,7 +5415,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               autoFocus
                               style={{
                                 flex: 1,
-                                border: '1px solid #3b82f6',
+                                border: '1px solid #a466da',
                                 borderRadius: '0.25rem',
                                 padding: '0.25rem 0.5rem',
                                 fontSize: '0.875rem',
@@ -3085,21 +5488,61 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                             >
                               ✏️
                             </button>
-                            <button
-                              onClick={() => deleteAnswerChoice(index)}
-                              style={{
-                                padding: '0.25rem 0.5rem',
-                                fontSize: '0.75rem',
-                                borderRadius: '0.25rem',
-                                backgroundColor: '#ef4444',
-                                color: 'white',
-                                border: 'none',
-                                cursor: 'pointer'
-                              }}
-                              title="Delete"
-                            >
-                              🗑️
-                            </button>
+                            <div style={{ position: 'relative' }}>
+                              <button
+                                onClick={() => deleteAnswerChoice(index)}
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  fontSize: '0.75rem',
+                                  borderRadius: '0.25rem',
+                                  backgroundColor: '#ef4444',
+                                  color: 'white',
+                                  border: 'none',
+                                  cursor: 'pointer'
+                                }}
+                                title="Delete"
+                              >
+                                🗑️
+                              </button>
+                              {/* Delete options menu for answer choices */}
+                              {deleteAnswerMenuForIndex === index && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  right: 0,
+                                  backgroundColor: 'white',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '0.375rem',
+                                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                  padding: '0.5rem',
+                                  zIndex: 10,
+                                  width: '240px'
+                                }}>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>Delete Options</div>
+                                  <div style={{ fontSize: '0.75rem', color: '#374151', marginBottom: '0.5rem' }}>Choose how to remove this item:</div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); hideAnswerChoiceForInspection(index); }}
+                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#f59e0b', color: 'white', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      Hide in this inspection
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteAnswerChoiceFromTemplate(index); }}
+                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      Delete from template (all)
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteAnswerMenuForIndex(null); }}
+                                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#6b7280', color: 'white', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </>
                         )}
                       </div>
@@ -3145,10 +5588,20 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 onClick={() => {
                   setChecklistFormOpen(false);
                   setEditingChecklistId(null);
-                  setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [] });
+                  setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [], default_checked: false });
                   setNewAnswerChoice('');
                   setEditingAnswerIndex(null);
                   setEditingAnswerValue('');
+                  setDeleteAnswerMenuForIndex(null);
+                  // Clear any pending auto-save timers
+                  if (textSaveTimeoutRef.current) {
+                    clearTimeout(textSaveTimeoutRef.current);
+                    textSaveTimeoutRef.current = null;
+                  }
+                  if (commentSaveTimeoutRef.current) {
+                    clearTimeout(commentSaveTimeoutRef.current);
+                    commentSaveTimeoutRef.current = null;
+                  }
                 }}
                 style={{
                   padding: '0.5rem 1rem',
@@ -3175,7 +5628,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       padding: '0.5rem 1rem',
                       fontSize: '0.875rem',
                       borderRadius: '0.375rem',
-                      backgroundColor: '#3b82f6',
+                      backgroundColor: '#a466da',
                       color: 'white',
                       border: 'none',
                       cursor: 'pointer',
@@ -3184,8 +5637,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       whiteSpace: 'nowrap'
                     }}
                     disabled={savingChecklist}
-                    onMouseOver={(e) => !savingChecklist && (e.currentTarget.style.backgroundColor = '#2563eb')}
-                    onMouseOut={(e) => !savingChecklist && (e.currentTarget.style.backgroundColor = '#3b82f6')}
+                    onMouseOver={(e) => !savingChecklist && (e.currentTarget.style.backgroundColor = '#934ad3')}
+                    onMouseOut={(e) => !savingChecklist && (e.currentTarget.style.backgroundColor = '#a466da')}
                     title="Add this checklist item only for this inspection"
                   >
                     {savingChecklist ? 'Adding...' : 'Add to This Inspection'}
@@ -3221,7 +5674,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
                     borderRadius: '0.375rem',
-                    backgroundColor: '#3b82f6',
+                    backgroundColor: '#8230c9',
                     color: 'white',
                     border: 'none',
                     cursor: 'pointer',
@@ -3229,8 +5682,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                     fontWeight: 500
                   }}
                   disabled={savingChecklist}
-                  onMouseOver={(e) => !savingChecklist && (e.currentTarget.style.backgroundColor = '#2563eb')}
-                  onMouseOut={(e) => !savingChecklist && (e.currentTarget.style.backgroundColor = '#3b82f6')}
+                  onMouseOver={(e) => !savingChecklist && (e.currentTarget.style.backgroundColor = '#6f29ac')}
+                  onMouseOut={(e) => !savingChecklist && (e.currentTarget.style.backgroundColor = '#8230c9')}
                 >
                   {savingChecklist ? 'Updating...' : 'Update'}
                 </button>

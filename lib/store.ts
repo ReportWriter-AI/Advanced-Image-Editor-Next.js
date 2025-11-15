@@ -12,6 +12,7 @@ import { persist } from 'zustand/middleware';
     analysisResult?: any;
     timestamp?: number;
     selectedArrowColor?: string; // Store the selected arrow color
+    annotations?: any[]; // Store annotation shapes for editable re-opening
     // estimated_costs: CostItem[];
   }
 

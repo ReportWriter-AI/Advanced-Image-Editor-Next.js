@@ -112,6 +112,7 @@ export async function updateInspection(inspectionId: string, data: Partial<{
   htmlReportUrl: string; // permanent HTML report URL
   pdfReportGeneratedAt: Date; // timestamp when PDF was generated
   htmlReportGeneratedAt: Date; // timestamp when HTML was generated
+  hidePricing: boolean; // hide cost estimates in all report formats
 }>) {
   const client = await clientPromise;
   const db = client.db(DB_NAME);

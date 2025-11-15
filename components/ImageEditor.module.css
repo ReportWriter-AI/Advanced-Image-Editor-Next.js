@@ -157,6 +157,37 @@
     touch-action: none;      /* disables browser scrolling/pinch zoom on touch */
     -ms-touch-action: none;  /* for older IE/Edge */
     overscroll-behavior: contain; /* prevent "bounce" scroll chaining */
+    width: 100%;
+    max-width: 100%;
+    border-radius: 8px;
+    overflow: hidden; /* clip any overflow so the image never bleeds outside */
+    background: #ffffff; /* subtle background behind canvas */
+    box-sizing: border-box;
+    display: block;
+  }
+
+  /* Ensure the canvas scales within its container and keeps aspect ratio */
+  .imageDisplayArea canvas {
+    display: block;       /* remove inline-gap */
+    width: 100%;          /* fill the container width */
+    height: auto;         /* keep intrinsic aspect ratio */
+    max-width: 100%;
+    touch-action: none;
+  }
+
+  /* Video preview area styling to match image area constraints */
+  .videoDisplayArea {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    box-sizing: border-box;
+  }
+  .videoDisplayArea video {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 
   .imageEditorSimple {

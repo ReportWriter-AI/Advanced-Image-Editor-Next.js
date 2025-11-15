@@ -1,16 +1,25 @@
 "use client";
 
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import ImageEditor from '../../../../components/ImageEditor';
 import { useState, useRef, useEffect, Suspense } from 'react';
 import { useAnalysisStore } from '@/lib/store';
 
 function ImageEditorPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const selectedInspectionId = searchParams.get('inspectionId') || '';
-  const preloadImageUrl = searchParams.get('imageUrl'); // Get existing image URL
+  const preloadImageUrl = searchParams.get('imageUrl') || searchParams.get('src'); // Get existing image URL (support both 'imageUrl' and 'src')
   const returnTo = searchParams.get('returnTo'); // Where to return after editing
   const checklistId = searchParams.get('checklistId'); // For information block images
+  const mode = searchParams.get('mode'); // 'additional-location' for adding photos to existing defect, 'defect-main' for main defect image
+  const defectId = searchParams.get('defectId'); // Parent defect ID for additional photos
+  const editIndexParam = searchParams.get('index'); // Index when editing existing additional photo
+  
+  // Check if this is additional location photo mode
+  const isAdditionalLocationMode = mode === 'additional-location' && defectId;
+  const isEditAdditionalMode = mode === 'edit-additional' && defectId && typeof editIndexParam === 'string';
+  const isDefectMainMode = mode === 'defect-main' && defectId; // Editing main defect image
   
   const [description, setDescription] = useState('');
   const [activeMode, setActiveMode] = useState<'none' | 'crop' | 'arrow' | 'circle' | 'square'>('none');
@@ -37,6 +46,7 @@ function ImageEditorPageContent() {
   const locationDropdownRef2 = useRef<HTMLDivElement>(null);
   const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
   const [editedFile, setEditedFile] = useState<File | null>(null);
+  const [originalFile, setOriginalFile] = useState<File | null>(null); // Store original unannotated file for CREATE flow
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedColor, setSelectedColor] = useState('#d63636'); // Default red color - shared across all tools
@@ -44,6 +54,8 @@ function ImageEditorPageContent() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [isThreeSixty, setIsThreeSixty] = useState(false); // 360° photo flag
+  const [preloadedAnnotations, setPreloadedAnnotations] = useState<any[] | undefined>(undefined);
+  const [currentAnnotations, setCurrentAnnotations] = useState<any[]>([]);
 
 
 
@@ -209,6 +221,38 @@ function ImageEditorPageContent() {
     locationItem.toLowerCase().includes(locationSearch2.toLowerCase())
   );
 
+  // Fetch parent defect info when in additional location mode
+  useEffect(() => {
+    if ((isAdditionalLocationMode || isEditAdditionalMode) && defectId && selectedInspectionId) {
+      const fetchParentDefect = async () => {
+        try {
+          const response = await fetch(`/api/defects/${selectedInspectionId}`);
+          if (response.ok) {
+            const defects = await response.json();
+            const parentDefect = defects.find((d: any) => d._id === defectId);
+            if (parentDefect) {
+              // Auto-fill section and subsection from parent defect
+              setSelectedLocation(parentDefect.section || '');
+              setSelectedSubLocation(parentDefect.subsection || '');
+              console.log('✅ Parent defect loaded:', parentDefect.section, '-', parentDefect.subsection);
+              // For edit mode, also prefill the location field with the photo's location
+              if (isEditAdditionalMode && Array.isArray(parentDefect.additional_images)) {
+                const idx = parseInt(editIndexParam as string, 10);
+                const target = parentDefect.additional_images[idx];
+                if (target && target.location) {
+                  setSelectedLocation2(target.location);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching parent defect:', error);
+        }
+      };
+      fetchParentDefect();
+    }
+  }, [isAdditionalLocationMode, isEditAdditionalMode, defectId, selectedInspectionId, editIndexParam]);
+
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -244,8 +288,8 @@ function ImageEditorPageContent() {
     if (preloadImageUrl) {
       console.log('🖼️ Loading existing image from URL:', preloadImageUrl);
       
-      // Use Next.js API route to proxy the image to avoid CORS
-      const proxyUrl = `/api/r2api?imageUrl=${encodeURIComponent(preloadImageUrl)}`;
+  // Use the robust proxy-image API (has R2 SDK fallback) to avoid CORS and TLS hiccups
+  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(preloadImageUrl)}`;
       
       fetch(proxyUrl)
         .then(res => {
@@ -285,6 +329,26 @@ function ImageEditorPageContent() {
         });
     }
   }, [preloadImageUrl]);
+
+  // Load annotations from localStorage for defect-main mode
+  useEffect(() => {
+    if (isDefectMainMode) {
+      console.log('📥 Defect-main mode detected, checking for annotations...');
+      const annotationsJson = localStorage.getItem('defectAnnotations');
+      if (annotationsJson) {
+        try {
+          const annotations = JSON.parse(annotationsJson);
+          console.log('✅ Loaded annotations from localStorage:', annotations.length);
+          setPreloadedAnnotations(annotations);
+        } catch (e) {
+          console.error('❌ Failed to parse annotations from localStorage:', e);
+        }
+      } else {
+        console.log('ℹ️ No annotations found in localStorage');
+        setPreloadedAnnotations([]);
+      }
+    }
+  }, [isDefectMainMode]);
 
 
 
@@ -335,12 +399,346 @@ function ImageEditorPageContent() {
     window.dispatchEvent(event);
   };
 
+  const handleDeleteAnnotation = () => {
+    const event = new CustomEvent('deleteSelectedAnnotation');
+    window.dispatchEvent(event);
+  };
+
   const handleCropStateChange = (hasFrame: boolean) => {
     setHasCropFrame(hasFrame);
   };
 
 
   const handleSubmit = async () => {
+    // Special handling for additional location photos
+    if (isAdditionalLocationMode && defectId) {
+      console.log('📤 Adding location photo to existing defect:', defectId);
+      
+      if (!editedFile) {
+        alert('Please upload and edit an image before submitting.');
+        return;
+      }
+
+      if (!selectedLocation2) {
+        alert('Please select a location for this photo.');
+        return;
+      }
+
+      setIsSubmitting(true);
+      setSubmitStatus('Uploading photo...');
+
+      try {
+        // Upload the annotated image to R2 via presigned URL (direct, no Vercel bandwidth)
+        const presignedRes = await fetch(
+          `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
+        );
+        if (!presignedRes.ok) {
+          const t = await presignedRes.text();
+          throw new Error(`Failed to get presigned URL: ${t}`);
+        }
+        const { uploadUrl, publicUrl } = await presignedRes.json();
+        const putRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': editedFile.type },
+          body: editedFile,
+        });
+        if (!putRes.ok) {
+          const t = await putRes.text();
+          throw new Error(`Failed to upload image to R2: ${putRes.status} ${t}`);
+        }
+        const uploadData = { url: publicUrl };
+        console.log('✅ Image uploaded (direct):', uploadData.url);
+
+        // Get current defect data to update additional_images
+        const defectRes = await fetch(`/api/defects/${selectedInspectionId}`);
+        if (!defectRes.ok) {
+          throw new Error('Failed to fetch defect data');
+        }
+
+        const defects = await defectRes.json();
+        const currentDefect = defects.find((d: any) => d._id === defectId);
+        
+        if (!currentDefect) {
+          throw new Error('Defect not found');
+        }
+
+        // Add new photo to additional_images array
+        const additionalImages = currentDefect.additional_images || [];
+        
+        // No upper limit for additional location photos
+
+        additionalImages.push({
+          url: uploadData.url,
+          location: selectedLocation2,
+          isThreeSixty
+        });
+
+        // Update defect with new additional_images
+        // IMPORTANT: The API expects defectId in URL path, not inspectionId
+        const updateRes = await fetch(`/api/defects/${defectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inspection_id: currentDefect.inspection_id,
+            additional_images: additionalImages
+          })
+        });
+
+        if (!updateRes.ok) {
+          throw new Error('Failed to update defect');
+        }
+
+        // Notify parent window via localStorage so the Manage Defects modal can refresh instantly
+        try {
+          const notice = {
+            inspectionId: selectedInspectionId,
+            defectId,
+            photo: { url: uploadData.url, location: selectedLocation2, isThreeSixty },
+            timestamp: Date.now()
+          };
+          localStorage.setItem('pendingAdditionalLocationPhoto', JSON.stringify(notice));
+        } catch (e) {
+          console.warn('Unable to write pendingAdditionalLocationPhoto to localStorage:', e);
+        }
+
+        setSubmitStatus('Done! Closing...');
+        
+        // Close the window and return to inspection page
+        setTimeout(() => {
+          window.close();
+          // If window.close doesn't work (not opened as popup), navigate back
+          setTimeout(() => {
+            if (!window.closed) {
+              router.push(`/inspection_report/${selectedInspectionId}`);
+            }
+          }, 100);
+        }, 500);
+
+      } catch (error) {
+        console.error('❌ Error adding location photo:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        alert(`Failed to add location photo: ${errorMessage}`);
+        setIsSubmitting(false);
+        setSubmitStatus('');
+      }
+      
+      return; // Exit early for additional location flow
+    }
+
+    // Special handling for editing main defect image
+    if (isDefectMainMode && defectId) {
+      console.log('✏️ Editing main defect image:', defectId);
+
+      if (!editedFile) {
+        alert('Please upload and edit an image before submitting.');
+        return;
+      }
+
+      setIsSubmitting(true);
+      setSubmitStatus('Uploading edited image...');
+
+      try {
+        // Upload the annotated image to R2 via presigned URL
+        const presignedRes = await fetch(
+          `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
+        );
+        if (!presignedRes.ok) {
+          const t = await presignedRes.text();
+          throw new Error(`Failed to get presigned URL: ${t}`);
+        }
+        const { uploadUrl, publicUrl } = await presignedRes.json();
+        const putRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': editedFile.type },
+          body: editedFile,
+        });
+        if (!putRes.ok) {
+          const t = await putRes.text();
+          throw new Error(`Failed to upload image to R2: ${putRes.status} ${t}`);
+        }
+        const uploadData = { url: publicUrl };
+        console.log('✅ Main image uploaded (direct):', uploadData.url);
+
+        // Get current defect data
+        const defectRes = await fetch(`/api/defects/${selectedInspectionId}`);
+        if (!defectRes.ok) {
+          throw new Error('Failed to fetch defect data');
+        }
+
+        const defects = await defectRes.json();
+        const currentDefect = defects.find((d: any) => d._id === defectId);
+
+        if (!currentDefect) {
+          throw new Error('Defect not found');
+        }
+
+        // Update defect with new main image AND annotations
+        console.log('💾 Saving annotations:', currentAnnotations.length);
+        console.log('📝 Full annotations data:', JSON.stringify(currentAnnotations, null, 2));
+
+        // If there's an original image in localStorage, save it too
+        const originalImageUrl = localStorage.getItem('defectOriginalImage');
+        console.log('🖼️ Original image URL:', originalImageUrl);
+
+        const updatePayload = {
+          inspection_id: currentDefect.inspection_id,
+          image: uploadData.url,
+          annotations: currentAnnotations,
+          originalImage: originalImageUrl || currentDefect.originalImage || uploadData.url
+        };
+
+        console.log('📦 Update payload:', JSON.stringify(updatePayload, null, 2));
+
+        const updateRes = await fetch(`/api/defects/${defectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatePayload)
+        });
+
+        if (!updateRes.ok) {
+          const errorText = await updateRes.text();
+          console.error('❌ Update failed:', errorText);
+          throw new Error('Failed to update defect');
+        }
+
+        console.log('✅ Defect updated successfully');
+
+        // Notify parent window via localStorage so the Manage Defects modal can refresh instantly
+        try {
+          const notice = {
+            inspectionId: selectedInspectionId,
+            defectId,
+            newImageUrl: uploadData.url,
+            timestamp: Date.now()
+          };
+          localStorage.setItem('pendingDefectMainImageUpdate', JSON.stringify(notice));
+        } catch (e) {
+          console.warn('Unable to write pendingDefectMainImageUpdate to localStorage:', e);
+        }
+
+        setSubmitStatus('Done! Closing...');
+
+        // Close the window and return to inspection page
+        setTimeout(() => {
+          window.close();
+          // If window.close doesn't work (not opened as popup), navigate back
+          setTimeout(() => {
+            if (!window.closed) {
+              router.push(`/inspection_report/${selectedInspectionId}`);
+            }
+          }, 100);
+        }, 500);
+
+      } catch (error) {
+        console.error('❌ Error updating main defect image:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        alert(`Failed to update defect image: ${errorMessage}`);
+        setIsSubmitting(false);
+        setSubmitStatus('');
+      }
+
+      return; // Exit early for main defect image flow
+    }
+
+    // Special handling for editing an existing additional location photo
+    if (isEditAdditionalMode && defectId) {
+      console.log('✏️ Editing existing additional location photo:', defectId, 'index:', editIndexParam);
+
+      if (!editedFile) {
+        alert('Please upload and edit an image before submitting.');
+        return;
+      }
+
+      setIsSubmitting(true);
+      setSubmitStatus('Uploading edited photo...');
+
+      try {
+        // Upload the annotated image to R2 via presigned URL
+        const presignedRes = await fetch(
+          `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
+        );
+        if (!presignedRes.ok) {
+          const t = await presignedRes.text();
+          throw new Error(`Failed to get presigned URL: ${t}`);
+        }
+        const { uploadUrl, publicUrl } = await presignedRes.json();
+        const putRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': editedFile.type },
+          body: editedFile,
+        });
+        if (!putRes.ok) {
+          const t = await putRes.text();
+          throw new Error(`Failed to upload image to R2: ${putRes.status} ${t}`);
+        }
+        const uploadData = { url: publicUrl };
+        console.log('✅ Edited image uploaded (direct):', uploadData.url);
+
+        // Fetch current defect to get existing additional_images
+        const defectRes = await fetch(`/api/defects/${selectedInspectionId}`);
+        if (!defectRes.ok) {
+          throw new Error('Failed to fetch defect data');
+        }
+        const defects = await defectRes.json();
+        const currentDefect = defects.find((d: any) => d._id === defectId);
+        if (!currentDefect) throw new Error('Defect not found');
+
+        const photos = currentDefect.additional_images || [];
+        const idx = parseInt(editIndexParam as string, 10);
+        const oldUrl: string | undefined = photos[idx]?.url;
+        if (Number.isNaN(idx) || !photos[idx]) {
+          throw new Error('Invalid photo index');
+        }
+
+        // Replace URL at index, keep location and isThreeSixty as-is
+        const updatedImages = photos.map((p: any, i: number) => i === idx ? { ...p, url: uploadData.url } : p);
+
+        const updateRes = await fetch(`/api/defects/${defectId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inspection_id: currentDefect.inspection_id,
+            additional_images: updatedImages,
+          })
+        });
+        if (!updateRes.ok) throw new Error('Failed to update defect');
+
+        // Notify parent via localStorage so the Manage Defects modal updates instantly
+        try {
+          const notice = {
+            inspectionId: selectedInspectionId,
+            defectId,
+            index: idx,
+            oldUrl,
+            newUrl: uploadData.url,
+            timestamp: Date.now()
+          };
+          localStorage.setItem('pendingEditedAdditionalLocationPhoto', JSON.stringify(notice));
+        } catch (e) {
+          console.warn('Unable to write pendingEditedAdditionalLocationPhoto to localStorage:', e);
+        }
+
+        setSubmitStatus('Done! Closing...');
+        setTimeout(() => {
+          window.close();
+          setTimeout(() => {
+            if (!window.closed) {
+              router.push(`/inspection_report/${selectedInspectionId}`);
+            }
+          }, 100);
+        }, 500);
+
+      } catch (error) {
+        console.error('❌ Error editing location photo:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        alert(`Failed to save edited photo: ${errorMessage}`);
+        setIsSubmitting(false);
+        setSubmitStatus('');
+      }
+
+      return; // Exit early for edit-additional flow
+    }
+
     // Special handling for information block annotation
     if (returnTo && checklistId) {
       console.log('📤 Returning annotated image to information block');
@@ -362,19 +760,25 @@ function ImageEditorPageContent() {
 
         console.log('📤 Uploading annotated image:', editedFile.name, editedFile.size, 'bytes');
 
-        const uploadRes = await fetch('/api/r2api', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!uploadRes.ok) {
-          const errorText = await uploadRes.text();
-          console.error('❌ Upload failed:', uploadRes.status, errorText);
-          throw new Error(`Failed to upload annotated image: ${uploadRes.status}`);
+        const presignedRes = await fetch(
+          `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
+        );
+        if (!presignedRes.ok) {
+          const t = await presignedRes.text();
+          throw new Error(`Failed to get presigned URL: ${t}`);
         }
-
-        const uploadData = await uploadRes.json();
-        console.log('✅ Annotated image uploaded:', uploadData.url);
+        const { uploadUrl, publicUrl } = await presignedRes.json();
+        const putRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': editedFile.type },
+          body: editedFile,
+        });
+        if (!putRes.ok) {
+          const t = await putRes.text();
+          throw new Error(`Failed to upload annotated image to R2: ${putRes.status} ${t}`);
+        }
+        const uploadData = { url: publicUrl };
+        console.log('✅ Annotated image uploaded (direct):', uploadData.url);
 
         // Store the annotated image URL in localStorage for the modal to pick up
         // Include inspectionId so main page can reopen the correct modal
@@ -476,56 +880,175 @@ function ImageEditorPageContent() {
     }
   
     try {
-      const formData = new FormData();
-      formData.append('image', editedFile!);
-      formData.append('description', description);
-      formData.append('location', selectedLocationValue);
-      formData.append('section', selectedSection);
-      formData.append('subSection', selectedSubsection);
-      formData.append('inspectionId', selectedInspectionId);
-      formData.append('selectedColor', selectedColor);
-      formData.append('imageUrl', imageDataUrl);
-      formData.append('isThreeSixty', isThreeSixty.toString()); // Add 360° flag
-      if (videoFile) {
-        formData.append('videoFile', videoFile);
-        formData.append('thumbnail', thumbnail!);
-        formData.append('videoSrc', videoSrc!);
-        formData.append('type', 'video');
-      } else {
-        formData.append('type', 'image');  
+      // 1) Upload image directly to R2 via presigned URL (bypasses Vercel's 4.5MB limit)
+      // Image is required for both image and video flows (representative frame for analysis and/or the defect image itself)
+      if (!editedFile) {
+        throw new Error('No edited image to upload');
       }
 
+      // Upload original image (without annotations) if available and annotations exist
+      let originalImageUrl: string | null = null;
+      if (originalFile && currentAnnotations.length > 0) {
+        console.log('📤 Uploading original (unannotated) image for CREATE flow...');
+        const presignedOrigRes = await fetch(
+          `/api/r2api?action=presigned&fileName=original-${encodeURIComponent(originalFile.name)}&contentType=${encodeURIComponent(originalFile.type)}`
+        );
+        if (!presignedOrigRes.ok) {
+          const t = await presignedOrigRes.text();
+          throw new Error(`Failed to get presigned URL for original image: ${t}`);
+        }
+        const { uploadUrl: origUploadUrl, publicUrl: origPublicUrl } = await presignedOrigRes.json();
+        const putOrig = await fetch(origUploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': originalFile.type },
+          body: originalFile,
+        });
+        if (!putOrig.ok) {
+          const t = await putOrig.text();
+          throw new Error(`Failed to upload original image to R2: ${putOrig.status} ${t}`);
+        }
+        originalImageUrl = origPublicUrl;
+        console.log('✅ Original image uploaded:', originalImageUrl);
+      }
+
+      // Get presigned URL for annotated image
+      const presignedImgRes = await fetch(
+        `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
+      );
+      if (!presignedImgRes.ok) {
+        const t = await presignedImgRes.text();
+        throw new Error(`Failed to get presigned URL for image: ${t}`);
+      }
+      const { uploadUrl: imgUploadUrl, publicUrl: imagePublicUrl } = await presignedImgRes.json();
+      // Upload the edited (annotated) image directly to R2
+      const putImg = await fetch(imgUploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': editedFile.type },
+        body: editedFile,
+      });
+      if (!putImg.ok) {
+        const t = await putImg.text();
+        throw new Error(`Failed to upload image to R2: ${putImg.status} ${t}`);
+      }
+      console.log('✅ Annotated image uploaded:', imagePublicUrl);
+
+      // Optional video upload via presigned URL
+      let videoPublicUrl: string | null = null;
+      let thumbnailPublicUrl: string | null = null;
+      let finalType: 'image' | 'video' = 'image';
+      if (videoFile) {
+        finalType = 'video';
+
+        // Upload video
+        const presignedVidRes = await fetch(
+          `/api/r2api?action=presigned&fileName=${encodeURIComponent(videoFile.name)}&contentType=${encodeURIComponent(videoFile.type)}`
+        );
+        if (!presignedVidRes.ok) {
+          const t = await presignedVidRes.text();
+          throw new Error(`Failed to get presigned URL for video: ${t}`);
+        }
+        const { uploadUrl: vidUploadUrl, publicUrl: vidPublicUrl } = await presignedVidRes.json();
+        const putVid = await fetch(vidUploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': videoFile.type },
+          body: videoFile,
+        });
+        if (!putVid.ok) {
+          const t = await putVid.text();
+          throw new Error(`Failed to upload video to R2: ${putVid.status} ${t}`);
+        }
+        videoPublicUrl = vidPublicUrl;
+
+        // Upload thumbnail if present (data URL => Blob)
+        if (thumbnail && thumbnail.startsWith('data:')) {
+          const mimeMatch = thumbnail.match(/^data:(.+);base64,(.+)$/);
+          const thumbMime = mimeMatch ? mimeMatch[1] : 'image/png';
+          const b64 = mimeMatch ? mimeMatch[2] : '';
+          const thumbBuffer = b64 ? Uint8Array.from(atob(b64), c => c.charCodeAt(0)) : undefined;
+          if (thumbBuffer) {
+            const thumbFile = new Blob([thumbBuffer], { type: thumbMime });
+            const fileName = `thumbnail-${Date.now()}.png`;
+            const presignedThumbRes = await fetch(
+              `/api/r2api?action=presigned&fileName=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(thumbMime)}`
+            );
+            if (!presignedThumbRes.ok) {
+              const t = await presignedThumbRes.text();
+              throw new Error(`Failed to get presigned URL for thumbnail: ${t}`);
+            }
+            const { uploadUrl: thumbUploadUrl, publicUrl: thumbPublicUrl } = await presignedThumbRes.json();
+            const putThumb = await fetch(thumbUploadUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': thumbMime },
+              body: thumbFile,
+            });
+            if (!putThumb.ok) {
+              const t = await putThumb.text();
+              throw new Error(`Failed to upload thumbnail to R2: ${putThumb.status} ${t}`);
+            }
+            thumbnailPublicUrl = thumbPublicUrl;
+          }
+        }
+      }
+
+      // 2) Send only JSON metadata and URLs to the analysis endpoint
+      console.log('🚀 Sending to analyze-image API...');
+      console.log('📝 Sending annotations:', currentAnnotations.length);
+      console.log('🖼️ Original image URL:', originalImageUrl || imagePublicUrl);
+      console.log('🎨 Annotated image URL:', imagePublicUrl);
       const response = await fetch('/api/llm/analyze-image', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl: imagePublicUrl,
+          description,
+          location: selectedLocationValue,
+          inspectionId: selectedInspectionId,
+          section: selectedSection,
+          subSection: selectedSubsection,
+          selectedColor,
+          isThreeSixty,
+          type: finalType,
+          videoUrl: videoPublicUrl,
+          thumbnailUrl: thumbnailPublicUrl,
+          annotations: currentAnnotations, // Include annotations for saving
+          originalImage: originalImageUrl || imagePublicUrl, // Use original (unannotated) if available, otherwise annotated
+        }),
       });
+      
+      console.log('📡 Response status:', response.status);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('API Error:', errorText);
+        console.error('❌ API Error:', errorText);
         alert(`Analysis request failed: ${errorText}`);
         return; // ❌ stop here
       }
       
       const result = await response.json();
-      console.log('API response:', result);
+      console.log('✅ API response:', result);
       
       // Check if the analysis was accepted and started
       if (response.status === 202) {
         // Analysis is processing in the background
-        console.log('Analysis started with ID:', result.analysisId);
+        console.log('✅ Analysis started with ID:', result.analysisId);
+        console.log('⏳ Waiting 3 seconds before redirect to see defect appear...');
+        
+        // Wait 3 seconds to let QStash process
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
       } else if (!result.analysisId) {
+        console.error('❌ No analysisId in response!', result);
         alert('Analysis did not start correctly. Please try again.');
         return; // ❌ stop here
       }
   
 
   
-      // ✅ Navigate only if job started successfully
+  // ✅ Navigate only if job started successfully
+      console.log('🔄 Redirecting to image editor...');
       window.location.href = `/image-editor/?inspectionId=${selectedInspectionId}`;
     } catch (error: any) {
-      console.error('Submission error:', error);
+      console.error('❌ Submission error:', error);
       alert('Unexpected error occurred while submitting. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -574,7 +1097,7 @@ function ImageEditorPageContent() {
                 width: "48px",
                 height: "48px",
                 border: "5px solid #e5e7eb",
-                borderTop: "5px solid #2563eb",
+                borderTop: "5px solid #8230c9",
                 borderRadius: "50%",
                 animation: "spin 0.8s linear infinite",
               }}
@@ -650,7 +1173,7 @@ function ImageEditorPageContent() {
             onClick={handleSubmit}
             disabled={isSubmitting}
             style={{
-              backgroundColor: '#10b981',
+              backgroundColor: '#059669',
               color: 'white',
               padding: '8px 20px',
               fontWeight: '600',
@@ -806,17 +1329,26 @@ function ImageEditorPageContent() {
             </div>
           )}
         </div>
+
+        <button
+          className="action-btn delete-btn"
+          onClick={handleDeleteAnnotation}
+          title="Delete selected annotation"
+        >
+          <i className="fas fa-trash"></i>
+        </button>
       </div>
 
       {/* Image Upload Area */}
       <div className="image-upload-area">
-        <ImageEditor 
-          activeMode={activeMode} 
+        <ImageEditor
+          activeMode={activeMode}
           onCropStateChange={handleCropStateChange}
           onUndo={handleUndo}
           onRedo={handleRedo}
           onImageChange={setCurrentImage}
           onEditedFile={setEditedFile}
+          onOriginalFileSet={setOriginalFile}
           videoRef={videoRef}
           setIsCameraOpen={setIsCameraOpen}
           isCameraOpen={isCameraOpen}
@@ -825,6 +1357,8 @@ function ImageEditorPageContent() {
           setVideoSrc={setVideoSrc}
           preloadedImage={currentImage}
           preloadedFile={editedFile}
+          preloadedAnnotations={preloadedAnnotations}
+          onAnnotationsChange={setCurrentAnnotations}
         />
       </div>
 
@@ -837,15 +1371,15 @@ function ImageEditorPageContent() {
         </div>
       </div> */}
 
-       {/* Description Box - Only show for defect workflow */}
-       {!returnTo && !checklistId && (
+       {/* Description Box - Only show for defect workflow (but not in defect-main annotate mode) */}
+       {!returnTo && !checklistId && !isDefectMainMode && (
          <div className="description-box">
            <textarea
              placeholder="Describe your edited image here..."
              value={description}
              onChange={(e) => setDescription(e.target.value)}
            />
-           
+
            {/* 360° Photo Checkbox */}
            <div style={{
              display: 'flex',
@@ -889,14 +1423,15 @@ function ImageEditorPageContent() {
          </div>
        )}
 
-      {/* Submit Section - Only show for defect workflow */}
-      {!returnTo && !checklistId && (
+      {/* Submit Section - Only show for defect workflow, additional location mode, or defect-main annotate mode */}
+      {(!returnTo && !checklistId) || isAdditionalLocationMode || isDefectMainMode ? (
         <div className="submit-section">
           <div className="submit-controls">
 
-          {/* Location Button with Dropdown */}
+          {/* Location Button with Dropdown - Hide in defect-main annotate mode */}
+          {!isDefectMainMode && (
           <div className="location-button-container">
-            <button 
+            <button
               className="location-btn location2-btn"
               onClick={() => setShowLocationDropdown2(!showLocationDropdown2)}
               style={{
@@ -959,7 +1494,11 @@ function ImageEditorPageContent() {
               </div>
             )}
           </div>
+          )}
 
+          {/* Section and Subsection - Hide in additional location mode and defect-main annotate mode */}
+          {!isAdditionalLocationMode && !isDefectMainMode && (
+            <>
           {/* Section Button with Dropdown */}
           <div className="location-button-container">
             <button 
@@ -1096,14 +1635,23 @@ function ImageEditorPageContent() {
               </div>
             )}
           </div>
+          </>
+          )}
 
-          {/* Submit Button */}
-          <button className="submit-btn" onClick={handleSubmit}>
-            Submit
+          {/* Submit Button - Change text based on mode */}
+          <button className="submit-btn" onClick={handleSubmit} disabled={isSubmitting}>
+            {isSubmitting ? (
+              <>
+                <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                {isDefectMainMode ? 'Saving...' : isAdditionalLocationMode ? 'Adding Photo...' : 'Processing...'}
+              </>
+            ) : (
+              isDefectMainMode ? 'Save Changes' : isAdditionalLocationMode ? 'Add Photo' : 'Submit'
+            )}
           </button>
         </div>
-      </div>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }

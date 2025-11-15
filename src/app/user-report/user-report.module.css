@@ -102,8 +102,9 @@
 
 .sectionHeading {
   /* Uses shared-report-styles.css .section-heading for consistent styling */
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  padding-top: 1rem;
   /* NO border-bottom on main section headings - only subsection headings have underlines */
 }
 
@@ -193,6 +194,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
 }
 
 .propertyImage {
@@ -220,6 +222,26 @@
   border-radius: 1rem;
   color: #64748b;
   font-weight: 500;
+}
+
+.panoramaWrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  min-height: 300px;
+  border-radius: inherit;
+  overflow: hidden;
+  background: #000;
+}
+
+.panoramaWrapper :global(.threesixty-viewer-container) {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  border-radius: inherit !important;
+  box-shadow: none !important;
 }
 
 .imagePlaceholder i {
@@ -448,6 +470,8 @@
   border-radius: 1rem;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   margin-top: 2rem;
+  /* Add a little breathing room below the table before Section 1 heading */
+  margin-bottom: 1.25rem;
 }
 
 .summaryHeader {
@@ -513,13 +537,42 @@
 /* Mobile adjustments to prevent slight horizontal overflow in Inspection Sections table */
 @media (max-width: 640px) {
   .summaryTableWrapper { padding: 0 0.5rem 1.25rem; }
-  .summaryTable thead th { padding: 0.65rem 0.55rem; font-size: 0.7rem; }
-  .summaryTable tbody td { padding: 0.65rem 0.55rem; font-size: 0.8rem; word-break: break-word; }
+  .summaryTable thead th { padding: 8px 6px; font-size: 0.65rem; }
+  .summaryTable tbody td { padding: 8px 6px; font-size: 0.7rem; line-height: 1.4; }
   .summaryTable { table-layout: fixed; }
+  
+  /* NO. column */
+  .summaryTable thead th:nth-child(1),
+  .summaryTable tbody td:nth-child(1) { 
+    width: 18%; 
+    white-space: nowrap;
+    padding-left: 8px;
+    padding-right: 6px;
+    text-align: left;
+  }
+  
+  /* SECTION column - hide on mobile, too cramped */
   .summaryTable thead th:nth-child(2),
-  .summaryTable tbody td:nth-child(2) { width: 28%; }
+  .summaryTable tbody td:nth-child(2) { 
+    display: none;
+  }
+  
+  /* DEFECT column - takes full remaining space */
   .summaryTable thead th:nth-child(3),
-  .summaryTable tbody td:nth-child(3) { width: 52%; }
+  .summaryTable tbody td:nth-child(3) { 
+    width: 82%;
+    word-break: break-word;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  
+  /* Remove colored left border on mobile for cleaner look */
+  .summaryRowCatRed,
+  .summaryRowCatOrange,
+  .summaryRowCatBlue,
+  .summaryRowCatPurple {
+    border-left: none !important;
+  }
 }
 
 .summaryRow {
@@ -527,9 +580,9 @@
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.summaryRow:hover {
-  background: #f8fafc;
-}
+/* Make initial highlight permanent; keep hover slightly stronger */
+.summaryRow { background: #f8fafc; }
+.summaryRow:hover { background: #eef2ff; }
 
 .summaryRow:focus-within {
   outline: 2px solid #3b82f6;
@@ -542,19 +595,21 @@
 }
 
 /* Defect category coloring for Inspection Sections table rows */
-.summaryRowCatRed { border-left: 6px solid #dc2626; }
-.summaryRowCatOrange { border-left: 6px solid #f59e0b; }
-.summaryRowCatBlue { border-left: 6px solid #3b82f6; }
-.summaryRowCatPurple { border-left: 6px solid #7c3aed; }
+/* Make the color cue slightly more pronounced without being heavy */
+.summaryRowCatRed { border-left: 8px solid #94a3b8; background: rgba(220,38,38,0.12); box-shadow: inset 0 0 0 1px rgba(220,38,38,0.06); }
+.summaryRowCatOrange { border-left: 8px solid #94a3b8; background: rgba(245,158,11,0.14); box-shadow: inset 0 0 0 1px rgba(245,158,11,0.08); }
+.summaryRowCatBlue { border-left: 8px solid #94a3b8; background: rgba(59,130,246,0.12); box-shadow: inset 0 0 0 1px rgba(59,130,246,0.06); }
+.summaryRowCatPurple { border-left: 8px solid #94a3b8; background: rgba(124,58,237,0.12); box-shadow: inset 0 0 0 1px rgba(124,58,237,0.06); }
 .summaryRowCatRed td:first-child,
 .summaryRowCatOrange td:first-child,
 .summaryRowCatBlue td:first-child,
 .summaryRowCatPurple td:first-child { padding-left: 0.75rem; }
 
-.summaryRowCatRed:hover { background: rgba(220,38,38,0.06); }
-.summaryRowCatOrange:hover { background: rgba(245,158,11,0.08); }
-.summaryRowCatBlue:hover { background: rgba(59,130,246,0.08); }
-.summaryRowCatPurple:hover { background: rgba(124,58,237,0.08); }
+/* Slightly intensify on hover for better affordance */
+.summaryRowCatRed:hover { background: rgba(220,38,38,0.18); }
+.summaryRowCatOrange:hover { background: rgba(245,158,11,0.20); }
+.summaryRowCatBlue:hover { background: rgba(59,130,246,0.18); }
+.summaryRowCatPurple:hover { background: rgba(124,58,237,0.18); }
 
 .summaryEmpty {
   text-align: center;
@@ -1268,51 +1323,74 @@
   }
   
   .defectsTable {
-    font-size: 0.875rem;
-    border-radius: 12px;
+    font-size: 0.75rem; /* Smaller base font */
+    border-radius: 8px;
     margin-left: auto;
     margin-right: auto;
   }
   
   .defectsTable th,
   .defectsTable td {
-    padding: 10px 8px;
-    font-size: 0.8rem;
-    line-height: 1.4;
+    padding: 8px 4px; /* Reduced padding */
+    font-size: 0.7rem;
+    line-height: 1.3;
   }
   
   .defectsTable th {
-    font-size: 0.7rem;
-    padding: 10px 8px;
+    font-size: 0.65rem; /* Even smaller headers */
+    padding: 8px 4px;
+    font-weight: 700;
   }
   
-  /* Optimize column widths for mobile */
+  /* Optimize column widths for mobile - make NO. and COST narrower */
   .defectsTable th:nth-child(1),
   .defectsTable td:nth-child(1) {
-    width: 12%;
-    text-align: center;
+    width: 18%; /* NO. column */
+    white-space: nowrap;
+    text-align: left;
+    padding-left: 8px;
+    padding-right: 6px;
   }
   
   .defectsTable th:nth-child(2),
   .defectsTable td:nth-child(2) {
-    width: 28%;
+    display: none; /* Hide SECTION column on mobile */
+  }
+  
+  /* Hide the empty cell in footer row on mobile */
+  .hiddenOnMobile {
+    display: none;
   }
   
   .defectsTable th:nth-child(3),
   .defectsTable td:nth-child(3) {
-    width: 42%;
+    width: 62%; /* DEFECT column - more space */
     word-break: break-word;
+    padding-left: 8px;
+    padding-right: 8px;
   }
   
   .defectsTable th:nth-child(4),
   .defectsTable td:nth-child(4) {
-    width: 18%;
+    width: 20%; /* COST column */
     text-align: right !important;
+    white-space: nowrap;
+    padding-left: 4px;
+    padding-right: 8px;
   }
   
   .defectsTable tfoot td {
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     padding: 12px 8px;
+    font-weight: 700;
+    white-space: nowrap;
+    background-color: #f3f4f6;
+    border-top: 2px solid #d1d5db;
+  }
+  
+  /* Make sure Total row is visible and stands out */
+  .defectsTable tfoot tr {
+    background-color: #f3f4f6;
   }
 }
 
@@ -1596,14 +1674,290 @@
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* ==============================
+   Compact Defect Card Styles
+   ============================== */
+.defectCompactCard {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+}
+
+.defectCompactHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.defectCompactHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.defectHeaderText {
+  font-weight: 700; /* daha ince görünüm */
+  color: var(--selected-color, #111827);
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.defectNumberPrefix {
+  /* Number part always visible */
+}
+
+.defectSectionPart {
+  /* Section/subsection name - will be hidden on mobile */
+}
+
+.defectTitlePart {
+  /* Defect title - always visible */
+}
+
+.defectInlineHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.defectNumber {
+  font-weight: 800;
+  color: #111827;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 9999px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.defectSubsection {
+  font-weight: 700;
+  color: #111827;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.importanceBadgeSmall {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 9999px;
+  border: 1px solid rgba(255,255,255,0.35);
+}
+
+.defectCompactBody {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 14px;
+}
+
+.defectCompactMedia { position: relative; }
+
+.defectThumb {
+  width: 200px;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  cursor: zoom-in;
+}
+
+.defectThumbPlaceholder {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px dashed #e5e7eb;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.compactPanoramaWrapper {
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  background: #000;
+}
+
+.compactVideoWrapper {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.compactVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mediaBadge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  background: rgba(17,24,39,0.8);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 9999px;
+}
+
+.defectCompactInfo {
+  min-width: 0;
+}
+
+.defectCompactTitle {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--selected-color, #d63636);
+  margin: 2px 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.defectLocationInline {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.defectCompactSummary {
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.4;
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .defectCompactCard { 
+    padding: 10px 12px; 
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Header stays at top, full width */
+  .defectInlineHeader {
+    order: 1;
+    width: 100%;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  
+  /* Hide section/subsection name on mobile, keep number and defect title */
+  .defectSectionPart {
+    display: none;
+  }
+  
+  .defectHeaderText {
+    white-space: normal; /* Allow wrapping on mobile */
+    overflow: visible;
+    text-overflow: clip;
+  }
+  
+  /* Badge moves to next line on mobile if needed, with more spacing */
+  .importanceBadgeSmall {
+    font-size: 11px;
+    padding: 3px 10px;
+    white-space: nowrap;
+  }
+  
+  /* Body becomes vertical stack: image first, then text */
+  .defectCompactBody { 
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    order: 2;
+  }
+  
+  /* Image full width */
+  .defectCompactMedia {
+    width: 100%;
+    order: 1;
+  }
+  
+  .defectThumb, .compactPanoramaWrapper, .compactVideoWrapper { 
+    width: 100%; 
+    height: auto;
+    min-height: 200px;
+    max-height: 300px;
+  }
+  
+  /* Text content below image */
+  .defectCompactInfo {
+    order: 2;
+    width: 100%;
+  }
+}
+
+/* Additional text styling for Aaron layout */
+.defectDivider {
+  height: 0;
+  border-top: 2px solid var(--selected-color, #6b7280); /* düz, seçili renkle */
+  border-radius: 0;
+  margin: 10px 0 12px;
+}
+
+.defectParagraph {
+  color: #374151;
+  font-size: 14px;
+  line-height: 1.55;
+  margin-bottom: 6px;
+}
+
+.defectCostLine {
+  color: #111827;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.defectTotalLine {
+  color: var(--selected-color, #d63636);
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.defectRecommendation {
+  color: #374151;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
 /* ========================================
    INFORMATION SECTION RESPONSIVE STYLES
    ======================================== */
 
-/* Information section grid - 4 columns on desktop */
+/* Information section grid - 3 columns on desktop */
 .informationGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem 1.5rem;
 }
 

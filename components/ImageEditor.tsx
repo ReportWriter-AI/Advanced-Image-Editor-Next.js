@@ -3,9 +3,6 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import styles from './ImageEditor.module.css';
 
-// Use in JSX:
-<div className={styles.cameraFullscreen}></div>
-
 interface Point {
   x: number;
   y: number;
@@ -41,7 +38,13 @@ interface RotateAction {
   id: number;
 }
 
-type Action = Line | CropAction | RotateAction;
+interface DeleteAction {
+  type: 'delete';
+  line: Line;
+  id: number;
+}
+
+type Action = Line | CropAction | RotateAction | DeleteAction;
 
 interface CropFrame {
   x: number;
@@ -57,6 +60,7 @@ interface ImageEditorProps {
   onRedo: () => void;
   onImageChange?: (img: HTMLImageElement | null) => void;
   onEditedFile?: (file: File | null) => void;
+  onOriginalFileSet?: (file: File | null) => void; // Callback when original file is uploaded (for CREATE flow)
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   setIsCameraOpen: (val: boolean) => void;
   isCameraOpen: boolean;
@@ -65,15 +69,18 @@ interface ImageEditorProps {
   setThumbnail: (thumb: string | null) => void;
   preloadedImage?: HTMLImageElement | null; // New prop for preloaded images
   preloadedFile?: File | null; // New prop for preloaded file
+  preloadedAnnotations?: Line[]; // Editable annotations to load
+  onAnnotationsChange?: (annotations: Line[]) => void; // Callback when annotations change
 }
 
-const ImageEditor: React.FC<ImageEditorProps> = ({ 
-  activeMode, 
-  onCropStateChange, 
-  onUndo, 
+const ImageEditor: React.FC<ImageEditorProps> = ({
+  activeMode,
+  onCropStateChange,
+  onUndo,
   onRedo,
-  onImageChange, 
+  onImageChange,
   onEditedFile,
+  onOriginalFileSet,
   videoRef,
   setIsCameraOpen,
   isCameraOpen,
@@ -81,7 +88,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   setVideoSrc,
   setThumbnail,
   preloadedImage,
-  preloadedFile
+  preloadedFile,
+  preloadedAnnotations,
+  onAnnotationsChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,12 +116,16 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const [isDraggingArrow, setIsDraggingArrow] = useState(false);
   const [isRotatingArrow, setIsRotatingArrow] = useState(false);
   const [isResizingArrow, setIsResizingArrow] = useState(false);
+  const [arrowResizeEnd, setArrowResizeEnd] = useState<'start' | 'end' | 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left' | null>(null);
   const [dragArrowOffset, setDragArrowOffset] = useState({ x: 0, y: 0 });
   const [interactionMode, setInteractionMode] = useState<'move' | 'rotate' | 'resize' | null>(null);
   
   // Circle and square states
   const [circleColor, setCircleColor] = useState('#d63636');
   const [squareColor, setSquareColor] = useState('#d63636');
+  // Unified thickness for circle/square strokes (fixed default of 3)
+  const [shapeThickness, setShapeThickness] = useState(3);
+  const [defaultThickness, setDefaultThickness] = useState(3);
   const [isResizingShape, setIsResizingShape] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [initialShapeData, setInitialShapeData] = useState<any>(null);
@@ -136,6 +149,40 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const [redoHistory, setRedoHistory] = useState<Action[]>([]);
   const [lineIdCounter, setLineIdCounter] = useState(0);
   const [isCameraFullscreen, setIsCameraFullscreen] = useState(false);
+  // Responsive sizing for canvas container
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [canvasSizeVersion, setCanvasSizeVersion] = useState(0);
+
+  // Dynamically size the canvas to its container to avoid overflow and keep aspect
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container) return;
+
+      const containerWidth = Math.max(1, container.clientWidth || 0);
+      // Target a 4:3 area but cap height to 60vh to avoid tall overflow on phones
+      const targetHeight = Math.max(
+        240,
+        Math.min(
+          Math.round(containerWidth * 4 / 3),
+          Math.round((typeof window !== 'undefined' ? window.innerHeight : 800) * 0.6)
+        )
+      );
+
+      // Set the actual canvas bitmap size in CSS pixels to keep pointer math aligned
+      if (canvas.width !== containerWidth || canvas.height !== targetHeight) {
+        canvas.width = containerWidth;
+        canvas.height = targetHeight;
+        // Trigger a redraw
+        setCanvasSizeVersion(v => v + 1);
+      }
+    };
+
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+    return () => window.removeEventListener('resize', updateCanvasSize);
+  }, []);
 
   // Animation frame reference for smooth rotation
   const animationRef = useRef<number | null>(null);
@@ -152,13 +199,43 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const [videoFile, setVideoFile2] = useState<File | null>(null);
   const [thumbnail, setThumbnail2] = useState<string | null>(null);
 
+  const renderMetricsRef = useRef({
+    offsetX: 0,
+    offsetY: 0,
+    drawWidth: 0,
+    drawHeight: 0,
+  });
+
+  // Ensure canvas is sized when image/video state toggles the view
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const containerWidth = Math.max(1, container.clientWidth || 0);
+    const targetHeight = Math.max(
+      240,
+      Math.min(
+        Math.round(containerWidth * 4 / 3),
+        Math.round((typeof window !== 'undefined' ? window.innerHeight : 800) * 0.6)
+      )
+    );
+    if (canvas.width !== containerWidth || canvas.height !== targetHeight) {
+      canvas.width = containerWidth;
+      canvas.height = targetHeight;
+    }
+    // Trigger a redraw when view switches
+    setCanvasSizeVersion(v => v + 1);
+  }, [image, videoSrc]);
+
   // Load preloaded image if provided
+  // Note: onImageChange and onEditedFile are stable setState setters from parent,
+  // so we don't include them in dependencies to prevent infinite loops.
   useEffect(() => {
     console.log('🔍 preloadedImage useEffect triggered');
     console.log('  - preloadedImage exists:', !!preloadedImage);
     console.log('  - preloadedFile exists:', !!preloadedFile);
     console.log('  - current image state exists:', !!image);
-    
+
     if (preloadedImage && preloadedFile) {
       console.log('📥 Setting preloaded image in ImageEditor');
       setImage(preloadedImage);
@@ -173,8 +250,67 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
       console.log('⚠️ preloadedImage became null/undefined but image state still exists - NOT clearing');
       // DON'T clear the image if preloadedImage becomes null
     }
-  }, [preloadedImage, preloadedFile, onImageChange, onEditedFile]);
+  }, [preloadedImage, preloadedFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load preloaded annotations if provided
+  useEffect(() => {
+    console.log('🔍 preloadedAnnotations useEffect triggered');
+    console.log('  - preloadedAnnotations:', preloadedAnnotations);
+    console.log('  - is array:', Array.isArray(preloadedAnnotations));
+    console.log('  - length:', preloadedAnnotations?.length || 0);
+    console.log('  - current lines.length:', lines.length);
+
+    if (preloadedAnnotations && preloadedAnnotations.length > 0) {
+      console.log('📥 Loading preloaded annotations:', preloadedAnnotations.length);
+      console.log('  - Sample annotation:', JSON.stringify(preloadedAnnotations[0]));
+      setLines(preloadedAnnotations);
+
+      // Find max ID to continue from
+      const maxId = Math.max(0, ...preloadedAnnotations.map(line => line.id || 0));
+      setLineIdCounter(maxId + 1);
+
+      console.log('✅ Annotations loaded, next ID will be:', maxId + 1);
+
+      // Verify lines were set
+      setTimeout(() => {
+        console.log('🔍 Verification: lines.length after setLines:', lines.length);
+      }, 100);
+    } else {
+      console.log('⚠️ NOT loading annotations - empty or undefined');
+    }
+  }, [preloadedAnnotations]);
+
+  // DEBUG: Track lines state changes
+  // DISABLED: This causes "Maximum update depth exceeded" for same reason as parent notification:
+  // Every setLines during drag triggers this useEffect 60+ times/second
+  /*
+  useEffect(() => {
+    console.log('🎯 lines state changed, new length:', lines.length);
+    if (lines.length === 0) {
+      console.log('⚠️ lines is now EMPTY');
+      console.trace('Stack trace for lines becoming empty:');
+    }
+  }, [lines]);
+  */
+
+  // Notify parent when annotations change (for auto-save)
+  // DISABLED: This useEffect was causing "Maximum update depth exceeded" errors because:
+  // 1. During drag/resize, setLines is called 60+ times/second (at mouse move rate)
+  // 2. Each setLines triggers this useEffect
+  // 3. Even with early return, React sees useEffect running 60+ times/second
+  // 4. React interprets this as infinite loop → error
+  // SOLUTION: Parent notification moved to handleMouseUp (called ONCE when interaction ends)
+  // This is actually better - parent only gets updated when interaction completes, not during.
+  /*
+  useEffect(() => {
+    // Only notify parent when user is NOT actively interacting with shapes
+    const isInteracting = isDraggingArrow || isMovingShape || isResizingShape || isResizingArrow || isDrawing;
+
+    if (!isInteracting && onAnnotationsChange) {
+      onAnnotationsChange(lines);
+    }
+  }, [lines]); // eslint-disable-line react-hooks/exhaustive-deps
+  */
 
 
 
@@ -226,27 +362,111 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
 
 
 
-const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const original = e.target.files?.[0];
+  if (!original) return;
 
-  setEditedFile(file);
-  if (onEditedFile) onEditedFile(file);
+  let file: File = original;
 
-  // Check MIME type
-  if (file.type.startsWith("image/")) {
-    // 🖼 Image handling
-    const img = new Image();
-    img.onload = () => {
-      setImage(img);
-      setLines([]);
-      setCropFrame(null);
-      onCropStateChange(false);
-      if (onImageChange) onImageChange(img);
-    };
-    img.src = URL.createObjectURL(file);
-  } 
-  else if (file.type.startsWith("video/")) {
+  // Detect HEIC/HEIF from type or extension (Safari/iOS, some Samsung cameras)
+  const lowerName = file.name.toLowerCase();
+  const isHeic = lowerName.endsWith('.heic') || lowerName.endsWith('.heif') ||
+                 file.type === 'image/heic' || file.type === 'image/heif' ||
+                 /heic|heif/i.test(file.type || '');
+
+  try {
+    if (isHeic) {
+      // Convert HEIC/HEIF to JPEG in-browser for preview and editing
+      const heic2any: any = (await import('heic2any')).default || (await import('heic2any'));
+      const convertedBlob: Blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+      file = new File([convertedBlob], `${file.name.replace(/\.(heic|heif)$/i,'')}.jpg`, { type: 'image/jpeg' });
+    }
+  } catch (convErr) {
+    console.warn('HEIC conversion failed (continuing with original):', convErr);
+  }
+
+  // Normalize EXIF orientation for JPEG/PNG after optional HEIC conversion
+  const fixImageOrientation = async (inputFile: File): Promise<File> => {
+    try {
+      if (!inputFile.type.startsWith('image/')) return inputFile;
+      const exifr: any = (await import('exifr/dist/full.esm.mjs')) as any;
+      const orientation: number | undefined = await exifr.orientation(inputFile);
+      if (!orientation || orientation === 1) return inputFile;
+
+      const imgUrl = URL.createObjectURL(inputFile);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = imgUrl;
+      });
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { URL.revokeObjectURL(imgUrl); return inputFile; }
+
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+
+      switch (orientation) {
+        case 2:
+          canvas.width = width; canvas.height = height; ctx.translate(width, 0); ctx.scale(-1, 1); break;
+        case 3:
+          canvas.width = width; canvas.height = height; ctx.translate(width, height); ctx.rotate(Math.PI); break;
+        case 4:
+          canvas.width = width; canvas.height = height; ctx.translate(0, height); ctx.scale(1, -1); break;
+        case 5:
+          canvas.width = height; canvas.height = width; ctx.rotate(0.5 * Math.PI); ctx.scale(1, -1); ctx.translate(0, -height); break;
+        case 6:
+          canvas.width = height; canvas.height = width; ctx.rotate(0.5 * Math.PI); ctx.translate(0, -height); break;
+        case 7:
+          canvas.width = height; canvas.height = width; ctx.rotate(0.5 * Math.PI); ctx.translate(width, -height); ctx.scale(-1, 1); break;
+        case 8:
+          canvas.width = height; canvas.height = width; ctx.rotate(-0.5 * Math.PI); ctx.translate(-width, 0); break;
+        default:
+          canvas.width = width; canvas.height = height;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(imgUrl);
+
+      const blob: Blob = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.95)
+      );
+      return new File([blob], inputFile.name.replace(/\.(png|jpg|jpeg|webp)$/i, '') + '.jpg', { type: 'image/jpeg' });
+    } catch (err) {
+      console.warn('Orientation normalization skipped:', err);
+      return inputFile;
+    }
+  };
+
+  try {
+    if (file.type.startsWith('image/')) {
+      // Fix orientation when needed
+      file = await fixImageOrientation(file);
+
+      // Save original file (before annotations) for CREATE flow
+      // This allows us to upload both original (unannotated) and annotated versions
+      if (onOriginalFileSet) {
+        onOriginalFileSet(file);
+        console.log('✅ Original file saved for CREATE flow:', file.name);
+      }
+
+      setEditedFile(file);
+      if (onEditedFile) onEditedFile(file);
+
+      const img = new Image();
+      img.onload = () => {
+        setImage(img);
+        setLines([]);
+        setCropFrame(null);
+        onCropStateChange(false);
+        if (onImageChange) onImageChange(img);
+      };
+      img.src = URL.createObjectURL(file);
+    } else if (file.type.startsWith('video/')) {
     // 🎥 Video handling
     const videoURL = URL.createObjectURL(file);
     setImage(null); // clear canvas image
@@ -288,10 +508,11 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         console.log("Thumbnail captured:", thumbnailDataUrl);
       }
     });
+    }
+  } finally {
+    // Reset so same file can be chosen again
+    e.target.value = "";
   }
-
-  // Reset so same file can be chosen again
-  e.target.value = "";
 };
 
 
@@ -308,7 +529,11 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
   } | null>(null);
   const isMovingRef = useRef(false);
   const linesRef = useRef<Line[]>([]);
-  
+
+  // Frame counter for throttling setLines calls to prevent "Maximum update depth exceeded"
+  // By skipping frames, we reduce setLines calls from 60+/sec to ~20/sec
+  const frameCounterRef = useRef(0);
+
   // Keep linesRef in sync with lines state
   useEffect(() => {
     linesRef.current = lines;
@@ -326,16 +551,51 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
       console.log('Color synchronized across all tools:', color);
     };
 
+    const handleThicknessChange = (e: CustomEvent) => {
+      const thickness = Number(e.detail);
+      if (!Number.isFinite(thickness)) return;
+      // Clamp to a reasonable range
+      const clamped = Math.max(2, Math.min(24, thickness));
+      setShapeThickness(clamped);
+      // If a shape is selected, update only that shape's thickness; otherwise update default for new shapes
+      if (selectedArrowId !== null) {
+        setLines(prev => prev.map(l => l.id === selectedArrowId ? { ...l, size: clamped } : l));
+      } else {
+        setDefaultThickness(clamped);
+      }
+      console.log('Shape thickness set:', clamped);
+    };
+
     window.addEventListener('setArrowColor', handleColorChange as EventListener);
     window.addEventListener('setCircleColor', handleColorChange as EventListener);
     window.addEventListener('setSquareColor', handleColorChange as EventListener);
+    // Optional external control for thickness
+    window.addEventListener('setShapeThickness', handleThicknessChange as EventListener);
+    window.addEventListener('setCircleThickness', handleThicknessChange as EventListener);
+    window.addEventListener('setSquareThickness', handleThicknessChange as EventListener);
     
     return () => {
       window.removeEventListener('setArrowColor', handleColorChange as EventListener);
       window.removeEventListener('setCircleColor', handleColorChange as EventListener);
       window.removeEventListener('setSquareColor', handleColorChange as EventListener);
+      window.removeEventListener('setShapeThickness', handleThicknessChange as EventListener);
+      window.removeEventListener('setCircleThickness', handleThicknessChange as EventListener);
+      window.removeEventListener('setSquareThickness', handleThicknessChange as EventListener);
     };
   }, []);
+
+  // Keep slider in sync with the selected shape's thickness
+  useEffect(() => {
+    if (selectedArrowId !== null) {
+      const sel = lines.find(l => l.id === selectedArrowId);
+      if (sel && Number.isFinite(sel.size as number)) {
+        const sz = Math.max(2, Math.min(24, sel.size || 6));
+        if (sz !== shapeThickness) setShapeThickness(sz);
+      }
+    } else {
+      if (shapeThickness !== defaultThickness) setShapeThickness(defaultThickness);
+    }
+  }, [selectedArrowId, lines, defaultThickness]);
 
   // Smooth rotation animation
   useEffect(() => {
@@ -383,6 +643,13 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
   }, [rotationVelocity, selectedArrowId, lastRotationTime]);
 
   // Ultra-smooth arrow movement with requestAnimationFrame
+  // DISABLED: This causes "Maximum update depth exceeded" error because:
+  // 1. requestAnimationFrame calls processMovement continuously
+  // 2. processMovement calls setLines
+  // 3. setLines triggers parent useEffect 60+ times/second
+  // 4. React interprets this as infinite loop
+  // Normal handleMouseMove already provides smooth movement, so this optimization is unnecessary.
+  /*
   useEffect(() => {
     const processMovement = () => {
       if (pendingMovementRef.current && isMovingRef.current) {
@@ -403,22 +670,23 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         }
         pendingMovementRef.current = null;
       }
-      
+
       if (isMovingRef.current) {
         movementFrameRef.current = requestAnimationFrame(processMovement);
       }
     };
-    
+
     if (isMovingRef.current) {
       movementFrameRef.current = requestAnimationFrame(processMovement);
     }
-    
+
     return () => {
       if (movementFrameRef.current) {
         cancelAnimationFrame(movementFrameRef.current);
       }
     };
   }, [isMovingRef.current]);
+  */
 
 
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
@@ -572,101 +840,187 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log('🎨 Exporting edited file with', lines.length, 'annotations');
     
     try {
-      // Create a new canvas with the same dimensions as the display canvas
-      const canvas = document.createElement('canvas');
       const displayCanvas = canvasRef.current;
-      
       if (!displayCanvas) {
         console.error('❌ Display canvas not available');
         return null;
       }
-      
-      canvas.width = displayCanvas.width;
-      canvas.height = displayCanvas.height;
-      
-      const ctx = canvas.getContext('2d', { 
+
+      const naturalWidth = Math.max(
+        1,
+        Math.round(image.naturalWidth || image.width || displayCanvas.width)
+      );
+      const naturalHeight = Math.max(
+        1,
+        Math.round(image.naturalHeight || image.height || displayCanvas.height)
+      );
+
+      // If rotated by 90/270, swap canvas dimensions to avoid cropping or stretching
+      const normalizedRotation = ((imageRotation % 360) + 360) % 360;
+      const quarterTurn = normalizedRotation === 90 || normalizedRotation === 270;
+
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = naturalWidth;
+      exportCanvas.height = naturalHeight;
+
+      const ctx = exportCanvas.getContext('2d', {
         willReadFrequently: false,
-        alpha: false // Better performance on mobile
+        alpha: false,
       });
-      
+
       if (!ctx) {
-        console.error('❌ Could not get canvas context');
+        console.error('❌ Could not get export canvas context');
         return null;
       }
 
-      // Enable high-quality image rendering
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      
-      // Clear the canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw the background
-      ctx.fillStyle = '#f0f0f0';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw the image with the same scaling as the display canvas
-      if (image) {
-        // Apply rotation if needed
-        if (imageRotation !== 0) {
-          ctx.save();
-          ctx.translate(canvas.width / 2, canvas.height / 2);
-          ctx.rotate((imageRotation * Math.PI) / 180);
-          ctx.translate(-canvas.width / 2, -canvas.height / 2);
-          
-          // For rotated images, fill the entire canvas
-          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-          
-          ctx.restore();
-        } else {
-          // For non-rotated images, use aspect ratio fitting
-          const imgAspect = image.width / image.height;
-          const canvasAspect = canvas.width / canvas.height;
-          
-          let drawWidth, drawHeight, offsetX, offsetY;
-          
-          if (imgAspect > canvasAspect) {
-            drawWidth = canvas.width;
-            drawHeight = canvas.width / imgAspect;
-            offsetX = 0;
-            offsetY = (canvas.height - drawHeight) / 2;
-          } else {
-            drawHeight = canvas.height;
-            drawWidth = canvas.height * imgAspect;
-            offsetX = (canvas.width - drawWidth) / 2;
-            offsetY = 0;
-          }
-          
-          ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
-        }
+      ctx.clearRect(0, 0, naturalWidth, naturalHeight);
+
+      if (imageRotation !== 0) {
+        ctx.save();
+        // rotate around the center of the export canvas
+        ctx.translate(exportCanvas.width / 2, exportCanvas.height / 2);
+        ctx.rotate((imageRotation * Math.PI) / 180);
+        // draw the image centered at natural size (no distortion)
+        ctx.drawImage(image, -naturalWidth / 2, -naturalHeight / 2, naturalWidth, naturalHeight);
+        ctx.restore();
+      } else {
+        // no rotation, draw at natural size, top-left
+        ctx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
       }
-      
-      // Draw all lines with their current positions
-      lines.forEach(line => {
+
+      const metrics = renderMetricsRef.current;
+      const baseDrawWidth = metrics.drawWidth || displayCanvas.width;
+      const baseDrawHeight = metrics.drawHeight || displayCanvas.height;
+      const offsetX = metrics.offsetX || 0;
+      const offsetY = metrics.offsetY || 0;
+
+      const safeDrawWidth = baseDrawWidth || displayCanvas.width;
+      const safeDrawHeight = baseDrawHeight || displayCanvas.height;
+
+      const scaleX = safeDrawWidth !== 0 ? naturalWidth / safeDrawWidth : 1;
+      const scaleY = safeDrawHeight !== 0 ? naturalHeight / safeDrawHeight : 1;
+      const avgScale = (scaleX + scaleY) / 2;
+
+      const transformPoint = (point: Point): Point => {
+        // First, adjust for offset and scale
+        let x = (point.x - offsetX) * scaleX;
+        let y = (point.y - offsetY) * scaleY;
+
+        // Then, adjust for rotation if needed
+        if (imageRotation !== 0) {
+          const centerX = naturalWidth / 2;
+          const centerY = naturalHeight / 2;
+          const angle = (imageRotation * Math.PI) / 180;
+
+          // Translate to origin
+          x -= centerX;
+          y -= centerY;
+
+          // Rotate
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          const rotatedX = x * cos - y * sin;
+          const rotatedY = x * sin + y * cos;
+
+          // Translate back
+          x = rotatedX + centerX;
+          y = rotatedY + centerY;
+        }
+
+        return { x, y };
+      };
+
+      const sanitizePoint = (point: Point): Point => ({
+        x: Number.isFinite(point.x) ? point.x : 0,
+        y: Number.isFinite(point.y) ? point.y : 0,
+      });
+
+      // Draw annotations – rotate context with the image so positions match what user saw
+      ctx.save();
+      if (imageRotation !== 0) {
+        ctx.translate(exportCanvas.width / 2, exportCanvas.height / 2);
+        ctx.rotate((imageRotation * Math.PI) / 180);
+        ctx.translate(-exportCanvas.width / 2, -exportCanvas.height / 2);
+      }
+
+      lines.forEach((line) => {
+        const scaledPoints = line.points.map((pt) => sanitizePoint(transformPoint(pt)));
+
+        const scaledLine: Line = {
+          ...line,
+          points: scaledPoints,
+          size: line.size * avgScale,
+        };
+
+        if (line.center) {
+          scaledLine.center = sanitizePoint(transformPoint(line.center));
+        }
+        if (line.radius !== undefined) {
+          scaledLine.radius = line.radius * avgScale;
+        }
+        if (line.width !== undefined) {
+          scaledLine.width = line.width * scaleX;
+        }
+        if (line.height !== undefined) {
+          scaledLine.height = line.height * scaleY;
+        }
+
         ctx.strokeStyle = line.color;
-        ctx.lineWidth = line.size;
+        ctx.fillStyle = line.color;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.fillStyle = line.color;
-        
-        if (line.type === 'draw') {
+        ctx.lineWidth = scaledLine.size;
+
+        if (scaledLine.type === 'draw') {
           ctx.beginPath();
-          line.points.forEach((pt, i) => {
-            if (i === 0) ctx.moveTo(pt.x, pt.y);
+          scaledLine.points.forEach((pt, index) => {
+            if (index === 0) ctx.moveTo(pt.x, pt.y);
             else ctx.lineTo(pt.x, pt.y);
           });
           ctx.stroke();
-        } else if (line.type === 'arrow' && line.points.length >= 2) {
-          drawTransformedArrow(ctx, line);
-        } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
-          drawCircle(ctx, line.center.x, line.center.y, line.width, line.height, line.color);
-        } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
-          drawSquare(ctx, line.center.x, line.center.y, line.width, line.height, line.color);
+        } else if (scaledLine.type === 'arrow' && scaledLine.points.length >= 2) {
+          drawTransformedArrow(ctx, scaledLine);
+        } else if (
+          scaledLine.type === 'circle' &&
+          scaledLine.center &&
+          scaledLine.width !== undefined &&
+          scaledLine.height !== undefined
+        ) {
+          const scaledThickness = Math.max(2, scaledLine.size);
+          drawCircle(
+            ctx,
+            scaledLine.center.x,
+            scaledLine.center.y,
+            scaledLine.width,
+            scaledLine.height,
+            scaledLine.color,
+            scaledThickness
+          );
+        } else if (
+          scaledLine.type === 'square' &&
+          scaledLine.center &&
+          scaledLine.width !== undefined &&
+          scaledLine.height !== undefined
+        ) {
+          const scaledThickness = Math.max(2, scaledLine.size);
+          drawSquare(
+            ctx,
+            scaledLine.center.x,
+            scaledLine.center.y,
+            scaledLine.width,
+            scaledLine.height,
+            scaledLine.color,
+            scaledThickness
+          );
         }
       });
-    
-      // Use JPEG for better mobile compatibility and smaller file size
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.98);
+
+      ctx.restore();
+
+      const quality = 0.98;
+      const dataUrl = exportCanvas.toDataURL('image/jpeg', quality);
       const byteString = atob(dataUrl.split(",")[1]);
       const mimeString = dataUrl.split(",")[0].split(":")[1].split(";")[0];
     
@@ -723,6 +1077,16 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
       setActionHistory(lastAction.previousActionHistory);
       onCropStateChange(false);
       if (onImageChange) onImageChange(lastAction.previousImage);
+    } else if (lastAction.type === 'delete') {
+      setLines(prev => {
+        // Avoid duplicate insertions if undo triggered repeatedly
+        const alreadyExists = prev.some(line => line.id === lastAction.line.id);
+        if (alreadyExists) {
+          return prev;
+        }
+        return [...prev, lastAction.line];
+      });
+      setSelectedArrowId(lastAction.line.id);
     } else {
       // Handle undo for drawing actions (arrow, circle, square)
       setLines(prev => prev.filter(line => line.id !== lastAction.id));
@@ -789,8 +1153,11 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
           onCropStateChange(false);
           if (onImageChange) onImageChange(croppedImage);
         };
-        croppedImage.src = canvas.toDataURL();
+        croppedImage.src = canvas.toDataURL("image/jpeg", 0.98);
       }
+    } else if (lastRedoAction.type === 'delete') {
+      setLines(prev => prev.filter(line => line.id !== lastRedoAction.line.id));
+      setSelectedArrowId(null);
     } else if (lastRedoAction.type !== 'rotate') {
       // Handle redo for drawing actions (arrow, circle, square) only
       // Skip rotation actions (they should never be in redoHistory anymore)
@@ -799,6 +1166,42 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     
     setActionHistory(prev => [...prev, lastRedoAction]);
     setRedoHistory(prev => prev.slice(0, -1));
+  };
+
+  const deleteSelectedAnnotation = () => {
+    if (selectedArrowId === null) {
+      return;
+    }
+
+    const targetLine = lines.find(line => line.id === selectedArrowId);
+    if (!targetLine) {
+      return;
+    }
+
+    const updatedLines = lines.filter(line => line.id !== targetLine.id);
+    setLines(updatedLines);
+    setSelectedArrowId(null);
+    setHoveredArrowId(null);
+
+    const deleteAction: DeleteAction = {
+      type: 'delete',
+      id: targetLine.id,
+      line: targetLine,
+    };
+    saveAction(deleteAction);
+
+    if (onAnnotationsChange) {
+      onAnnotationsChange(updatedLines);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        const file = exportEditedFile();
+        if (file && onEditedFile) {
+          onEditedFile(file);
+        }
+      });
+    }
   };
 
   const applyCrop = () => {
@@ -874,7 +1277,7 @@ const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
       onEditedFile?.(file);
       onImageChange?.(croppedImage);
     };
-    croppedImage.src = canvas.toDataURL();
+    croppedImage.src = canvas.toDataURL("image/jpeg", 0.98);
   };
 
   const rotateImage = useCallback(() => {
@@ -987,18 +1390,18 @@ const captureImage = () => {
 
         if (onImageChange) onImageChange(img);
 
-        // ✅ Create a File from canvas and save in editedFile
+        // ✅ Create a File from canvas and save in editedFile with high quality
         canvas.toBlob((blob) => {
           if (blob) {
             const file = new File([blob], "captured-image.jpg", { type: "image/jpeg" });
             setEditedFile(file);
             if (onEditedFile) onEditedFile(file);
           }
-        }, "image/jpeg", 0.98);
+        }, "image/jpeg", 0.95); // Yüksek kalite
 
         stopCamera();
       };
-      img.src = canvas.toDataURL("image/jpeg", 0.98);
+      img.src = canvas.toDataURL("image/jpeg", 0.95); // Yüksek kalite
     }
   }
 };
@@ -1033,18 +1436,24 @@ const captureImage = () => {
       rotateImage();
     };
 
+    const handleDeleteAnnotation = () => {
+      deleteSelectedAnnotation();
+    };
+
     window.addEventListener('undoAction', handleUndoAction);
     window.addEventListener('redoAction', handleRedoAction);
     window.addEventListener('applyCrop', handleApplyCrop);
     window.addEventListener('rotateImage', handleRotateImage);
+    window.addEventListener('deleteSelectedAnnotation', handleDeleteAnnotation);
 
     return () => {
       window.removeEventListener('undoAction', handleUndoAction);
       window.removeEventListener('redoAction', handleRedoAction);
       window.removeEventListener('applyCrop', handleApplyCrop);
       window.removeEventListener('rotateImage', handleRotateImage);
+      window.removeEventListener('deleteSelectedAnnotation', handleDeleteAnnotation);
     };
-  }, [actionHistory, redoHistory, cropFrame, rotateImage]);
+  }, [actionHistory, redoHistory, cropFrame, rotateImage, deleteSelectedAnnotation]);
 
   const handleColorChange = (newColor: string) => {
     setDrawingColor(newColor);
@@ -1085,6 +1494,36 @@ const captureImage = () => {
       setIsDrawing(true);
       return;
     } else if (activeMode === 'none') {
+      // First, check if user clicked any arrow's bounding-box corner handles (even if not over arrow body)
+      {
+        const tolerance = 20;
+        const padding = 10;
+        for (const ln of lines) {
+          if (ln.type !== 'arrow' || ln.points.length < 2) continue;
+          const from = ln.points[0];
+          const to = ln.points[ln.points.length - 1];
+          const minX = Math.min(from.x, to.x);
+          const maxX = Math.max(from.x, to.x);
+          const minY = Math.min(from.y, to.y);
+          const maxY = Math.max(from.y, to.y);
+          const corners = [
+            { x: minX - padding, y: minY - padding, name: 'top-left' as const },
+            { x: maxX + padding, y: minY - padding, name: 'top-right' as const },
+            { x: maxX + padding, y: maxY + padding, name: 'bottom-right' as const },
+            { x: minX - padding, y: maxY + padding, name: 'bottom-left' as const },
+          ];
+          const hit = corners.find(c => Math.hypot(mouseX - c.x, mouseY - c.y) <= tolerance);
+          if (hit) {
+            setSelectedArrowId(ln.id);
+            setIsResizingArrow(true);
+            setInteractionMode('resize');
+            setArrowResizeEnd(hit.name);
+            const center = getArrowCenter(ln);
+            setInitialShapeData({ from: { ...from }, to: { ...to }, center });
+            return;
+          }
+        }
+      }
       // In none mode, allow interaction with any existing shape
       const clickedShape = lines.find(line => {
         if (line.type === 'arrow') {
@@ -1108,13 +1547,141 @@ const captureImage = () => {
         setSelectedArrowId(clickedShape.id);
         
         if (clickedShape.type === 'arrow') {
-          setIsDraggingArrow(true);
+          // Rotation handle removed; skip rotate detection
           const center = getArrowCenter(clickedShape);
-          setDragArrowOffset({ x: mouseX - center.x, y: mouseY - center.y });
+
+          // Check if user clicked on bounding box corner handles (4 corners like circle/square)
+          const from = clickedShape.points[0];
+          const to = clickedShape.points[clickedShape.points.length - 1];
+          const minX = Math.min(from.x, to.x);
+          const maxX = Math.max(from.x, to.x);
+          const minY = Math.min(from.y, to.y);
+          const maxY = Math.max(from.y, to.y);
+          const padding = 10;
+          
+          const cornerHandles = [
+            { x: minX - padding, y: minY - padding, name: 'top-left' },
+            { x: maxX + padding, y: minY - padding, name: 'top-right' },
+            { x: maxX + padding, y: maxY + padding, name: 'bottom-right' },
+            { x: minX - padding, y: maxY + padding, name: 'bottom-left' }
+          ];
+          
+          const tolerance = 20;
+          const clickedHandle = cornerHandles.find(h => 
+            Math.hypot(mouseX - h.x, mouseY - h.y) <= tolerance
+          );
+          
+          if (clickedHandle) {
+            setIsResizingArrow(true);
+            setInteractionMode('resize');
+            setArrowResizeEnd(clickedHandle.name as 'start' | 'end');
+            setInitialShapeData({
+              from: { ...from },
+              to: { ...to },
+              center: { ...center }
+            });
+            return;
+          }
+          
+          // Default to moving the arrow (click anywhere on body/head)
+          setIsDraggingArrow(true);
+          const c = getArrowCenter(clickedShape);
+          setDragArrowOffset({ x: mouseX - c.x, y: mouseY - c.y });
           setInteractionMode('move');
-        } else {
-          // For circles and squares, just move them
+        } else if (clickedShape.type === 'circle' || clickedShape.type === 'square') {
+          // For circles and squares, check for resize handles FIRST
           const center = clickedShape.center || clickedShape.points[0];
+          const tolerance = 20;
+
+          console.log('🔵 Circle/Square clicked in none mode:', {
+            type: clickedShape.type,
+            id: clickedShape.id,
+            center,
+            width: clickedShape.width,
+            height: clickedShape.height
+          });
+
+          if (clickedShape.type === 'circle' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
+            const handles = [
+              { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
+              { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+            ];
+
+            console.log('🔍 Checking circle handles:', {
+              mouseX, mouseY,
+              handles: handles.map(h => ({
+                name: h.name,
+                x: h.x,
+                y: h.y,
+                distance: Math.sqrt(Math.pow(mouseX - h.x, 2) + Math.pow(mouseY - h.y, 2))
+              }))
+            });
+
+            const clickedHandle = handles.find(handle =>
+              Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+            );
+
+            if (clickedHandle) {
+              console.log('✅ Circle resize handle clicked:', clickedHandle.name);
+              setIsResizingShape(true);
+              setResizeHandle(clickedHandle.name);
+              setInitialShapeData({
+                center: center,
+                width: clickedShape.width,
+                height: clickedShape.height,
+                id: clickedShape.id
+              });
+              return;
+            } else {
+              console.log('ℹ️ No circle handle clicked, will move instead');
+            }
+          } else if (clickedShape.type === 'square' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
+            const handles = [
+              { x: center.x - clickedShape.width/2 - 5, y: center.y - clickedShape.height/2 - 5, name: 'top-left' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y - clickedShape.height/2 - 5, name: 'top-right' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-right' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-left' },
+              { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
+              { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+            ];
+
+            console.log('🔍 Checking square handles:', {
+              mouseX, mouseY,
+              handles: handles.map(h => ({
+                name: h.name,
+                x: h.x,
+                y: h.y,
+                distanceX: Math.abs(mouseX - h.x),
+                distanceY: Math.abs(mouseY - h.y)
+              }))
+            });
+
+            const clickedHandle = handles.find(handle =>
+              Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+            );
+
+            if (clickedHandle) {
+              console.log('✅ Square resize handle clicked:', clickedHandle.name);
+              setIsResizingShape(true);
+              setResizeHandle(clickedHandle.name);
+              setInitialShapeData({
+                center: center,
+                width: clickedShape.width,
+                height: clickedShape.height,
+                id: clickedShape.id
+              });
+              return;
+            } else {
+              console.log('ℹ️ No square handle clicked, will move instead');
+            }
+          }
+
+          // If no resize handle was clicked, start moving the shape
+          console.log('🚚 Starting move operation for', clickedShape.type);
           setIsMovingShape(true);
           setMoveOffset({
             x: mouseX - center.x,
@@ -1136,18 +1703,166 @@ const captureImage = () => {
         return;
       }
     } else if (activeMode === 'arrow') {
-      // Check if clicking on an existing arrow with increased selection area
-      const clickedArrow = lines.find(line => 
-        line.type === 'arrow' && isPointInArrow(line, { x: mouseX, y: mouseY }, 25)
-      );
-      
-      if (clickedArrow) {
-        setSelectedArrowId(clickedArrow.id);
-        setIsDraggingArrow(true);
-        const center = getArrowCenter(clickedArrow);
-        setDragArrowOffset({ x: mouseX - center.x, y: mouseY - center.y });
-        setInteractionMode('move');
-        return;
+      // First, check if user clicked any arrow's bounding-box corner handles (even if not over arrow body)
+      {
+        const tolerance = 20;
+        const padding = 10;
+        for (const ln of lines) {
+          if (ln.type !== 'arrow' || ln.points.length < 2) continue;
+          const from = ln.points[0];
+          const to = ln.points[ln.points.length - 1];
+          const minX = Math.min(from.x, to.x);
+          const maxX = Math.max(from.x, to.x);
+          const minY = Math.min(from.y, to.y);
+          const maxY = Math.max(from.y, to.y);
+          const corners = [
+            { x: minX - padding, y: minY - padding, name: 'top-left' as const },
+            { x: maxX + padding, y: minY - padding, name: 'top-right' as const },
+            { x: maxX + padding, y: maxY + padding, name: 'bottom-right' as const },
+            { x: minX - padding, y: maxY + padding, name: 'bottom-left' as const },
+          ];
+          const hit = corners.find(c => Math.hypot(mouseX - c.x, mouseY - c.y) <= tolerance);
+          if (hit) {
+            setSelectedArrowId(ln.id);
+            setIsResizingArrow(true);
+            setInteractionMode('resize');
+            setArrowResizeEnd(hit.name);
+            const center = getArrowCenter(ln);
+            setInitialShapeData({ from: { ...from }, to: { ...to }, center });
+            return;
+          }
+        }
+      }
+      // Check if clicking on any existing shape (universal selection)
+      const clickedShape = lines.find(line => {
+        if (line.type === 'arrow') {
+          return isPointInArrow(line, { x: mouseX, y: mouseY }, 25);
+        } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
+          const dx = (mouseX - line.center.x) / (line.width / 2);
+          const dy = (mouseY - line.center.y) / (line.height / 2);
+          return (dx * dx + dy * dy) <= 1.2;
+        } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
+          const left = line.center.x - line.width / 2;
+          const right = line.center.x + line.width / 2;
+          const top = line.center.y - line.height / 2;
+          const bottom = line.center.y + line.height / 2;
+          return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
+        }
+        return false;
+      });
+
+      if (clickedShape) {
+        setSelectedArrowId(clickedShape.id);
+
+        if (clickedShape.type === 'arrow') {
+          // Rotation handle removed; skip rotate detection
+          const center = getArrowCenter(clickedShape);
+
+          // Check for corner handle resize (4 corners like circle/square)
+          const from = clickedShape.points[0];
+          const to = clickedShape.points[clickedShape.points.length - 1];
+          const minX = Math.min(from.x, to.x);
+          const maxX = Math.max(from.x, to.x);
+          const minY = Math.min(from.y, to.y);
+          const maxY = Math.max(from.y, to.y);
+          const padding = 10;
+
+          const cornerHandles = [
+            { x: minX - padding, y: minY - padding, name: 'top-left' },
+            { x: maxX + padding, y: minY - padding, name: 'top-right' },
+            { x: maxX + padding, y: maxY + padding, name: 'bottom-right' },
+            { x: minX - padding, y: maxY + padding, name: 'bottom-left' }
+          ];
+
+          const tolerance = 20;
+          const clickedHandle = cornerHandles.find(h =>
+            Math.hypot(mouseX - h.x, mouseY - h.y) <= tolerance
+          );
+
+          if (clickedHandle) {
+            setIsResizingArrow(true);
+            setInteractionMode('resize');
+            setArrowResizeEnd(clickedHandle.name as 'start' | 'end');
+            setInitialShapeData({
+              from: { ...from },
+              to: { ...to },
+              center: { ...center }
+            });
+            return;
+          }
+
+          // Otherwise move by dragging anywhere on the arrow
+          setIsDraggingArrow(true);
+          const c = getArrowCenter(clickedShape);
+          setDragArrowOffset({ x: mouseX - c.x, y: mouseY - c.y });
+          setInteractionMode('move');
+          return;
+        } else if (clickedShape.type === 'circle' || clickedShape.type === 'square') {
+          // For circles and squares, check for resize handles
+          const center = clickedShape.center || clickedShape.points[0];
+          const handleSize = 4;
+          const tolerance = 20;
+
+          if (clickedShape.type === 'circle' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
+            const handles = [
+              { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
+              { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+            ];
+
+            const clickedHandle = handles.find(handle =>
+              Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+            );
+
+            if (clickedHandle) {
+              setIsResizingShape(true);
+              setResizeHandle(clickedHandle.name);
+              setInitialShapeData({
+                center: center,
+                width: clickedShape.width,
+                height: clickedShape.height,
+                id: clickedShape.id
+              });
+              return;
+            }
+          } else if (clickedShape.type === 'square' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
+            const handles = [
+              { x: center.x - clickedShape.width/2 - 5, y: center.y - clickedShape.height/2 - 5, name: 'top-left' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y - clickedShape.height/2 - 5, name: 'top-right' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-right' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-left' },
+              { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
+              { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+            ];
+
+            const clickedHandle = handles.find(handle =>
+              Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+            );
+
+            if (clickedHandle) {
+              setIsResizingShape(true);
+              setResizeHandle(clickedHandle.name);
+              setInitialShapeData({
+                center: center,
+                width: clickedShape.width,
+                height: clickedShape.height,
+                id: clickedShape.id
+              });
+              return;
+            }
+          }
+
+          // If no resize handle was clicked, start moving the shape
+          setIsMovingShape(true);
+          setMoveOffset({
+            x: mouseX - center.x,
+            y: mouseY - center.y
+          });
+          return;
+        }
       } else {
         // Clicked on empty area - deselect any currently selected arrow and start drawing new one
         setSelectedArrowId(null);
@@ -1157,14 +1872,16 @@ const captureImage = () => {
         setCurrentArrowSize(3); // Reset arrow size when starting to draw
       }
     } else if (activeMode === 'circle' || activeMode === 'square') {
-      // Check if clicking on an existing shape
+      // Check if clicking on any existing shape (universal selection)
       const clickedShape = lines.find(line => {
-        if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
+        if (line.type === 'arrow') {
+          return isPointInArrow(line, { x: mouseX, y: mouseY }, 25);
+        } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
           // Check if point is inside ellipse or within resize handle area
           const dx = (mouseX - line.center.x) / (line.width / 2);
           const dy = (mouseY - line.center.y) / (line.height / 2);
           const distance = dx * dx + dy * dy;
-          
+
           // Include resize handle area (extend the selection area)
           const handleArea = 15; // Extra area around the shape for handles
           const extendedWidth = line.width + handleArea;
@@ -1172,7 +1889,7 @@ const captureImage = () => {
           const extendedDx = (mouseX - line.center.x) / (extendedWidth / 2);
           const extendedDy = (mouseY - line.center.y) / (extendedHeight / 2);
           const extendedDistance = extendedDx * extendedDx + extendedDy * extendedDy;
-          
+
           return distance <= 1.2 || extendedDistance <= 1.0; // Original shape or extended area
         } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
           const left = line.center.x - line.width / 2;
@@ -1183,74 +1900,119 @@ const captureImage = () => {
         }
         return false;
       });
-      
+
       if (clickedShape) {
         setSelectedArrowId(clickedShape.id);
-        
-        // Check if clicking on a resize handle
-        const center = clickedShape.center || clickedShape.points[0];
-        const handleSize = 4; // Smaller for less intrusive mobile experience
-        const tolerance = 20; // Wider tolerance for easier clicking on smaller handles
-        
-        if (clickedShape.type === 'circle' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
-          const handles = [
-            { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
-            { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
-            { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
-            { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+
+        if (clickedShape.type === 'arrow') {
+          // Handle arrow selection in circle/square mode
+          const center = getArrowCenter(clickedShape);
+
+          // Check for corner handle resize (4 corners like circle/square)
+          const from = clickedShape.points[0];
+          const to = clickedShape.points[clickedShape.points.length - 1];
+          const minX = Math.min(from.x, to.x);
+          const maxX = Math.max(from.x, to.x);
+          const minY = Math.min(from.y, to.y);
+          const maxY = Math.max(from.y, to.y);
+          const padding = 10;
+
+          const cornerHandles = [
+            { x: minX - padding, y: minY - padding, name: 'top-left' },
+            { x: maxX + padding, y: minY - padding, name: 'top-right' },
+            { x: maxX + padding, y: maxY + padding, name: 'bottom-right' },
+            { x: minX - padding, y: maxY + padding, name: 'bottom-left' }
           ];
-          
-          const clickedHandle = handles.find(handle => 
-            Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+
+          const tolerance = 20;
+          const clickedHandle = cornerHandles.find(h =>
+            Math.hypot(mouseX - h.x, mouseY - h.y) <= tolerance
           );
-          
+
           if (clickedHandle) {
-            setIsResizingShape(true);
-            setResizeHandle(clickedHandle.name);
+            setIsResizingArrow(true);
+            setInteractionMode('resize');
+            setArrowResizeEnd(clickedHandle.name as 'start' | 'end');
             setInitialShapeData({
-              center: center,
-              width: clickedShape.width,
-              height: clickedShape.height,
-              id: clickedShape.id
+              from: { ...from },
+              to: { ...to },
+              center: { ...center }
             });
             return;
           }
-        } else if (clickedShape.type === 'square' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
-          const handles = [
-            { x: center.x - clickedShape.width/2 - 5, y: center.y - clickedShape.height/2 - 5, name: 'top-left' },
-            { x: center.x + clickedShape.width/2 + 5, y: center.y - clickedShape.height/2 - 5, name: 'top-right' },
-            { x: center.x + clickedShape.width/2 + 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-right' },
-            { x: center.x - clickedShape.width/2 - 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-left' },
-            { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
-            { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
-            { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
-            { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
-          ];
-          
-          const clickedHandle = handles.find(handle => 
-            Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
-          );
-          
-          if (clickedHandle) {
-            setIsResizingShape(true);
-            setResizeHandle(clickedHandle.name);
-            setInitialShapeData({
-              center: center,
-              width: clickedShape.width,
-              height: clickedShape.height,
-              id: clickedShape.id
-            });
-            return;
+
+          // Otherwise move by dragging anywhere on the arrow
+          setIsDraggingArrow(true);
+          const c = getArrowCenter(clickedShape);
+          setDragArrowOffset({ x: mouseX - c.x, y: mouseY - c.y });
+          setInteractionMode('move');
+          return;
+        } else {
+          // Check if clicking on a resize handle for circles/squares
+          const center = clickedShape.center || clickedShape.points[0];
+          const handleSize = 4; // Smaller for less intrusive mobile experience
+          const tolerance = 20; // Wider tolerance for easier clicking on smaller handles
+
+          if (clickedShape.type === 'circle' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
+            const handles = [
+              { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
+              { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+            ];
+
+            const clickedHandle = handles.find(handle =>
+              Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+            );
+
+            if (clickedHandle) {
+              setIsResizingShape(true);
+              setResizeHandle(clickedHandle.name);
+              setInitialShapeData({
+                center: center,
+                width: clickedShape.width,
+                height: clickedShape.height,
+                id: clickedShape.id
+              });
+              return;
+            }
+          } else if (clickedShape.type === 'square' && clickedShape.width !== undefined && clickedShape.height !== undefined) {
+            const handles = [
+              { x: center.x - clickedShape.width/2 - 5, y: center.y - clickedShape.height/2 - 5, name: 'top-left' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y - clickedShape.height/2 - 5, name: 'top-right' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-right' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y + clickedShape.height/2 + 5, name: 'bottom-left' },
+              { x: center.x, y: center.y - clickedShape.height/2 - 5, name: 'top' },
+              { x: center.x + clickedShape.width/2 + 5, y: center.y, name: 'right' },
+              { x: center.x, y: center.y + clickedShape.height/2 + 5, name: 'bottom' },
+              { x: center.x - clickedShape.width/2 - 5, y: center.y, name: 'left' }
+            ];
+
+            const clickedHandle = handles.find(handle =>
+              Math.abs(mouseX - handle.x) < tolerance && Math.abs(mouseY - handle.y) < tolerance
+            );
+
+            if (clickedHandle) {
+              setIsResizingShape(true);
+              setResizeHandle(clickedHandle.name);
+              setInitialShapeData({
+                center: center,
+                width: clickedShape.width,
+                height: clickedShape.height,
+                id: clickedShape.id
+              });
+              return;
+            }
           }
+
+          // If no resize handle was clicked, start moving the shape
+          setIsMovingShape(true);
+          setMoveOffset({
+            x: mouseX - center.x,
+            y: mouseY - center.y
+          });
+          return;
         }
-        
-        // If no resize handle was clicked, start moving the shape
-        setIsMovingShape(true);
-        setMoveOffset({
-          x: mouseX - center.x,
-          y: mouseY - center.y
-        });
-        return;
       }
       
       // Deselect any currently selected shape when clicking on empty space
@@ -1277,6 +2039,59 @@ const captureImage = () => {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     
+    // Handle arrow resizing globally regardless of mode
+    if (isResizingArrow && selectedArrowId !== null && arrowResizeEnd && initialShapeData) {
+      // Throttle setLines to prevent "Maximum update depth exceeded"
+      // Only update every 3rd frame (~20fps instead of 60fps)
+      if (frameCounterRef.current++ % 3 === 0) {
+        setLines(prev => prev.map(line => {
+          if (line.id !== selectedArrowId) return line;
+          if (line.points.length < 2) return line;
+
+          const initialFrom = initialShapeData.from!;
+          const initialTo = initialShapeData.to!;
+
+          // Calculate which corner each point is at
+          const minX = Math.min(initialFrom.x, initialTo.x);
+          const maxX = Math.max(initialFrom.x, initialTo.x);
+          const minY = Math.min(initialFrom.y, initialTo.y);
+          const maxY = Math.max(initialFrom.y, initialTo.y);
+          const padding = 10;
+
+          // Define the 4 bounding box corners
+          const corners = {
+            'top-left': { x: minX - padding, y: minY - padding },
+            'top-right': { x: maxX + padding, y: minY - padding },
+            'bottom-right': { x: maxX + padding, y: maxY + padding },
+            'bottom-left': { x: minX - padding, y: maxY + padding }
+          };
+
+          // Find which corner we're dragging
+          const draggedCorner = corners[arrowResizeEnd as keyof typeof corners];
+          if (!draggedCorner) return line;
+
+          // Calculate distance from each arrow endpoint to the dragged corner
+          const distFromToCorner = Math.hypot(initialFrom.x - draggedCorner.x, initialFrom.y - draggedCorner.y);
+          const distToToCorner = Math.hypot(initialTo.x - draggedCorner.x, initialTo.y - draggedCorner.y);
+
+          // Move the endpoint that's closest to the corner being dragged
+          let newFrom = { ...initialFrom };
+          let newTo = { ...initialTo };
+
+          if (distFromToCorner < distToToCorner) {
+            // from is closer to the dragged corner, so move from
+            newFrom = { x: mouseX, y: mouseY };
+          } else {
+            // to is closer to the dragged corner, so move to
+            newTo = { x: mouseX, y: mouseY };
+          }
+
+          return { ...line, points: [newFrom, newTo] };
+        }));
+      }
+      return;
+    }
+
     
     // Check if we've dragged enough to consider it a drag
     if (dragStartPoint && !hasDragged) {
@@ -1288,71 +2103,48 @@ const captureImage = () => {
       }
     }
 
-    if (activeMode === 'crop' && cropFrame) {
-      if (resizingCropHandle) {
-        setCropFrame(prev => resizeObj(prev!, resizingCropHandle, mouseX, mouseY));
-        return;
-      }
-      if (isDraggingCrop) {
-        setCropFrame(prev => ({
-          ...prev!,
-          x: mouseX - dragCropOffset.x,
-          y: mouseY - dragCropOffset.y,
-        }));
-        return;
-      }
-      if (isDrawing) {
-        setCropFrame(prev => ({
-          ...prev!,
-          w: mouseX - prev!.x,
-          h: mouseY - prev!.y,
-        }));
-        return;
-      }
-    } else if (activeMode === 'none') {
-      // Handle shape interactions in none mode
-      if (isDraggingArrow && selectedArrowId !== null) {
-        const selectedArrow = lines.find(line => line.id === selectedArrowId);
-        if (selectedArrow) {
-          const center = getArrowCenter(selectedArrow);
-          const distanceFromCenter = Math.sqrt(
-            Math.pow(mouseX - center.x, 2) + Math.pow(mouseY - center.y, 2)
-          );
-          
-          // Check if user is trying to rotate (cursor is far from center)
-          if (distanceFromCenter > 40 && interactionMode === 'move') {
-            setInteractionMode('rotate');
-            setIsRotatingArrow(true);
-            setIsDraggingArrow(false);
+    // UNIVERSAL SHAPE INTERACTIONS - Handle these globally regardless of active mode
+    // This allows dragging/resizing any shape type in any mode
+
+    // Handle arrow dragging with smooth movement (when isDraggingArrow is set)
+    if (isDraggingArrow && selectedArrowId !== null) {
+      const selectedArrow = lines.find(line => line.id === selectedArrowId);
+      if (selectedArrow) {
+        const center = getArrowCenter(selectedArrow);
+        if (interactionMode === 'move') {
+          const newCenter = { x: mouseX - dragArrowOffset.x, y: mouseY - dragArrowOffset.y };
+          const oldCenter = getArrowCenter(selectedArrow);
+          const deltaX = newCenter.x - oldCenter.x;
+          const deltaY = newCenter.y - oldCenter.y;
+
+          // Throttle setLines to prevent "Maximum update depth exceeded"
+          // Only update every 3rd frame (~20fps instead of 60fps)
+          if (frameCounterRef.current++ % 3 === 0) {
+            setLines(prev => prev.map(line => {
+              if (line.id !== selectedArrowId) return line;
+              return {
+                ...line,
+                points: line.points.map(point => ({
+                  x: point.x + deltaX,
+                  y: point.y + deltaY
+                }))
+              };
+            }));
           }
-          
-          if (interactionMode === 'move') {
-            const newCenter = { x: mouseX - dragArrowOffset.x, y: mouseY - dragArrowOffset.y };
-            const oldCenter = getArrowCenter(selectedArrow);
-            const deltaX = newCenter.x - oldCenter.x;
-            const deltaY = newCenter.y - oldCenter.y;
-            
-            // Use ultra-smooth movement with requestAnimationFrame
-            pendingMovementRef.current = {
-              id: selectedArrowId,
-              deltaX,
-              deltaY
-            };
-            
-            if (!isMovingRef.current) {
-              isMovingRef.current = true;
-            }
-          } else if (interactionMode === 'rotate') {
-            // Faster rotation with less easing for more responsive feel
-            const angle = Math.atan2(mouseY - center.y, mouseX - center.x);
-            const currentRotation = selectedArrow.rotation || 0;
-            const rotationDelta = angle - currentRotation;
-            
-            // Reduced easing for faster rotation (from 0.3 to 0.5)
-            const easedRotation = currentRotation + rotationDelta * 0.5;
-            
-            setLines(prev => prev.map(line => 
-                line.id === selectedArrowId 
+        } else if (interactionMode === 'rotate') {
+          // Faster rotation with less easing for more responsive feel
+          const angle = Math.atan2(mouseY - center.y, mouseX - center.x);
+          const currentRotation = selectedArrow.rotation || 0;
+          const rotationDelta = angle - currentRotation;
+
+          // Reduced easing for faster rotation (from 0.3 to 0.5)
+          const easedRotation = currentRotation + rotationDelta * 0.5;
+
+          // Throttle setLines to prevent "Maximum update depth exceeded"
+          // Only update every 3rd frame (~20fps instead of 60fps)
+          if (frameCounterRef.current++ % 3 === 0) {
+            setLines(prev => prev.map(line =>
+                line.id === selectedArrowId
                   ? {
                       ...line,
                       rotation: easedRotation,
@@ -1362,12 +2154,18 @@ const captureImage = () => {
             ));
           }
         }
-        return;
-      } else if (isMovingShape && selectedArrowId !== null) {
-        // Handle shape moving in none mode
-        const newCenterX = mouseX - moveOffset.x;
-        const newCenterY = mouseY - moveOffset.y;
-        
+      }
+      return;
+    }
+
+    // Handle shape moving (circles, squares, and arrows when using isMovingShape)
+    if (isMovingShape && selectedArrowId !== null) {
+      const newCenterX = mouseX - moveOffset.x;
+      const newCenterY = mouseY - moveOffset.y;
+
+      // Throttle setLines to prevent "Maximum update depth exceeded"
+      // Only update every 3rd frame (~20fps instead of 60fps)
+      if (frameCounterRef.current++ % 3 === 0) {
         setLines(prev => {
           const updatedLines = prev.map(line => {
             if (line.id === selectedArrowId) {
@@ -1394,7 +2192,7 @@ const captureImage = () => {
                 const oldCenter = getArrowCenter(line);
                 const deltaX = newCenterX - oldCenter.x;
                 const deltaY = newCenterY - oldCenter.y;
-                
+
                 return {
                   ...line,
                   points: line.points.map(point => ({
@@ -1406,124 +2204,29 @@ const captureImage = () => {
             }
             return line;
           });
-          
+
           return updatedLines;
         });
-        return;
-      } else {
-        // Check for hover effects on shapes in none mode
-        const hoveredShape = lines.find(line => {
-          if (line.type === 'arrow') {
-            return isPointInArrow(line, { x: mouseX, y: mouseY }, 25);
-          } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
-            const dx = (mouseX - line.center.x) / (line.width / 2);
-            const dy = (mouseY - line.center.y) / (line.height / 2);
-            const distance = dx * dx + dy * dy;
-            return distance <= 1.2;
-          } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
-            const left = line.center.x - line.width / 2;
-            const right = line.center.x + line.width / 2;
-            const top = line.center.y - line.height / 2;
-            const bottom = line.center.y + line.height / 2;
-            return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
-          }
-          return false;
-        });
-        setHoveredArrowId(hoveredShape ? hoveredShape.id : null);
       }
-    } else if (activeMode === 'arrow') {
-      if (isDraggingArrow && selectedArrowId !== null) {
-        const selectedArrow = lines.find(line => line.id === selectedArrowId);
-        if (selectedArrow) {
-          const center = getArrowCenter(selectedArrow);
-          const distanceFromCenter = Math.sqrt(
-            Math.pow(mouseX - center.x, 2) + Math.pow(mouseY - center.y, 2)
-          );
-          
-          // Check if user is trying to rotate (cursor is far from center)
-          if (distanceFromCenter > 40 && interactionMode === 'move') {
-            setInteractionMode('rotate');
-            setIsRotatingArrow(true);
-            setIsDraggingArrow(false);
-          }
-          
-          if (interactionMode === 'move') {
-            const newCenter = { x: mouseX - dragArrowOffset.x, y: mouseY - dragArrowOffset.y };
-            const oldCenter = getArrowCenter(selectedArrow);
-            const deltaX = newCenter.x - oldCenter.x;
-            const deltaY = newCenter.y - oldCenter.y;
-            
-            // Use ultra-smooth movement with requestAnimationFrame
-            pendingMovementRef.current = {
-              id: selectedArrowId,
-              deltaX,
-              deltaY
-            };
-            
-            if (!isMovingRef.current) {
-              isMovingRef.current = true;
-            }
-          } else if (interactionMode === 'rotate') {
-            // Faster rotation with less easing for more responsive feel
-            const angle = Math.atan2(mouseY - center.y, mouseX - center.x);
-            const currentRotation = selectedArrow.rotation || 0;
-            const rotationDelta = angle - currentRotation;
-            
-            // Reduced easing for faster rotation (from 0.3 to 0.5)
-            const easedRotation = currentRotation + rotationDelta * 0.5;
-            
-            setLines(prev => prev.map(line => 
-                line.id === selectedArrowId 
-                  ? {
-                      ...line,
-                      rotation: easedRotation,
-                      points: line.points.map(point => rotatePoint(point, center, easedRotation - currentRotation))
-                    }
-                  : line
-            ));
-          }
-        }
-        return;
-      }
-      
-      if (isDrawing) {
-        setCurrentLine(prev => [...prev!, { x: mouseX, y: mouseY }]);
-        
-        // Calculate and update arrow size based on distance
-        // In the handleMouseMove function, replace the size calculation:
-// Calculate and update arrow size based on distance
-if (currentLine && currentLine.length > 1) {
-  const from = currentLine[0];
-  const to = { x: mouseX, y: mouseY };
-  const distance = Math.sqrt(Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2));
-  
-  // Extremely subtle size increase (from 3 to 6 over the entire drawing area)
-  const newSize = Math.min(0.1, Math.max(3, 3 + distance / 150));
-  setCurrentArrowSize(newSize);
-}
-      } else {  
-        // Check for hover effects on arrows with increased selection area
-        const hoveredArrow = lines.find(line => 
-          line.type === 'arrow' && isPointInArrow(line, { x: mouseX, y: mouseY }, 25)
-        );
-        setHoveredArrowId(hoveredArrow ? hoveredArrow.id : null);
-      }
-    } else if (isResizingShape && selectedArrowId !== null && initialShapeData) {
-      // Handle shape resizing
+      return;
+    }
+
+    // Handle shape resizing (circles and squares)
+    if (isResizingShape && selectedArrowId !== null && initialShapeData) {
       const center = initialShapeData.center;
-      
+
       // Find the shape to determine its type
       const shape = lines.find(line => line.id === initialShapeData.id);
-      
+
       if (shape?.type === 'circle' && initialShapeData.width !== undefined && initialShapeData.height !== undefined) {
         // Circle resizing
         let newWidth = initialShapeData.width;
         let newHeight = initialShapeData.height;
-        
+
         // Calculate the distance from center to mouse
         const deltaX = mouseX - center.x;
         const deltaY = mouseY - center.y;
-        
+
         switch (resizeHandle) {
           case 'top':
             // Only resize height
@@ -1546,22 +2249,25 @@ if (currentLine && currentLine.length > 1) {
             newHeight = initialShapeData.height; // Keep original height
             break;
         }
-        
-        setLines(prev => {
-          const updatedLines = prev.map(line => 
-            line.id === initialShapeData.id 
-              ? { ...line, width: newWidth, height: newHeight }
-              : line
-          );
-          
-          
-          return updatedLines;
-        });
+
+        // Throttle setLines to prevent "Maximum update depth exceeded"
+        // Only update every 3rd frame (~20fps instead of 60fps)
+        if (frameCounterRef.current++ % 3 === 0) {
+          setLines(prev => {
+            const updatedLines = prev.map(line =>
+              line.id === initialShapeData.id
+                ? { ...line, width: newWidth, height: newHeight }
+                : line
+            );
+
+            return updatedLines;
+          });
+        }
       } else if (shape?.type === 'square' && initialShapeData.width !== undefined && initialShapeData.height !== undefined) {
         // Square resizing
         let newWidth = initialShapeData.width;
         let newHeight = initialShapeData.height;
-        
+
         switch (resizeHandle) {
           case 'top-left':
             newWidth = Math.max(20, center.x - mouseX + initialShapeData.width / 2);
@@ -1592,67 +2298,144 @@ if (currentLine && currentLine.length > 1) {
             newWidth = Math.max(20, center.x - mouseX + initialShapeData.width / 2);
             break;
         }
-        
-        setLines(prev => {
-          const updatedLines = prev.map(line => 
-            line.id === initialShapeData.id 
-              ? { ...line, width: newWidth, height: newHeight }
-              : line
-          );
-          
-          
-          return updatedLines;
-        });
+
+        // Throttle setLines to prevent "Maximum update depth exceeded"
+        // Only update every 3rd frame (~20fps instead of 60fps)
+        if (frameCounterRef.current++ % 3 === 0) {
+          setLines(prev => {
+            const updatedLines = prev.map(line =>
+              line.id === initialShapeData.id
+                ? { ...line, width: newWidth, height: newHeight }
+                : line
+            );
+
+            return updatedLines;
+          });
+        }
       }
       return;
-    } else if (isMovingShape && selectedArrowId !== null) {
-      // Handle shape moving
-      const newCenterX = mouseX - moveOffset.x;
-      const newCenterY = mouseY - moveOffset.y;
-      
-      setLines(prev => {
-        const updatedLines = prev.map(line => {
-          if (line.id === selectedArrowId) {
-            if (line.type === 'circle') {
-              return {
-                ...line,
-                center: { x: newCenterX, y: newCenterY },
-                points: [
-                  { x: newCenterX - line.width! / 2, y: newCenterY - line.height! / 2 },
-                  { x: newCenterX + line.width! / 2, y: newCenterY + line.height! / 2 }
-                ]
-              };
-            } else if (line.type === 'square') {
-              return {
-                ...line,
-                center: { x: newCenterX, y: newCenterY },
-                points: [
-                  { x: newCenterX - line.width! / 2, y: newCenterY - line.height! / 2 },
-                  { x: newCenterX + line.width! / 2, y: newCenterY + line.height! / 2 }
-                ]
-              };
-            } else if (line.type === 'arrow') {
-              // For arrows, update the points array with the new positions
-              const oldCenter = getArrowCenter(line);
-              const deltaX = newCenterX - oldCenter.x;
-              const deltaY = newCenterY - oldCenter.y;
-              
-              return {
-                ...line,
-                points: line.points.map(point => ({
-                  x: point.x + deltaX,
-                  y: point.y + deltaY
-                }))
-              };
+    }
+
+    if (activeMode === 'crop' && cropFrame) {
+      if (resizingCropHandle) {
+        setCropFrame(prev => resizeObj(prev!, resizingCropHandle, mouseX, mouseY));
+        return;
+      }
+      if (isDraggingCrop) {
+        setCropFrame(prev => ({
+          ...prev!,
+          x: mouseX - dragCropOffset.x,
+          y: mouseY - dragCropOffset.y,
+        }));
+        return;
+      }
+      if (isDrawing) {
+        setCropFrame(prev => ({
+          ...prev!,
+          w: mouseX - prev!.x,
+          h: mouseY - prev!.y,
+        }));
+        return;
+      }
+    } else if (activeMode === 'none') {
+      // Hover effects for shapes in none mode (drag/move handled globally above)
+      // Check for hover effects on shapes in none mode
+      // 1) Prefer corner handles of selected arrow (so cursor becomes pointer on blue dots)
+      if (selectedArrowId !== null) {
+        const sel = lines.find(l => l.id === selectedArrowId && l.type === 'arrow' && l.points.length >= 2);
+        if (sel) {
+          const from = sel.points[0];
+          const to = sel.points[sel.points.length - 1];
+          const minX = Math.min(from.x, to.x);
+          const maxX = Math.max(from.x, to.x);
+          const minY = Math.min(from.y, to.y);
+          const maxY = Math.max(from.y, to.y);
+          const padding = 10;
+          const tolerance = 20;
+          const corners = [
+            { x: minX - padding, y: minY - padding },
+            { x: maxX + padding, y: minY - padding },
+            { x: maxX + padding, y: maxY + padding },
+            { x: minX - padding, y: maxY + padding },
+          ];
+          const overCorner = corners.some(c => Math.hypot(mouseX - c.x, mouseY - c.y) <= tolerance);
+          if (overCorner) {
+            setHoveredArrowId(sel.id);
+            return;
+          }
+        }
+      }
+      // 2) Otherwise, hover detection on shapes
+      const hoveredShape = lines.find(line => {
+        if (line.type === 'arrow') {
+          return isPointInArrow(line, { x: mouseX, y: mouseY }, 25);
+        } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
+          const dx = (mouseX - line.center.x) / (line.width / 2);
+          const dy = (mouseY - line.center.y) / (line.height / 2);
+          const distance = dx * dx + dy * dy;
+          return distance <= 1.2;
+        } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
+          const left = line.center.x - line.width / 2;
+          const right = line.center.x + line.width / 2;
+          const top = line.center.y - line.height / 2;
+          const bottom = line.center.y + line.height / 2;
+          return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
+        }
+        return false;
+      });
+      setHoveredArrowId(hoveredShape ? hoveredShape.id : null);
+    } else if (activeMode === 'arrow') {
+      // Arrow dragging/moving handled globally above
+      if (isDrawing) {
+        setCurrentLine(prev => [...prev!, { x: mouseX, y: mouseY }]);
+
+      } else {  
+        // Hover effects in arrow mode
+        // 1) Show pointer when over corner handles of the selected arrow
+        if (selectedArrowId !== null) {
+          const sel = lines.find(l => l.id === selectedArrowId && l.type === 'arrow' && l.points.length >= 2);
+          if (sel) {
+            const from = sel.points[0];
+            const to = sel.points[sel.points.length - 1];
+            const minX = Math.min(from.x, to.x);
+            const maxX = Math.max(from.x, to.x);
+            const minY = Math.min(from.y, to.y);
+            const maxY = Math.max(from.y, to.y);
+            const padding = 10;
+            const tolerance = 20;
+            const corners = [
+              { x: minX - padding, y: minY - padding },
+              { x: maxX + padding, y: minY - padding },
+              { x: maxX + padding, y: maxY + padding },
+              { x: minX - padding, y: maxY + padding },
+            ];
+            const overCorner = corners.some(c => Math.hypot(mouseX - c.x, mouseY - c.y) <= tolerance);
+            if (overCorner) {
+              setHoveredArrowId(sel.id);
+              return;
             }
           }
-          return line;
+        }
+        // 2) Fallback: hover when over any shape (universal hover)
+        const hoveredShape = lines.find(line => {
+          if (line.type === 'arrow') {
+            return isPointInArrow(line, { x: mouseX, y: mouseY }, 25);
+          } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
+            const dx = (mouseX - line.center.x) / (line.width / 2);
+            const dy = (mouseY - line.center.y) / (line.height / 2);
+            const distance = dx * dx + dy * dy;
+            return distance <= 1.2;
+          } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
+            const left = line.center.x - line.width / 2;
+            const right = line.center.x + line.width / 2;
+            const top = line.center.y - line.height / 2;
+            const bottom = line.center.y + line.height / 2;
+            return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
+          }
+          return false;
         });
-        
-        
-        return updatedLines;
-      });
-      return;
+        setHoveredArrowId(hoveredShape ? hoveredShape.id : null);
+      }
     } else if ((activeMode === 'circle' || activeMode === 'square') && isDrawing && currentLine && hasDragged) {
       // Update the current line with the new mouse position for real-time preview
       if (currentLine.length >= 1) {
@@ -1660,14 +2443,16 @@ if (currentLine && currentLine.length > 1) {
       }
       return;
     } else if (activeMode === 'circle' || activeMode === 'square') {
-      // Check for hover effects on shapes
+      // Check for hover effects on any shape (universal hover)
       const hoveredShape = lines.find(line => {
-        if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
+        if (line.type === 'arrow') {
+          return isPointInArrow(line, { x: mouseX, y: mouseY }, 25);
+        } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
           // Check if point is inside ellipse or within resize handle area
           const dx = (mouseX - line.center.x) / (line.width / 2);
           const dy = (mouseY - line.center.y) / (line.height / 2);
           const distance = dx * dx + dy * dy;
-          
+
           // Include resize handle area (extend the selection area)
           const handleArea = 15; // Extra area around the shape for handles
           const extendedWidth = line.width + handleArea;
@@ -1675,7 +2460,7 @@ if (currentLine && currentLine.length > 1) {
           const extendedDx = (mouseX - line.center.x) / (extendedWidth / 2);
           const extendedDy = (mouseY - line.center.y) / (extendedHeight / 2);
           const extendedDistance = extendedDx * extendedDx + extendedDy * extendedDy;
-          
+
           return distance <= 1.2 || extendedDistance <= 1.0; // Original shape or extended area
         } else if (line.type === 'square' && line.center && line.width !== undefined && line.height !== undefined) {
           const left = line.center.x - line.width / 2;
@@ -1688,7 +2473,7 @@ if (currentLine && currentLine.length > 1) {
       });
       setHoveredArrowId(hoveredShape ? hoveredShape.id : null);
     }
-  }, [activeMode, cropFrame, resizingCropHandle, isDraggingCrop, dragCropOffset, isDrawing, selectedArrowId, lines, isDraggingArrow, interactionMode, dragArrowOffset, currentLine, currentArrowSize, hoveredArrowId, isResizingShape, initialShapeData, resizeHandle, isMovingShape, moveOffset, hasDragged, dragStartPoint, circleColor, squareColor]);
+  }, [activeMode, cropFrame, resizingCropHandle, isDraggingCrop, dragCropOffset, isDrawing, selectedArrowId, lines, isDraggingArrow, interactionMode, dragArrowOffset, currentLine, currentArrowSize, hoveredArrowId, isResizingShape, initialShapeData, resizeHandle, isMovingShape, moveOffset, hasDragged, dragStartPoint, circleColor, squareColor, isResizingArrow, arrowResizeEnd]);
 
   const handleMouseUp = () => {
     if (activeMode === 'crop' && isDrawing && cropFrame) {
@@ -1716,21 +2501,29 @@ if (currentLine && currentLine.length > 1) {
       const newLine: Line = {
         points: [...currentLine],
         color: drawingColor,
-        size: currentArrowSize, // Use the dynamic size instead of brushSize
+        size: Math.max(2, shapeThickness), // thickness per arrow
         type: lineType,
         id: lineIdCounter,
         rotation: 0,
         scale: 1,
-        center: getArrowCenter({ points: currentLine, color: drawingColor, size: currentArrowSize, type: 'arrow', id: lineIdCounter })
+        center: getArrowCenter({ points: currentLine, color: drawingColor, size: Math.max(2, shapeThickness), type: 'arrow', id: lineIdCounter })
       };
-      
+
       setLineIdCounter(prev => prev + 1);
-      setLines(prev => [...prev, newLine]);
+      const newLines = [...lines, newLine];
+      setLines(newLines);
       setSelectedArrowId(newLine.id);
       saveAction(newLine);
       setCurrentLine(null);
       const file = exportEditedFile();
       onEditedFile?.(file);
+
+      // Notify parent after render cycle completes to avoid "setState in render" error
+      queueMicrotask(() => {
+        if (onAnnotationsChange) {
+          onAnnotationsChange(newLines);
+        }
+      });
     } else if ((activeMode === 'circle' || activeMode === 'square') && isDrawing && currentLine && currentLine.length >= 2 && hasDragged) {
       const startPoint = currentLine[0];
       const endPoint = currentLine[1];
@@ -1738,16 +2531,16 @@ if (currentLine && currentLine.length > 1) {
         x: (startPoint.x + endPoint.x) / 2,
         y: (startPoint.y + endPoint.y) / 2
       };
-      
+
       let newLine: Line;
-      
+
       if (activeMode === 'circle') {
         const width = Math.abs(endPoint.x - startPoint.x);
         const height = Math.abs(endPoint.y - startPoint.y);
         newLine = {
           points: [startPoint, endPoint],
           color: circleColor,
-          size: 3,
+          size: Math.max(2, shapeThickness),
           type: 'circle',
           id: lineIdCounter,
           center: center,
@@ -1760,7 +2553,7 @@ if (currentLine && currentLine.length > 1) {
         newLine = {
           points: [startPoint, endPoint],
           color: squareColor,
-          size: 3,
+          size: Math.max(2, shapeThickness),
           type: 'square',
           id: lineIdCounter,
           center: center,
@@ -1768,16 +2561,24 @@ if (currentLine && currentLine.length > 1) {
           height: height
         };
       }
-      
+
       setLineIdCounter(prev => prev + 1);
-      setLines(prev => [...prev, newLine]);
+      const newLines = [...lines, newLine];
+      setLines(newLines);
       setSelectedArrowId(newLine.id);
       saveAction(newLine);
       setCurrentLine(null);
       const file = exportEditedFile();
       onEditedFile?.(file);
+
+      // Notify parent after render cycle completes to avoid "setState in render" error
+      queueMicrotask(() => {
+        if (onAnnotationsChange) {
+          onAnnotationsChange(newLines);
+        }
+      });
     }
-    
+
     if (isResizingShape) {
       setIsResizingShape(false);
       setResizeHandle(null);
@@ -1806,17 +2607,31 @@ if (currentLine && currentLine.length > 1) {
     setIsDrawing(false);
     setIsDraggingCrop(false);
     setResizingCropHandle(null);
+    // If arrow was resized, save the action and export
+    if (isResizingArrow && selectedArrowId !== null) {
+      const resized = lines.find(l => l.id === selectedArrowId);
+      if (resized) {
+        saveAction(resized);
+        const file = exportEditedFile();
+        onEditedFile?.(file);
+      }
+    }
+
     setIsDraggingArrow(false);
     setIsRotatingArrow(false);
     setIsResizingArrow(false);
+    setArrowResizeEnd(null);
     setInteractionMode(null);
-    
+
     // Stop ultra-smooth movement
     isMovingRef.current = false;
     if (movementFrameRef.current) {
       cancelAnimationFrame(movementFrameRef.current);
       movementFrameRef.current = null;
     }
+
+    // Note: Parent notification for new annotations is now handled inside setLines callbacks
+    // to ensure the most up-to-date state is sent (React setState is async)
   };
 
   const getHandles = (obj: CropFrame) => {
@@ -2088,15 +2903,25 @@ const drawCircle = (
   centerY: number,
   width: number,
   height: number,
-  color: string
+  color: string,
+  lineWidth: number = 3,
+  withHalo: boolean = true
 ) => {
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
   ctx.setLineDash([]);
-  ctx.lineWidth = 3;
-  
   ctx.beginPath();
   ctx.ellipse(centerX, centerY, width / 2, height / 2, 0, 0, 2 * Math.PI);
+
+  if (withHalo) {
+    // Subtle dark halo to increase contrast on busy backgrounds
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = Math.max(1, lineWidth + 3);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
   ctx.stroke();
 };
 
@@ -2106,18 +2931,27 @@ const drawSquare = (
   centerY: number,
   width: number,
   height: number,
-  color: string
+  color: string,
+  lineWidth: number = 3,
+  withHalo: boolean = true
 ) => {
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.setLineDash([]);
-  ctx.lineWidth = 3;
-  
   const left = centerX - width / 2;
   const top = centerY - height / 2;
-  
+
+  ctx.setLineDash([]);
   ctx.beginPath();
   ctx.rect(left, top, width, height);
+
+  if (withHalo) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = Math.max(1, lineWidth + 3);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
   ctx.stroke();
 };
 
@@ -2157,43 +2991,58 @@ const drawSquare = (
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    let currentMetrics = {
+      offsetX: 0,
+      offsetY: 0,
+      drawWidth: canvas.width,
+      drawHeight: canvas.height,
+    };
+
     if (image) {
       ctx.fillStyle = '#f0f0f0';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Apply rotation if needed
-      if (imageRotation !== 0) {
-        console.log('✅ Drawing rotated image at', imageRotation, '°');
+      // Aspect-fit drawing with correct behavior for 0/180 and 90/270 rotations
+      const normalizedRotation = ((imageRotation % 360) + 360) % 360;
+      const isQuarterTurn = normalizedRotation === 90 || normalizedRotation === 270;
+      const imgW = image.width;
+      const imgH = image.height;
+      const effectiveImgAspect = imgW / imgH;
+      const canvasAspect = canvas.width / canvas.height;
+
+      let drawWidth: number, drawHeight: number, offsetX: number, offsetY: number;
+      if (effectiveImgAspect > canvasAspect) {
+        // image (considering rotation) is wider
+        drawWidth = canvas.width;
+        drawHeight = canvas.width / effectiveImgAspect;
+        offsetX = 0;
+        offsetY = (canvas.height - drawHeight) / 2;
+      } else {
+        // image is taller
+        drawHeight = canvas.height;
+        drawWidth = canvas.height * effectiveImgAspect;
+        offsetX = (canvas.width - drawWidth) / 2;
+        offsetY = 0;
+      }
+
+      if (normalizedRotation !== 0) {
+        // Rotate around canvas center, then draw aspect-fitted image
         ctx.save();
         ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate((imageRotation * Math.PI) / 180);
+        ctx.rotate((normalizedRotation * Math.PI) / 180);
         ctx.translate(-canvas.width / 2, -canvas.height / 2);
-        
-        // For rotated images, fill the entire canvas
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        
+        ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
         ctx.restore();
       } else {
-        // For non-rotated images, use aspect ratio fitting
-        const imgAspect = image.width / image.height;
-        const canvasAspect = canvas.width / canvas.height;
-        
-        let drawWidth, drawHeight, offsetX, offsetY;
-        
-        if (imgAspect > canvasAspect) {
-          drawWidth = canvas.width;
-          drawHeight = canvas.width / imgAspect;
-          offsetX = 0;
-          offsetY = (canvas.height - drawHeight) / 2;
-        } else {
-          drawHeight = canvas.height;
-          drawWidth = canvas.height * imgAspect;
-          offsetX = (canvas.width - drawWidth) / 2;
-          offsetY = 0;
-        }
-        
         ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
       }
+
+      currentMetrics = {
+        offsetX,
+        offsetY,
+        drawWidth,
+        drawHeight,
+      };
     } else {
       ctx.fillStyle = '#f0f0f0';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2202,6 +3051,8 @@ const drawSquare = (
       ctx.font = '24px Arial';
       ctx.fillText('Upload Image here', canvas.width/2, canvas.height/2);
     }
+
+    renderMetricsRef.current = currentMetrics;
 
     // Draw existing lines
     lines.forEach(line => {
@@ -2240,45 +3091,69 @@ const drawSquare = (
           drawTransformedArrow(ctx, line);
           ctx.globalAlpha = 1.0;
           
-          // Draw rotation guide circle
+          // Compute center once for rotation handle; skip green guide circle for a cleaner UI
           const center = getArrowCenter(line);
-          ctx.fillStyle = 'rgba(40, 167, 69, 0.3)';
-          ctx.strokeStyle = '#28a745';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(center.x, center.y, 40, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.stroke();
           
-          // Draw rotation handle
-          const rotation = line.rotation || 0;
-          const handleX = center.x + 50 * Math.sin(rotation);
-          const handleY = center.y - 50 * Math.cos(rotation);
+          // Rotation handle removed by request; rotation by mouse is disabled for a cleaner UI
+
+          // Draw bounding box with 4 corner handles (like circle/square)
+          const from = line.points[0];
+          const to = line.points[line.points.length - 1];
           
-          ctx.fillStyle = '#28a745';
-          ctx.beginPath();
-          ctx.arc(handleX, handleY, 8, 0, 2 * Math.PI);
-          ctx.fill();
+          // Calculate bounding box
+          const minX = Math.min(from.x, to.x);
+          const maxX = Math.max(from.x, to.x);
+          const minY = Math.min(from.y, to.y);
+          const maxY = Math.max(from.y, to.y);
+          const padding = 10; // Extra space around arrow
           
-          // Draw rotation direction indicator
-          ctx.fillStyle = 'white';
-          ctx.font = '14px Arial';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('↻', handleX, handleY);
+          // Draw dashed bounding box
+          ctx.strokeStyle = 'rgba(0, 123, 255, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([5, 5]);
+          ctx.strokeRect(minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2);
+          ctx.setLineDash([]);
+          
+          // Draw 4 corner handles
+          const cornerHandles = [
+            { x: minX - padding, y: minY - padding, name: 'top-left' },
+            { x: maxX + padding, y: minY - padding, name: 'top-right' },
+            { x: maxX + padding, y: maxY + padding, name: 'bottom-right' },
+            { x: minX - padding, y: maxY + padding, name: 'bottom-left' }
+          ];
+          
+          const handleSize = 5;
+          cornerHandles.forEach((h) => {
+            // Outer ring
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, handleSize + 2, 0, 2 * Math.PI);
+            ctx.fill();
+            // Inner dot
+            ctx.fillStyle = 'rgba(0, 123, 255, 0.95)';
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, handleSize, 0, 2 * Math.PI);
+            ctx.fill();
+            // Border
+            ctx.strokeStyle = 'rgba(0, 123, 255, 1)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, handleSize, 0, 2 * Math.PI);
+            ctx.stroke();
+          });
         }
       } else if (line.type === 'circle' && line.center && line.width !== undefined && line.height !== undefined) {
         // Draw hover effect if this circle is hovered
         if (hoveredArrowId === line.id && selectedArrowId !== line.id) {
           ctx.strokeStyle = line.color;
-          ctx.lineWidth = line.size + 4;
+          ctx.lineWidth = (line.size || 3) + 4;
           ctx.globalAlpha = 0.3;
-          drawCircle(ctx, line.center.x, line.center.y, line.width || 0, line.height || 0, line.color);
+          drawCircle(ctx, line.center.x, line.center.y, line.width || 0, line.height || 0, line.color, line.size || shapeThickness);
           ctx.globalAlpha = 1.0;
         }
         
         // Draw the main circle
-        drawCircle(ctx, line.center.x, line.center.y, line.width || 0, line.height || 0, line.color);
+        drawCircle(ctx, line.center.x, line.center.y, line.width || 0, line.height || 0, line.color, line.size || shapeThickness);
         
         // Show selection indicator
         if (selectedArrowId === line.id) {
@@ -2328,14 +3203,14 @@ const drawSquare = (
         // Draw hover effect if this square is hovered
         if (hoveredArrowId === line.id && selectedArrowId !== line.id) {
           ctx.strokeStyle = line.color;
-          ctx.lineWidth = line.size + 4;
+          ctx.lineWidth = (line.size || 3) + 4;
           ctx.globalAlpha = 0.3;
-          drawSquare(ctx, line.center.x, line.center.y, line.width, line.height, line.color);
+          drawSquare(ctx, line.center.x, line.center.y, line.width, line.height, line.color, line.size || shapeThickness);
           ctx.globalAlpha = 1.0;
         }
         
         // Draw the main square
-        drawSquare(ctx, line.center.x, line.center.y, line.width, line.height, line.color);
+        drawSquare(ctx, line.center.x, line.center.y, line.width, line.height, line.color, line.size || shapeThickness);
         
         // Show selection indicator
         if (selectedArrowId === line.id) {
@@ -2401,8 +3276,8 @@ const drawSquare = (
         const from = currentLine[0];
         const to = currentLine[currentLine.length - 1];
         
-        // Use the currentArrowSize for drawing
-        drawArrow(ctx, from.x, from.y, to.x, to.y, currentArrowSize);
+  // Use the current shapeThickness for preview to match slider
+  drawArrow(ctx, from.x, from.y, to.x, to.y, Math.max(2, shapeThickness));
       } else if (activeMode === 'circle' && currentLine.length >= 2 && hasDragged) {
         const startPoint = currentLine[0];
         const endPoint = currentLine[1];
@@ -2412,7 +3287,7 @@ const drawSquare = (
         };
         const width = Math.abs(endPoint.x - startPoint.x);
         const height = Math.abs(endPoint.y - startPoint.y);
-        drawCircle(ctx, center.x, center.y, width, height, circleColor);
+  drawCircle(ctx, center.x, center.y, width, height, circleColor, Math.max(2, shapeThickness));
       } else if (activeMode === 'square' && currentLine.length >= 2 && hasDragged) {
         const startPoint = currentLine[0];
         const endPoint = currentLine[1];
@@ -2422,7 +3297,7 @@ const drawSquare = (
         };
         const width = Math.abs(endPoint.x - startPoint.x);
         const height = Math.abs(endPoint.y - startPoint.y);
-        drawSquare(ctx, center.x, center.y, width, height, squareColor);
+  drawSquare(ctx, center.x, center.y, width, height, squareColor, Math.max(2, shapeThickness));
       } else {
         ctx.beginPath();
         currentLine.forEach((pt, i) => {
@@ -2447,7 +3322,7 @@ const drawSquare = (
         ctx.fill();
       });
     }
-  }, [image, imageRotation, lines, currentLine, isDrawing, drawingColor, brushSize, activeMode, cropFrame, selectedArrowId, hoveredArrowId, currentArrowSize, circleColor, squareColor, hasDragged]);
+  }, [image, imageRotation, lines, currentLine, isDrawing, drawingColor, brushSize, activeMode, cropFrame, selectedArrowId, hoveredArrowId, currentArrowSize, circleColor, squareColor, hasDragged, canvasSizeVersion]);
 
   const getCursor = () => {
     if (isMovingShape) {
@@ -2520,7 +3395,7 @@ const drawSquare = (
   {!image && !videoSrc ? (
     <>
       <div className={styles.uploadInstructions}>
-        Drag & drop your image or video here or click to browse
+        You can upload videos, photos or take pictures here
       </div>
       <div className={styles.buttonContainer}>
         <div className="button-group">
@@ -2613,14 +3488,14 @@ const drawSquare = (
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             style={{ display: "none" }}
             onChange={handleFileSelected}
           />
           <input
             ref={cameraInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             capture="environment"
             style={{ display: "none" }}
             onChange={handleFileSelected}
@@ -2648,7 +3523,7 @@ const drawSquare = (
     </div>
   ) : (
     // 👇 Fallback: image canvas
-    <div className={styles.imageDisplayArea}>
+    <div className={styles.imageDisplayArea} ref={containerRef}>
       <canvas
         ref={canvasRef}
         width={300}
@@ -2659,7 +3534,7 @@ const drawSquare = (
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{ cursor: getCursor() }}
+        style={{ cursor: getCursor(), display: 'block' }}
       />
     </div>
   )}

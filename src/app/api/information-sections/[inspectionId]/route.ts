@@ -31,11 +31,23 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Invalid inspectionId' }, { status: 400 });
     }
 
-    const blocks = await InspectionInformationBlock.find({ inspection_id: inspectionId })
+    let blocks = await InspectionInformationBlock.find({ inspection_id: inspectionId })
       .populate('section_id')
       .populate('selected_checklist_ids')
       .sort({ created_at: 1 })
       .lean();
+
+    // Ensure consistent order: sort selected_checklist_ids by order_index ascending
+    blocks = Array.isArray(blocks) ? blocks.map((blk: any) => {
+      if (Array.isArray(blk?.selected_checklist_ids)) {
+        blk.selected_checklist_ids = [...blk.selected_checklist_ids].sort((a: any, b: any) => {
+          const ao = typeof a?.order_index === 'number' ? a.order_index : Number.POSITIVE_INFINITY;
+          const bo = typeof b?.order_index === 'number' ? b.order_index : Number.POSITIVE_INFINITY;
+          return ao - bo;
+        });
+      }
+      return blk;
+    }) : blocks;
 
     return NextResponse.json(
       { success: true, data: blocks },

@@ -29,13 +29,37 @@ interface AnalysisResult {
 
 import { Client } from "@upstash/qstash";
 
-const client = new Client({
-  token: process.env.QSTASH_TOKEN!,
-});
+const getQstashClient = () => {
+  const token = process.env.QSTASH_TOKEN;
+  if (!token) {
+    throw new Error("Missing QSTASH_TOKEN environment variable");
+  }
+  return new Client({ token });
+};
+
+const decodeBase64Image = (dataString: string) => {
+  const matches = dataString.match(/^data:(.+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) {
+    throw new Error("Invalid base64 image string");
+  }
+  return {
+    mime: matches[1],
+    buffer: Buffer.from(matches[2], "base64"),
+  };
+};
 
 export async function POST(request: Request) {
   try {
-    let imageUrl: string | undefined;
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+    if (!baseUrl) {
+      throw new Error("Missing NEXT_PUBLIC_BASE_URL environment variable");
+    }
+
+    const client = getQstashClient();
+
+  let imageUrl: string | undefined;
+  let videoUrlJson: string | undefined;
+  let thumbnailUrlJson: string | undefined;
     let description: string | undefined;
     let file: File | null = null;
     let location: string | undefined;
@@ -48,6 +72,8 @@ export async function POST(request: Request) {
     let type: string | undefined;
     let videoSrc: string | null = null;
     let isThreeSixty = false;
+    let annotations: any[] | undefined;
+    let originalImage: string | undefined;
   
     const contentType = request.headers.get("content-type") || "";
   
@@ -61,6 +87,18 @@ export async function POST(request: Request) {
       subSection = body.subSection;
       selectedColor = body.selectedColor;
       isThreeSixty = body.isThreeSixty || false;
+      type = body.type;
+      // Optional: video/thumbnail urls already uploaded to R2
+      videoUrlJson = body.videoUrl;
+      thumbnailUrlJson = body.thumbnailUrl;
+      annotations = body.annotations; // Editable annotations
+      originalImage = body.originalImage; // Original unannotated image
+
+      console.log('🔍 analyze-image received JSON body');
+      console.log('📊 annotations:', annotations);
+      console.log('  - is array:', Array.isArray(annotations));
+      console.log('  - length:', annotations?.length || 0);
+      console.log('🖼️ originalImage:', originalImage);
     }
     else if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
@@ -94,9 +132,15 @@ export async function POST(request: Request) {
     }
 
     console.log(videoFile);
-    let finalVideoUrl = null;
+  let finalVideoUrl = null;
+    let finalImageUrl = imageUrl;
+  let finalThumbnailUrl = thumbnail;
   
-    if (videoFile) {
+  if (videoUrlJson) {
+    // Already uploaded via presigned URL
+    finalVideoUrl = videoUrlJson;
+    console.log("✅ Using pre-uploaded video URL:", finalVideoUrl);
+  } else if (videoFile) {
         // Generate R2 key
         const extension = videoFile.name.split(".").pop();
         const key = `inspections/${inspectionId}/${Date.now()}.${extension}`;
@@ -109,29 +153,68 @@ export async function POST(request: Request) {
       console.log('no video found')
     }
 
+    if (finalImageUrl && !finalImageUrl.startsWith('data:') && !file) {
+      // Using pre-uploaded URL from client
+      console.log("✅ Using pre-uploaded image URL:", finalImageUrl);
+    } else if (file) {
+      const extension = file.name.split(".").pop() || "jpg";
+      const key = `inspections/${inspectionId}/${Date.now()}.${extension}`;
+      const buffer = Buffer.from(await file.arrayBuffer());
+      finalImageUrl = await uploadToR2(buffer, key, file.type || 'image/jpeg');
+      console.log("✅ Image file uploaded to R2:", finalImageUrl);
+    } else if (imageUrl && imageUrl.startsWith('data:')) {
+      const { mime, buffer } = decodeBase64Image(imageUrl);
+      const isJpeg = mime.includes('jpeg') || mime.includes('jpg');
+      const key = `inspections/${inspectionId}/${Date.now()}${isJpeg ? '.jpg' : '.png'}`;
+      finalImageUrl = await uploadToR2(buffer, key, isJpeg ? 'image/jpeg' : mime);
+      console.log("✅ Base64 image uploaded to R2:", finalImageUrl);
+    }
+
+    if (thumbnailUrlJson) {
+      finalThumbnailUrl = thumbnailUrlJson;
+      console.log("✅ Using pre-uploaded thumbnail URL:", finalThumbnailUrl);
+    } else if (thumbnail && thumbnail.startsWith('data:')) {
+      const { mime, buffer } = decodeBase64Image(thumbnail);
+      const key = `inspections/${inspectionId}/${Date.now()}-thumbnail.png`;
+      finalThumbnailUrl = await uploadToR2(buffer, key, mime);
+      console.log("✅ Thumbnail uploaded to R2:", finalThumbnailUrl);
+    }
+
   // Unique ID for job
   const analysisId = `${inspectionId}-${Date.now()}`;
 
-  console.log('enquing jobbbbbb');
-
   // Publish job to QStash -> will call /api/process-analysis
-  await client.publishJSON({
-    url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/process-analysis`,
-    body: {
-      imageUrl,
-      description,
-      location,
-      inspectionId,
-      section,
-      subSection,
-      selectedColor,
-      analysisId,
-      finalVideoUrl,
-      thumbnail,
-      type,
-      isThreeSixty
-    },
-  });
+  try {
+    console.log('📤 About to publish to QStash:');
+    console.log('  - annotations:', annotations);
+    console.log('  - annotations length:', annotations?.length || 0);
+    console.log('  - originalImage:', originalImage);
+
+    const qstashResponse = await client.publishJSON({
+      url: `${baseUrl}/api/process-analysis`,
+      body: {
+        imageUrl: finalImageUrl,
+        description,
+        location,
+        inspectionId,
+        section,
+        subSection,
+        selectedColor,
+        analysisId,
+        finalVideoUrl,
+        thumbnail: finalThumbnailUrl,
+        type,
+        isThreeSixty,
+        annotations, // Pass annotations for saving
+        originalImage // Pass original image URL
+      },
+    });
+
+    console.log('✅ QStash publish successful');
+  } catch (qstashError) {
+    console.error('❌ QStash publish failed:', qstashError);
+    throw qstashError;
+  }
 
   return NextResponse.json(
     {
@@ -141,33 +224,15 @@ export async function POST(request: Request) {
     },
     { status: 202 }
   );
-} catch {
-  console.log('error getting the input')
-}
-}
-
-
-
-// Optional: Add GET method for testing or documentation
-export async function GET() {
-  return NextResponse.json({
-    message: 'Use POST method to analyze images',
-    endpoint: '/api/llm/analyze-image',
-    required_fields: ['imageUrl', 'description']
-  });
-}
-
-// Optional: Add other HTTP methods if needed
-export async function PUT() {
+} catch (error) {
+  console.error('❌ Error handling analyze-image request:', error);
+  const message = error instanceof Error ? error.message : 'Unknown error';
   return NextResponse.json(
-    { error: 'Method not allowed', message: 'Only POST requests are accepted' },
-    { status: 405 }
+    {
+      error: 'analyze_image_failed',
+      message,
+    },
+    { status: 500 }
   );
 }
-
-export async function DELETE() {
-  return NextResponse.json(
-    { error: 'Method not allowed', message: 'Only POST requests are accepted' },
-    { status: 405 }
-  );
 }
