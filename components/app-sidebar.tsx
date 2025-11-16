@@ -124,7 +124,7 @@ const data = {
 				},
 				{
 					title: "Social Links",
-					url: "/company/social-links",
+					url: "/social-links",
 					icon: Share2,
 				},
 			],
