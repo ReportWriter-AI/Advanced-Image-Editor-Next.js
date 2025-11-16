@@ -20,6 +20,7 @@ import {
 	SlidersHorizontal,
 	BadgePercent,
 	FileSignature,
+	Share2,
 } from "lucide-react";
 
 import {
@@ -121,6 +122,11 @@ const data = {
 					url: "/company",
 					icon: Users,
 				},
+				{
+					title: "Social Links",
+					url: "/company/social-links",
+					icon: Share2,
+				},
 			],
 		},
 	],
@@ -149,7 +155,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 							<SidebarMenu>
 								{section.items.map((item) => {
 									const Icon = item.icon;
-									const isActive = pathname === item.url;
+									const isActive = pathname === item.url || (item.url !== "/company" && pathname?.startsWith(item.url));
 									
 									return (
 										<SidebarMenuItem key={item.title}>

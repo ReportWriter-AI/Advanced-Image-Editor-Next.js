@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/db';
 import { getCurrentUser } from '../../../../lib/auth-helpers';
 import Company from '../../../../src/models/Company';
+import SocialLinks from '../../../../src/models/SocialLinks';
 
 const sanitizeString = (value?: string | null) => {
   if (value === undefined || value === null) return undefined;
@@ -42,6 +43,8 @@ export async function GET(request: NextRequest) {
     }
 
     let companyData = null;
+    let socialLinksData = null;
+    
     if (currentUser.company) {
       const company = await Company.findById(currentUser.company);
       if (company) {
@@ -65,6 +68,20 @@ export async function GET(request: NextRequest) {
           headerLogoUrl: company.headerLogoUrl || '',
         };
       }
+
+      // Fetch social links separately
+      const socialLinks = await SocialLinks.findOne({ company: currentUser.company });
+      if (socialLinks) {
+        socialLinksData = {
+          facebookUrl: socialLinks.facebookUrl || '',
+          twitterUrl: socialLinks.twitterUrl || '',
+          youtubeUrl: socialLinks.youtubeUrl || '',
+          googlePlusUrl: socialLinks.googlePlusUrl || '',
+          linkedinUrl: socialLinks.linkedinUrl || '',
+          instagramUrl: socialLinks.instagramUrl || '',
+          yelpUrl: socialLinks.yelpUrl || '',
+        };
+      }
     }
 
     return NextResponse.json({
@@ -78,6 +95,7 @@ export async function GET(request: NextRequest) {
         profileImageUrl: currentUser.profileImageUrl || '',
       },
       company: companyData,
+      socialLinks: socialLinksData,
     });
   } catch (error: any) {
     console.error('Profile GET error:', error);
