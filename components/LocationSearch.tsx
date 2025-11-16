@@ -29,6 +29,7 @@ export default function LocationSearch({
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ left: number; top: number; width: number } | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -47,7 +48,10 @@ export default function LocationSearch({
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideInput = !!containerRef.current && containerRef.current.contains(target);
+      const insidePortal = !!portalRef.current && portalRef.current.contains(target);
+      if (!insideInput && !insidePortal) {
         setOpen(false);
       }
     };
@@ -180,6 +184,7 @@ export default function LocationSearch({
         boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
       }}
       onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       {dropdownList}
     </div>
@@ -188,6 +193,7 @@ export default function LocationSearch({
   const portalDropdown = dropdownPos
     ? createPortal(
         <div
+          ref={portalRef}
           style={{
             position: "fixed",
             left: dropdownPos.left,
@@ -195,6 +201,7 @@ export default function LocationSearch({
             width: dropdownPos.width,
             zIndex: 100000,
           }}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {dropdownBox}
         </div>,
@@ -270,6 +277,7 @@ export default function LocationSearch({
                 left: 0,
                 right: 0,
               }}
+              onMouseDown={(e) => e.stopPropagation()}
             >
               {dropdownBox}
             </div>
