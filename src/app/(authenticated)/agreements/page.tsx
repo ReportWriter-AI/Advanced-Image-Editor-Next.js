@@ -8,8 +8,10 @@ import {
   AlertCircle,
   BadgeCheck,
   Loader2,
+  Pencil,
   PlusCircle,
   Settings2,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -63,6 +65,9 @@ export default function AgreementsPage() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [signatureType, setSignatureType] = useState<SignatureType>("checkbox");
   const [clientInstructions, setClientInstructions] = useState(DEFAULT_INSTRUCTIONS);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [agreementToDelete, setAgreementToDelete] = useState<Agreement | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const editorModules = useMemo(
     () => ({
@@ -155,6 +160,36 @@ export default function AgreementsPage() {
     }
   };
 
+  const openDeleteDialog = (agreement: Agreement) => {
+    setAgreementToDelete(agreement);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!agreementToDelete?._id) return;
+
+    try {
+      setIsDeleting(true);
+      const response = await fetch(`/api/agreements/${agreementToDelete._id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to delete agreement");
+      }
+      toast.success("Agreement deleted");
+      setDeleteDialogOpen(false);
+      setAgreementToDelete(null);
+      fetchAgreements();
+    } catch (error: any) {
+      console.error("Delete agreement error:", error);
+      toast.error(error.message || "Failed to delete agreement");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -226,6 +261,7 @@ export default function AgreementsPage() {
                   <tr>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Created On</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-muted">
@@ -234,6 +270,26 @@ export default function AgreementsPage() {
                       <td className="px-4 py-3 align-top font-medium text-foreground">{agreement.name}</td>
                       <td className="px-4 py-3 align-top text-muted-foreground">
                         {format(new Date(agreement.createdAt), "dd MMMM yyyy")}
+                      </td>
+                      <td className="px-4 py-3 text-right align-top">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => router.push(`/agreements/${agreement._id}`)}
+                            title="Edit agreement"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            onClick={() => openDeleteDialog(agreement)}
+                            title="Delete agreement"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -303,6 +359,33 @@ export default function AgreementsPage() {
                 ) : (
                   "Save Settings"
                 )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Agreement</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete{" "}
+                <span className="font-semibold">{agreementToDelete?.name}</span>? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteDialogOpen(false);
+                  setAgreementToDelete(null);
+                }}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? "Deleting..." : "Delete"}
               </Button>
             </DialogFooter>
           </DialogContent>
