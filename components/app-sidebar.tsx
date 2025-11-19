@@ -133,6 +133,11 @@ const data = {
 					url: "/online-scheduler",
 					icon: CalendarCheck,
 				},
+				{
+					title: "Scheduling Options",
+					url: "/scheduling-options",
+					icon: Settings,
+				},
 			],
 		},
 	],
