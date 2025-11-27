@@ -2408,7 +2408,7 @@ export default function CreateInspectionPage() {
                                 }}
                                 options={availableAddOns.map((addOn: any) => ({
                                   value: addOn.name,
-                                  label: `${addOn.name} ($${addOn.baseCost || 0}, +${addOn.baseDurationHours || 0}hrs)`,
+                                  label: `${addOn.name} ($${addOn.baseCost || 0})`,
                                 }))}
                                 placeholder="Select add-ons..."
                                 className="react-select-container"
