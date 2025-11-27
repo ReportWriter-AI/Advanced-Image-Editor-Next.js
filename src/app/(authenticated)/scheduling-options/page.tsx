@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, type CSSProperties } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Info, ArrowLeft, X, Plus, Edit2, Trash2, Check, Copy, GripVertical } from 'lucide-react';
+import { Info, X, Plus, Edit2, Trash2, Copy, GripVertical } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -374,19 +374,13 @@ export default function SchedulingOptionsPage() {
   };
 
   useEffect(() => {
-    if (customFieldsModalOpen) {
-      loadCustomFields();
-    }
+    loadCustomFields();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customFieldsModalOpen]);
+  }, []);
 
-  const handleOpenCustomFieldsModal = () => {
-    setCustomFieldsModalOpen(true);
-    setShowCustomFieldForm(false);
-    setEditingField(null);
-  };
 
   const handleCreateCustomField = () => {
+    setCustomFieldsModalOpen(true);
     setShowCustomFieldForm(true);
     setEditingField(null);
     resetCustomFieldForm({
@@ -401,6 +395,7 @@ export default function SchedulingOptionsPage() {
   };
 
   const handleEditCustomField = (field: CustomField) => {
+    setCustomFieldsModalOpen(true);
     setEditingField(field);
     setShowCustomFieldForm(true);
     resetCustomFieldForm({
@@ -447,6 +442,7 @@ export default function SchedulingOptionsPage() {
 
       toast.success(`Custom field ${editingField ? 'updated' : 'created'} successfully`);
       await loadCustomFields();
+      setCustomFieldsModalOpen(false);
       handleBackToFieldsList();
     } catch (error: any) {
       console.error(error);
@@ -769,23 +765,71 @@ export default function SchedulingOptionsPage() {
             </Card>
 
             <Card className="w-full">
-              <CardContent className="py-6">
-                <div className="flex flex-col items-center justify-center space-y-4">
-                  <div className="text-center">
-                    <h3 className="text-lg font-semibold mb-2">Custom Fields</h3>
-                    <p className="text-sm text-muted-foreground">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Custom Fields</CardTitle>
+                    <CardDescription>
                       Create and manage custom fields for your scheduling system
-                    </p>
+                    </CardDescription>
                   </div>
                   <Button 
                     type="button" 
-                    variant="outline" 
-                    onClick={handleOpenCustomFieldsModal}
-                    className="min-w-[200px]"
+                    onClick={handleCreateCustomField}
                   >
-                    Manage Custom Fields
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create
                   </Button>
                 </div>
+              </CardHeader>
+              <CardContent>
+                {customFieldsLoading ? (
+                  <div className="py-12 text-center text-muted-foreground">
+                    Loading custom fields...
+                  </div>
+                ) : customFields.length === 0 ? (
+                  <div className="py-12 text-center text-muted-foreground">
+                    No custom fields found. Click "Create" to add one.
+                  </div>
+                ) : (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <div className="overflow-x-auto rounded-lg border">
+                      <table className="min-w-full divide-y divide-muted text-sm">
+                        <thead className="bg-muted/50 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-4 py-3">Name</th>
+                            <th className="px-4 py-3">Field Type</th>
+                            <th className="px-4 py-3">Required</th>
+                            <th className="px-4 py-3">Display on App</th>
+                            <th className="px-4 py-3">Show in Scheduler</th>
+                            <th className="px-4 py-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <SortableContext
+                          items={orderedCustomFields.map((f) => f._id || '')}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <tbody className="divide-y divide-muted">
+                            {orderedCustomFields.map((field) => (
+                              <SortableCustomFieldRow
+                                key={field._id}
+                                field={field}
+                                onEdit={handleEditCustomField}
+                                onDelete={handleDeleteClick}
+                                onCopyKey={handleCopyFieldKey}
+                                disabled={reorderBusy}
+                              />
+                            ))}
+                          </tbody>
+                        </SortableContext>
+                      </table>
+                    </div>
+                  </DndContext>
+                )}
               </CardContent>
             </Card>
 
@@ -798,90 +842,20 @@ export default function SchedulingOptionsPage() {
         )}
       </div>
 
-      {/* Custom Fields Modal */}
+      {/* Custom Fields Form Modal */}
       <Dialog open={customFieldsModalOpen} onOpenChange={setCustomFieldsModalOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Manage Custom Fields</DialogTitle>
+            <DialogTitle>
+              {editingField ? 'Edit Custom Field' : 'Create Custom Field'}
+            </DialogTitle>
             <DialogDescription>
-              Create and manage custom fields for your scheduling system
+              {editingField ? 'Update the custom field details' : 'Add a new custom field to your scheduling system'}
             </DialogDescription>
           </DialogHeader>
 
-          {!showCustomFieldForm ? (
-            <div className="space-y-4">
-              <div className="flex justify-end">
-                <Button onClick={handleCreateCustomField}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create
-                </Button>
-              </div>
-
-              {customFieldsLoading ? (
-                <div className="py-12 text-center text-muted-foreground">
-                  Loading custom fields...
-                </div>
-              ) : customFields.length === 0 ? (
-                <div className="py-12 text-center text-muted-foreground">
-                  No custom fields found. Click "Create" to add one.
-                </div>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <div className="overflow-x-auto rounded-lg border">
-                    <table className="min-w-full divide-y divide-muted text-sm">
-                      <thead className="bg-muted/50 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        <tr>
-                          <th className="px-4 py-3">Name</th>
-                          <th className="px-4 py-3">Field Type</th>
-                          <th className="px-4 py-3">Required</th>
-                          <th className="px-4 py-3">Display on App</th>
-                          <th className="px-4 py-3">Show in Scheduler</th>
-                          <th className="px-4 py-3 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <SortableContext
-                        items={orderedCustomFields.map((f) => f._id || '')}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <tbody className="divide-y divide-muted">
-                          {orderedCustomFields.map((field) => (
-                            <SortableCustomFieldRow
-                              key={field._id}
-                              field={field}
-                              onEdit={handleEditCustomField}
-                              onDelete={handleDeleteClick}
-                              onCopyKey={handleCopyFieldKey}
-                              disabled={reorderBusy}
-                            />
-                          ))}
-                        </tbody>
-                      </SortableContext>
-                    </table>
-                  </div>
-                </DndContext>
-              )}
-            </div>
-          ) : (
+          {showCustomFieldForm && (
             <form onSubmit={handleCustomFieldSubmit(onCustomFieldSubmit)} className="space-y-4">
-              <div className="mb-4">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBackToFieldsList}
-                  className="bg-red-500 hover:bg-red-600 text-white mb-2"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back
-                </Button>
-                <h3 className="text-lg font-semibold">
-                  {editingField ? 'Edit Custom Field' : 'Create Custom Field'}
-                </h3>
-              </div>
 
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -1056,7 +1030,14 @@ export default function SchedulingOptionsPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={handleBackToFieldsList}>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => {
+                    setCustomFieldsModalOpen(false);
+                    handleBackToFieldsList();
+                  }}
+                >
                   Cancel
                 </Button>
                 <Button type="submit">
