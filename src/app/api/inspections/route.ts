@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
     const date = body.date ?? body.dateTime;
     const inspector = body.inspector;
     const companyOwnerRequested = body.companyOwnerRequested ?? false;
-    const enableClientCCEmail = body.enableClientCCEmail ?? true;
     const services = body.services || [];
     const discountCode = body.discountCode;
     const location = body.location;
@@ -80,7 +79,6 @@ export async function POST(req: NextRequest) {
       createdBy: currentUser._id?.toString(),
       inspector,
       companyOwnerRequested,
-      enableClientCCEmail,
       services,
       discountCode,
       location,

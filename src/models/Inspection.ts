@@ -7,7 +7,6 @@ export interface IInspection extends Document {
   createdBy?: mongoose.Types.ObjectId;
   inspector?: mongoose.Types.ObjectId;
   companyOwnerRequested?: boolean;
-  enableClientCCEmail?: boolean;
   services?: Array<{
     serviceId: mongoose.Types.ObjectId;
     addOns?: Array<{
@@ -82,10 +81,6 @@ const InspectionSchema = new Schema<IInspection>(
     companyOwnerRequested: {
       type: Boolean,
       default: false,
-    },
-    enableClientCCEmail: {
-      type: Boolean,
-      default: true,
     },
     services: [{
       serviceId: {

@@ -59,7 +59,6 @@ const inspectionFormSchema = z.object({
     yearBuild: z.string().optional(),
     foundation: z.enum(['Basement', 'Slab', 'Crawlspace']).optional(),
   }),
-  enableClientCCEmail: z.boolean(),
   clients: z.array(z.object({
     isCompany: z.boolean(),
     firstName: z.string().optional(),
@@ -154,7 +153,6 @@ export default function CreateInspectionPage() {
         yearBuild: '',
         foundation: undefined,
       },
-      enableClientCCEmail: true,
       clients: [{
       isCompany: false,
       firstName: '',
@@ -830,7 +828,6 @@ export default function CreateInspectionPage() {
         body: JSON.stringify({
           inspector: data.inspector,
           companyOwnerRequested: data.companyOwnerRequested,
-          enableClientCCEmail: data.enableClientCCEmail,
           dateTime: dateTime?.toISOString(),
           location: Object.keys(locationData).length > 0 ? locationData : undefined,
           clients: data.clients.filter(c => c.email?.trim()),
@@ -1156,26 +1153,6 @@ export default function CreateInspectionPage() {
                 Client
               </AccordionTrigger>
               <AccordionContent className="space-y-4 pt-4">
-                <div className="flex items-center space-x-2">
-                  <Controller
-                    name="enableClientCCEmail"
-                    control={form.control}
-                    render={({ field }) => (
-                  <Checkbox
-                    id="enableClientCCEmail"
-                        checked={field.value}
-                        onCheckedChange={(checked) => field.onChange(checked === true)}
-                      />
-                    )}
-                  />
-                  <Label
-                    htmlFor="enableClientCCEmail"
-                    className="text-sm font-normal cursor-pointer"
-                  >
-                    Enable Client CC email for this inspection
-                  </Label>
-                </div>
-
                 {form.watch('clients').map((client, index) => {
                   const loadClientOptions = async (inputValue: string) => {
                     if (!inputValue || inputValue.length < 2) {

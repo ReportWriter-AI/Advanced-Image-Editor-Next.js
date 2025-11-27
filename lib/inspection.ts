@@ -12,7 +12,6 @@ type CreateInspectionParams = {
   createdBy?: string;
   inspector?: string;
   companyOwnerRequested?: boolean;
-  enableClientCCEmail?: boolean;
   services?: Array<{
     serviceId: string;
     addOns?: Array<{
@@ -138,7 +137,6 @@ const formatInspection = (doc: IInspection | null) => {
     createdBy: doc.createdBy ? doc.createdBy.toString() : null,
     inspector: doc.inspector ? doc.inspector.toString() : null,
     companyOwnerRequested: doc.companyOwnerRequested ?? false,
-    enableClientCCEmail: doc.enableClientCCEmail ?? true,
     services: doc.services ?? null,
     discountCode: doc.discountCode ? doc.discountCode.toString() : null,
     location: doc.location ?? null,
@@ -167,7 +165,6 @@ export async function createInspection({
   createdBy,
   inspector,
   companyOwnerRequested,
-  enableClientCCEmail,
   services,
   discountCode,
   location,
@@ -202,10 +199,6 @@ export async function createInspection({
 
   if (companyOwnerRequested !== undefined) {
     inspectionData.companyOwnerRequested = companyOwnerRequested;
-  }
-
-  if (enableClientCCEmail !== undefined) {
-    inspectionData.enableClientCCEmail = enableClientCCEmail;
   }
 
   if (services && Array.isArray(services)) {
