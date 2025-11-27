@@ -2894,7 +2894,7 @@ body div.submit-section div.submit-controls div.location-button-container button
 }
 
 /* React Select Styles */
-.react-select-container .react-select__control {
+/* .react-select-container .react-select__control {
   @apply border-input bg-background min-h-9 h-9;
 }
 
@@ -2944,7 +2944,7 @@ body div.submit-section div.submit-controls div.location-button-container button
 
 .react-select-container .react-select__indicator:hover {
   @apply text-foreground;
-}
+} */
 
 
 
