@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,7 +13,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import ReactSelect from 'react-select';
+import ReactSelect, { components } from 'react-select';
 import AsyncSelect from 'react-select/async';
 import CreatableSelect from 'react-select/creatable';
 import AsyncCreatableSelect from 'react-select/async-creatable';
@@ -238,6 +238,7 @@ export default function CreateInspectionPage() {
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [referralSourceOptions, setReferralSourceOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [foundationOptions, setFoundationOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [addonMenuOpen, setAddonMenuOpen] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     fetchFormData();
@@ -2531,6 +2532,33 @@ export default function CreateInspectionPage() {
                                 placeholder="Select add-ons..."
                                 className="react-select-container"
                                 classNamePrefix="react-select"
+                                menuIsOpen={addonMenuOpen[index] || false}
+                                onMenuOpen={() => setAddonMenuOpen(prev => ({ ...prev, [index]: true }))}
+                                onMenuClose={() => setAddonMenuOpen(prev => ({ ...prev, [index]: false }))}
+                                components={{
+                                  ValueContainer: (props: any) => {
+                                    const { children, ...rest } = props;
+                                    const hasSelectedValues = selectedService.addOns.length > 0;
+                                    
+                                    return (
+                                      <components.ValueContainer {...rest}>
+                                        {children}
+                                        {hasSelectedValues && (
+                                          <button
+                                            type="button"
+                                            className="h-6 px-2 text-xs ml-1 shrink-0 bg-[#8230c9] text-white hover:bg-[#6d28a8] active:bg-[#5a2188] transition-all duration-200 rounded-md font-medium shadow-sm hover:shadow"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setAddonMenuOpen(prev => ({ ...prev, [index]: true }));
+                                            }}
+                                          >
+                                            Add another
+                                          </button>
+                                        )}
+                                      </components.ValueContainer>
+                                    );
+                                  },
+                                }}
                               />
                             </div>
                           )}
