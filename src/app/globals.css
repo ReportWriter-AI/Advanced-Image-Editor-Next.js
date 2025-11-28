@@ -2893,58 +2893,47 @@ body div.submit-section div.submit-controls div.location-button-container button
   animation-delay: 4s;
 }
 
-/* React Select Styles */
-/* .react-select-container .react-select__control {
-  @apply border-input bg-background min-h-9 h-9;
+/* React-Select Dark Icon Styling */
+/* Clear indicator (cross icon) - make it dark */
+.react-select__clear-indicator,
+.react-select-container .react-select__clear-indicator {
+  color: #1e293b !important;
 }
 
-.react-select-container .react-select__control:hover {
-  @apply border-input;
+.react-select__clear-indicator:hover,
+.react-select-container .react-select__clear-indicator:hover {
+  color: #0f172a !important;
 }
 
-.react-select-container .react-select__control--is-focused {
-  @apply border-ring ring-ring ring-1;
+.react-select__clear-indicator svg,
+.react-select-container .react-select__clear-indicator svg {
+  fill: #1e293b !important;
 }
 
-.react-select-container .react-select__menu {
-  @apply bg-popover border border-border rounded-md shadow-md;
+.react-select__clear-indicator:hover svg,
+.react-select-container .react-select__clear-indicator:hover svg {
+  fill: #0f172a !important;
 }
 
-.react-select-container .react-select__option {
-  @apply text-popover-foreground;
+/* Dropdown indicator (arrow icon) - make it dark */
+.react-select__dropdown-indicator,
+.react-select-container .react-select__dropdown-indicator {
+  color: #1e293b !important;
 }
 
-.react-select-container .react-select__option:hover {
-  @apply bg-accent text-accent-foreground;
+.react-select__dropdown-indicator:hover,
+.react-select-container .react-select__dropdown-indicator:hover {
+  color: #0f172a !important;
 }
 
-.react-select-container .react-select__option--is-selected {
-  @apply bg-primary text-primary-foreground;
+.react-select__dropdown-indicator svg,
+.react-select-container .react-select__dropdown-indicator svg {
+  fill: #1e293b !important;
 }
 
-.react-select-container .react-select__option--is-focused {
-  @apply bg-accent text-accent-foreground;
+.react-select__dropdown-indicator:hover svg,
+.react-select-container .react-select__dropdown-indicator:hover svg {
+  fill: #0f172a !important;
 }
-
-.react-select-container .react-select__placeholder {
-  @apply text-muted-foreground;
-}
-
-.react-select-container .react-select__single-value {
-  @apply text-foreground;
-}
-
-.react-select-container .react-select__indicator-separator {
-  @apply bg-border;
-}
-
-.react-select-container .react-select__indicator {
-  @apply text-muted-foreground;
-}
-
-.react-select-container .react-select__indicator:hover {
-  @apply text-foreground;
-} */
-
 
 
