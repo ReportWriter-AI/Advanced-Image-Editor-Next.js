@@ -53,6 +53,7 @@ import {
 import { DataTable, Column } from '@/components/ui/data-table';
 import { MultiSelect, MultiSelectOption } from '@/components/ui/multi-select';
 import { cn } from '@/lib/utils';
+import CreatableSelect from 'react-select/creatable';
 
 const roleOptions = [
   'Attorney',
@@ -74,7 +75,7 @@ const personSchema = z.object({
   mobilePhone: z.string().optional(),
   personCompany: z.string().optional(),
   role: z.enum(['Attorney', 'Insurance agent', 'Transaction coordinator', 'Title company', 'Other']).optional(),
-  tags: z.array(z.string()).optional(),
+  categories: z.array(z.string()).optional(),
   internalNotes: z.string().optional(),
   internalAdminNotes: z.string().optional(),
 }).refine((data) => {
@@ -108,7 +109,7 @@ const personSchema = z.object({
 
 type PersonFormValues = z.infer<typeof personSchema>;
 
-interface Tag {
+interface Category {
   _id: string;
   name: string;
   color: string;
@@ -127,50 +128,50 @@ interface Person {
   mobilePhone?: string;
   personCompany?: string;
   role?: string;
-  tags?: Tag[];
+  categories?: Category[];
   internalNotes?: string;
   internalAdminNotes?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-// Tag Search Component
-function TagSearchInput({
-  selectedTags,
-  onAddTag,
-  onRemoveTag,
-  allTags,
+// Category Search Component
+function CategorySearchInput({
+  selectedCategories,
+  onAddCategory,
+  onRemoveCategory,
+  allCategories,
   disabled = false,
 }: {
-  selectedTags: Tag[];
-  onAddTag: (tag: Tag) => void;
-  onRemoveTag: (tagId: string) => void;
-  allTags: Tag[];
+  selectedCategories: Category[];
+  onAddCategory: (category: Category) => void;
+  onRemoveCategory: (categoryId: string) => void;
+  allCategories: Category[];
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter tags client-side based on search query
-  const filteredTags = useMemo(() => {
-    // Filter out already selected tags
-    const availableTags = allTags.filter(
-      (tag) => !selectedTags.some((st) => st._id === tag._id)
+  // Filter categories client-side based on search query
+  const filteredCategories = useMemo(() => {
+    // Filter out already selected categories
+    const availableCategories = allCategories.filter(
+      (category) => !selectedCategories.some((sc) => sc._id === category._id)
     );
 
     if (!searchQuery.trim()) {
-      return availableTags;
+      return availableCategories;
     }
 
-    // Filter tags by name (case-insensitive)
+    // Filter categories by name (case-insensitive)
     const query = searchQuery.trim().toLowerCase();
-    return availableTags.filter((tag) =>
-      tag.name.toLowerCase().includes(query)
+    return availableCategories.filter((category) =>
+      category.name.toLowerCase().includes(query)
     );
-  }, [searchQuery, allTags, selectedTags]);
+  }, [searchQuery, allCategories, selectedCategories]);
 
-  const handleSelectTag = (tag: Tag) => {
-    onAddTag(tag);
+  const handleSelectCategory = (category: Category) => {
+    onAddCategory(category);
     setSearchQuery('');
     setOpen(false);
   };
@@ -187,39 +188,39 @@ function TagSearchInput({
             className="w-full justify-between"
             disabled={disabled}
           >
-            <span className="text-muted-foreground">Search and select tags...</span>
+            <span className="text-muted-foreground">Search and select categories...</span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="Search tags..."
+              placeholder="Search categories..."
               value={searchQuery}
               onValueChange={setSearchQuery}
             />
             <CommandList>
-              {filteredTags.length > 0 ? (
+              {filteredCategories.length > 0 ? (
                 <CommandGroup>
-                  {filteredTags.map((tag) => (
+                  {filteredCategories.map((category) => (
                     <CommandItem
-                      key={tag._id}
-                      value={tag.name}
-                      onSelect={() => handleSelectTag(tag)}
+                      key={category._id}
+                      value={category.name}
+                      onSelect={() => handleSelectCategory(category)}
                     >
                       <div className="flex items-center gap-2 w-full">
                         <div
                           className="w-3 h-3 rounded border shrink-0"
-                          style={{ backgroundColor: tag.color }}
+                          style={{ backgroundColor: category.color }}
                         />
-                        <span>{tag.name}</span>
+                        <span>{category.name}</span>
                       </div>
                     </CommandItem>
                   ))}
                 </CommandGroup>
               ) : (
                 <CommandEmpty>
-                  {searchQuery.trim() ? 'No tags found' : 'No tags available'}
+                  {searchQuery.trim() ? 'No categories found' : 'No categories available'}
                 </CommandEmpty>
               )}
             </CommandList>
@@ -227,21 +228,21 @@ function TagSearchInput({
         </PopoverContent>
       </Popover>
 
-      {selectedTags.length > 0 && (
+      {selectedCategories.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
-          {selectedTags.map((tag) => (
+          {selectedCategories.map((category) => (
             <div
-              key={tag._id}
+              key={category._id}
               className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm"
             >
               <div
                 className="w-3 h-3 rounded border"
-                style={{ backgroundColor: tag.color }}
+                style={{ backgroundColor: category.color }}
               />
-              <span>{tag.name}</span>
+              <span>{category.name}</span>
               <button
                 type="button"
-                onClick={() => onRemoveTag(tag._id)}
+                onClick={() => onRemoveCategory(category._id)}
                 className="text-destructive hover:text-destructive/80 ml-1"
                 disabled={disabled}
               >
@@ -263,7 +264,6 @@ export default function PeopleManager() {
   const [personToDelete, setPersonToDelete] = useState<Person | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -272,11 +272,11 @@ export default function PeopleManager() {
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
-  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [loadingTags, setLoadingTags] = useState(false);
-  const [allTagsForInput, setAllTagsForInput] = useState<Tag[]>([]);
-  const [loadingAllTags, setLoadingAllTags] = useState(false);
+  const [selectedFilterCategories, setSelectedFilterCategories] = useState<string[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [allCategoriesForInput, setAllCategoriesForInput] = useState<Category[]>([]);
+  const [loadingAllCategories, setLoadingAllCategories] = useState(false);
 
   const form = useForm<PersonFormValues>({
     resolver: zodResolver(personSchema),
@@ -292,7 +292,7 @@ export default function PeopleManager() {
       mobilePhone: '',
       personCompany: '',
       role: undefined,
-      tags: [],
+      categories: [],
       internalNotes: '',
       internalAdminNotes: '',
     },
@@ -309,8 +309,8 @@ export default function PeopleManager() {
   const isCompany = watch('isCompany');
 
   useEffect(() => {
-    loadPeople(pagination.page, pagination.limit, searchQuery, selectedFilterTags);
-  }, [pagination.page, pagination.limit, searchQuery, selectedFilterTags]);
+    loadPeople(pagination.page, pagination.limit, searchQuery, selectedFilterCategories);
+  }, [pagination.page, pagination.limit, searchQuery, selectedFilterCategories]);
 
   // Debounce search input
   useEffect(() => {
@@ -322,46 +322,46 @@ export default function PeopleManager() {
   }, [searchInput]);
 
   useEffect(() => {
-    loadAvailableTags();
+    loadAvailableCategories();
   }, []);
 
-  const loadAllTags = async () => {
+  const loadAllCategories = async () => {
     try {
-      setLoadingAllTags(true);
-      const response = await fetch('/api/tags?limit=1000', {
+      setLoadingAllCategories(true);
+      const response = await fetch('/api/categories?limit=1000', {
         credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
-        setAllTagsForInput(data.tags || []);
+        setAllCategoriesForInput(data.categories || []);
       }
     } catch (error: any) {
-      console.error('Error loading all tags:', error);
+      console.error('Error loading all categories:', error);
     } finally {
-      setLoadingAllTags(false);
+      setLoadingAllCategories(false);
     }
   };
 
-  const loadAvailableTags = async () => {
+  const loadAvailableCategories = async () => {
     try {
-      setLoadingTags(true);
-      // Fetch all tags from the tags table
-      const response = await fetch('/api/tags?limit=1000', {
+      setLoadingCategories(true);
+      // Fetch all categories from the categories table
+      const response = await fetch('/api/categories?limit=1000', {
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load tags');
+        throw new Error('Failed to load categories');
       }
 
       const data = await response.json();
-      setAvailableTags(data.tags || []);
+      setAvailableCategories(data.categories || []);
     } catch (error: any) {
       console.error(error);
-      toast.error(error.message || 'Unable to load tags');
+      toast.error(error.message || 'Unable to load categories');
     } finally {
-      setLoadingTags(false);
+      setLoadingCategories(false);
     }
   };
 
@@ -369,7 +369,7 @@ export default function PeopleManager() {
     page: number = 1,
     limit: number = 10,
     search: string = '',
-    tags: string[] = []
+    categories: string[] = []
   ) => {
     try {
       setLoading(true);
@@ -382,8 +382,8 @@ export default function PeopleManager() {
         params.append('search', search.trim());
       }
 
-      if (tags.length > 0) {
-        params.append('tags', tags.join(','));
+      if (categories.length > 0) {
+        params.append('categories', categories.join(','));
       }
 
       const response = await fetch(`/api/people?${params.toString()}`, {
@@ -412,8 +412,8 @@ export default function PeopleManager() {
     setPagination((prev) => ({ ...prev, page: 1 })); // Reset to page 1 on search
   };
 
-  const handleTagsChange = (tags: string[]) => {
-    setSelectedFilterTags(tags);
+  const handleCategoriesChange = (categories: string[]) => {
+    setSelectedFilterCategories(categories);
     setPagination((prev) => ({ ...prev, page: 1 })); // Reset to page 1 on filter change
   };
 
@@ -450,27 +450,27 @@ export default function PeopleManager() {
       cell: (row) => <span>{row.role || '-'}</span>,
     },
     {
-      id: 'tags',
-      header: 'Tags',
+      id: 'categories',
+      header: 'Categories',
       cell: (row) => (
         <div>
-          {row.tags && row.tags.length > 0 ? (
+          {row.categories && row.categories.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {row.tags.slice(0, 3).map((tag) => (
+              {row.categories.slice(0, 3).map((category) => (
                 <div
-                  key={tag._id}
-                  className="flex items-center gap-1 px-2 py-0.5 bg-muted rounded text-xs"
+                  key={category._id}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-muted rounded text-xs"
                 >
                   <div
                     className="w-2 h-2 rounded border"
-                    style={{ backgroundColor: tag.color }}
+                    style={{ backgroundColor: category.color }}
                   />
-                  <span>{tag.name}</span>
+                  <span>{category.name}</span>
                 </div>
               ))}
-              {row.tags.length > 3 && (
+              {row.categories.length > 3 && (
                 <span className="text-xs text-muted-foreground">
-                  +{row.tags.length - 3}
+                  +{row.categories.length - 3}
                 </span>
               )}
             </div>
@@ -507,8 +507,7 @@ export default function PeopleManager() {
 
   const handleCreate = () => {
     setEditingPerson(null);
-    setSelectedTags([]);
-    loadAllTags(); // Load all tags when dialog opens
+    loadAllCategories(); // Load all categories when dialog opens
     reset({
       isCompany: false,
       firstName: '',
@@ -521,7 +520,7 @@ export default function PeopleManager() {
       mobilePhone: '',
       personCompany: '',
       role: undefined,
-      tags: [],
+      categories: [],
       internalNotes: '',
       internalAdminNotes: '',
     });
@@ -530,8 +529,11 @@ export default function PeopleManager() {
 
   const handleEdit = (person: Person) => {
     setEditingPerson(person);
-    setSelectedTags(person.tags || []);
-    loadAllTags(); // Load all tags when dialog opens
+    loadAllCategories(); // Load all categories when dialog opens
+    // Convert category ObjectIds to names for display
+    const categoryNames = (person.categories || []).map((c) => 
+      typeof c === 'object' && c.name ? c.name : String(c)
+    );
     reset({
       isCompany: person.isCompany,
       firstName: person.firstName || '',
@@ -544,7 +546,7 @@ export default function PeopleManager() {
       mobilePhone: person.mobilePhone || '',
       personCompany: person.personCompany || '',
       role: person.role as any,
-      tags: (person.tags || []).map((t) => t._id),
+      categories: categoryNames,
       internalNotes: person.internalNotes || '',
       internalAdminNotes: person.internalAdminNotes || '',
     });
@@ -570,8 +572,8 @@ export default function PeopleManager() {
       }
 
       toast.success('Person deleted successfully');
-      await loadPeople(pagination.page, pagination.limit, searchQuery, selectedFilterTags);
-      await loadAvailableTags(); // Refresh available tags
+      await loadPeople(pagination.page, pagination.limit, searchQuery, selectedFilterCategories);
+      await loadAvailableCategories(); // Refresh available categories
       setPersonToDelete(null);
     } catch (error: any) {
       console.error(error);
@@ -581,45 +583,23 @@ export default function PeopleManager() {
     }
   };
 
-  const handleAddTag = (tag: Tag) => {
-    if (!selectedTags.some((t) => t._id === tag._id)) {
-      setSelectedTags([...selectedTags, tag]);
-      const currentTags = form.getValues('tags') || [];
-      form.setValue('tags', [...currentTags, tag._id]);
-    }
-  };
-
-  const handleRemoveTag = (tagId: string) => {
-    setSelectedTags(selectedTags.filter((t) => t._id !== tagId));
-    const currentTags = form.getValues('tags') || [];
-    form.setValue('tags', currentTags.filter((id) => id !== tagId));
-  };
 
   const onSubmit = async (values: PersonFormValues) => {
     try {
       setSaving(true);
 
-      // Get all tag IDs from selectedTags (these are the tags the user selected)
-      const tagIds: string[] = selectedTags.map((tag) => tag._id);
-
-      // Also check form values.tags for any additional tag IDs
-      if (values.tags && Array.isArray(values.tags)) {
-        for (const tagId of values.tags) {
-          if (typeof tagId === 'string' && !tagIds.includes(tagId)) {
-            // Validate it's a proper ObjectId
-            if (tagId.match(/^[0-9a-fA-F]{24}$/)) {
-              tagIds.push(tagId);
-            }
-          }
-        }
-      }
+      // Categories are now stored as strings (names) in the form
+      // Filter out empty strings and send to API
+      const categoryNames = (values.categories || []).filter((name) => 
+        typeof name === 'string' && name.trim().length > 0
+      );
 
       const url = editingPerson ? '/api/people' : '/api/people';
       const method = editingPerson ? 'PUT' : 'POST';
 
       const payload = editingPerson
-        ? { ...values, _id: editingPerson._id, tags: tagIds }
-        : { ...values, tags: tagIds };
+        ? { ...values, _id: editingPerson._id, categories: categoryNames }
+        : { ...values, categories: categoryNames };
 
       const response = await fetch(url, {
         method,
@@ -636,12 +616,11 @@ export default function PeopleManager() {
       }
 
       toast.success(`Person ${editingPerson ? 'updated' : 'created'} successfully`);
-      await loadPeople(pagination.page, pagination.limit, searchQuery, selectedFilterTags);
-      await loadAvailableTags(); // Refresh available tags
-      await loadAllTags(); // Refresh all tags for input
+      await loadPeople(pagination.page, pagination.limit, searchQuery, selectedFilterCategories);
+      await loadAvailableCategories(); // Refresh available categories
+      await loadAllCategories(); // Refresh all categories for input
       setDialogOpen(false);
       setEditingPerson(null);
-      setSelectedTags([]);
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || 'Unable to save person');
@@ -650,10 +629,16 @@ export default function PeopleManager() {
     }
   };
 
-  const tagOptions: MultiSelectOption[] = availableTags.map((tag) => ({
-    value: tag._id,
-    label: tag.name,
-    description: tag.color,
+  const categoryOptions: MultiSelectOption[] = availableCategories.map((category) => ({
+    value: category._id,
+    label: category.name,
+    description: category.color,
+  }));
+
+  // Category options for CreatableSelect (using names as values)
+  const categorySelectOptions = allCategoriesForInput.map((category) => ({
+    value: category.name,
+    label: category.name,
   }));
 
   return (
@@ -686,14 +671,14 @@ export default function PeopleManager() {
               </div>
             </div>
             <div className="flex-1 space-y-2">
-              <Label>Filter by Tags</Label>
+              <Label>Filter by Categories</Label>
               <MultiSelect
-                value={selectedFilterTags}
-                onChange={handleTagsChange}
-                options={tagOptions}
-                placeholder="Select tags..."
-                emptyText="No tags found"
-                disabled={loadingTags}
+                value={selectedFilterCategories}
+                onChange={handleCategoriesChange}
+                options={categoryOptions}
+                placeholder="Select categories..."
+                emptyText="No categories found"
+                disabled={loadingCategories}
                 maxBadges={3}
               />
             </div>
@@ -906,13 +891,32 @@ export default function PeopleManager() {
             </div>
 
             <div className="space-y-2">
-              <Label>Tags</Label>
-              <TagSearchInput
-                selectedTags={selectedTags}
-                onAddTag={handleAddTag}
-                onRemoveTag={handleRemoveTag}
-                allTags={allTagsForInput}
-                disabled={saving || loadingAllTags}
+              <Label>Categories</Label>
+              <Controller
+                name="categories"
+                control={control}
+                render={({ field }) => (
+                  <CreatableSelect
+                    isMulti
+                    value={(field.value || []).map((name: string) => ({ value: name, label: name }))}
+                    onChange={(selectedOptions) => {
+                      field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : []);
+                    }}
+                    onCreateOption={(inputValue) => {
+                      const trimmedValue = inputValue.trim();
+                      if (trimmedValue && !field.value?.includes(trimmedValue)) {
+                        field.onChange([...(field.value || []), trimmedValue]);
+                      }
+                    }}
+                    options={categorySelectOptions}
+                    placeholder="Type and press Enter to add categories..."
+                    isClearable
+                    isDisabled={saving || loadingAllCategories}
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                    formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
+                  />
+                )}
               />
             </div>
 
@@ -953,7 +957,6 @@ export default function PeopleManager() {
                 onClick={() => {
                   setDialogOpen(false);
                   setEditingPerson(null);
-                  setSelectedTags([]);
                 }}
                 disabled={saving}
               >

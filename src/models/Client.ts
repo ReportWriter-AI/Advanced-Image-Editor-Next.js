@@ -10,7 +10,7 @@ export interface IClient extends Document {
   phone?: string;
   homePhone?: string;
   mobilePhone?: string;
-  tags: mongoose.Types.ObjectId[];
+  categories: mongoose.Types.ObjectId[];
   internalNotes?: string;
   internalAdminNotes?: string;
   excludeFromMassEmail: boolean;
@@ -62,9 +62,9 @@ const ClientSchema = new Schema<IClient>(
       type: String,
       trim: true,
     },
-    tags: [{
+    categories: [{
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Tag',
+      ref: 'Category',
     }],
     internalNotes: {
       type: String,
@@ -102,7 +102,7 @@ const ClientSchema = new Schema<IClient>(
 
 ClientSchema.index({ company: 1 });
 ClientSchema.index({ email: 1 });
-ClientSchema.index({ tags: 1 });
+ClientSchema.index({ categories: 1 });
 ClientSchema.index({ excludeFromMassEmail: 1 });
 ClientSchema.index({ unsubscribedFromMassEmails: 1 });
 

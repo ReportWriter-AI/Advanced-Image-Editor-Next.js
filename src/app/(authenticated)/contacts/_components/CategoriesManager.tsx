@@ -67,7 +67,7 @@ const ruleTypeOptions = [
   "Seller's Agent Last Inspection",
 ];
 
-const tagRuleSchema = z.object({
+const categoryRuleSchema = z.object({
   operation: z.enum(['AND', 'OR']).optional(),
   ruleType: z.string().min(1, 'Rule type is required'),
   condition: z.enum(['Equal To', 'Greater Than', 'Less Than']),
@@ -84,42 +84,42 @@ const tagRuleSchema = z.object({
   path: ['days'],
 });
 
-const tagSchema = z.object({
-  name: z.string().min(1, 'Tag name is required'),
+const categorySchema = z.object({
+  name: z.string().min(1, 'Category name is required'),
   color: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Invalid color format'),
-  autoTagging: z.boolean(),
-  autoTagPerson: z.enum(['Agent', 'Client']).optional(),
-  rules: z.array(tagRuleSchema).optional(),
-  removeTagOnRuleFail: z.boolean(),
+  autoCategorizing: z.boolean(),
+  autoCategoryPerson: z.enum(['Agent', 'Client']).optional(),
+  rules: z.array(categoryRuleSchema).optional(),
+  removeCategoryOnRuleFail: z.boolean(),
 }).refine((data) => {
-  if (data.autoTagging && !data.autoTagPerson) {
+  if (data.autoCategorizing && !data.autoCategoryPerson) {
     return false;
   }
   return true;
 }, {
-  message: 'Auto Tag Person is required when Auto Tagging is enabled',
-  path: ['autoTagPerson'],
+  message: 'Auto Category Person is required when Auto Categorizing is enabled',
+  path: ['autoCategoryPerson'],
 }).refine((data) => {
-  if (data.autoTagging && (!data.rules || data.rules.length === 0)) {
+  if (data.autoCategorizing && (!data.rules || data.rules.length === 0)) {
     return false;
   }
   return true;
 }, {
-  message: 'At least one rule is required when Auto Tagging is enabled',
+  message: 'At least one rule is required when Auto Categorizing is enabled',
   path: ['rules'],
 });
 
-type TagFormValues = z.infer<typeof tagSchema>;
-type TagRule = z.infer<typeof tagRuleSchema>;
+type CategoryFormValues = z.infer<typeof categorySchema>;
+type CategoryRule = z.infer<typeof categoryRuleSchema>;
 
-interface Tag {
+interface Category {
   _id: string;
   name: string;
   color: string;
-  autoTagging: boolean;
-  autoTagPerson?: 'Agent' | 'Client';
-  rules: TagRule[];
-  removeTagOnRuleFail: boolean;
+  autoCategorizing: boolean;
+  autoCategoryPerson?: 'Agent' | 'Client';
+  rules: CategoryRule[];
+  removeCategoryOnRuleFail: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -191,12 +191,12 @@ function SearchableSelect({
   );
 }
 
-export default function TagsManager() {
-  const [tags, setTags] = useState<Tag[]>([]);
+export default function CategoriesManager() {
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTag, setEditingTag] = useState<Tag | null>(null);
-  const [tagToDelete, setTagToDelete] = useState<Tag | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pagination, setPagination] = useState({
@@ -206,15 +206,15 @@ export default function TagsManager() {
     totalPages: 0,
   });
 
-  const form = useForm<TagFormValues>({
-    resolver: zodResolver(tagSchema),
+  const form = useForm<CategoryFormValues>({
+    resolver: zodResolver(categorySchema),
     defaultValues: {
       name: '',
       color: '#3b82f6',
-      autoTagging: false,
-      autoTagPerson: undefined,
+      autoCategorizing: false,
+      autoCategoryPerson: undefined,
       rules: [],
-      removeTagOnRuleFail: false,
+      removeCategoryOnRuleFail: false,
     },
   });
 
@@ -226,7 +226,7 @@ export default function TagsManager() {
     formState: { errors },
   } = form;
 
-  const autoTagging = watch('autoTagging');
+  const autoCategorizing = watch('autoCategorizing');
   const rules = watch('rules') || [];
 
   const { fields, append, remove } = useFieldArray({
@@ -235,28 +235,28 @@ export default function TagsManager() {
   });
 
   useEffect(() => {
-    loadTags(pagination.page, pagination.limit);
+    loadCategories(pagination.page, pagination.limit);
   }, [pagination.page, pagination.limit]);
 
-  const loadTags = async (page: number = 1, limit: number = 10) => {
+  const loadCategories = async (page: number = 1, limit: number = 10) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/tags?page=${page}&limit=${limit}`, {
+      const response = await fetch(`/api/categories?page=${page}&limit=${limit}`, {
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load tags');
+        throw new Error('Failed to load categories');
       }
 
       const data = await response.json();
-      setTags(data.tags || []);
+      setCategories(data.categories || []);
       if (data.pagination) {
         setPagination(data.pagination);
       }
     } catch (error: any) {
       console.error(error);
-      toast.error(error.message || 'Unable to load tags');
+      toast.error(error.message || 'Unable to load categories');
     } finally {
       setLoading(false);
     }
@@ -266,7 +266,7 @@ export default function TagsManager() {
     setPagination((prev) => ({ ...prev, page }));
   };
 
-  const columns: Column<Tag>[] = [
+  const columns: Column<Category>[] = [
     {
       id: 'name',
       header: 'Name',
@@ -286,13 +286,13 @@ export default function TagsManager() {
       ),
     },
     {
-      id: 'autoTagging',
-      header: 'Auto Tagging',
+      id: 'autoCategorizing',
+      header: 'Auto Categorizing',
       cell: (row) => (
         <span className="text-xs">
-          {row.autoTagging ? (
+          {row.autoCategorizing ? (
             <span>
-              {row.autoTagPerson} ({row.rules?.length || 0} rule{row.rules?.length !== 1 ? 's' : ''})
+              {row.autoCategoryPerson} ({row.rules?.length || 0} rule{row.rules?.length !== 1 ? 's' : ''})
             </span>
           ) : (
             <span className="text-muted-foreground">No</span>
@@ -339,68 +339,68 @@ export default function TagsManager() {
   ];
 
   const handleCreate = () => {
-    setEditingTag(null);
+    setEditingCategory(null);
     reset({
       name: '',
       color: '#3b82f6',
-      autoTagging: false,
-      autoTagPerson: undefined,
+      autoCategorizing: false,
+      autoCategoryPerson: undefined,
       rules: [],
-      removeTagOnRuleFail: false,
+      removeCategoryOnRuleFail: false,
     });
     setDialogOpen(true);
   };
 
-  const handleEdit = (tag: Tag) => {
-    setEditingTag(tag);
+  const handleEdit = (category: Category) => {
+    setEditingCategory(category);
     reset({
-      name: tag.name,
-      color: tag.color,
-      autoTagging: tag.autoTagging,
-      autoTagPerson: tag.autoTagPerson,
-      rules: tag.rules || [],
-      removeTagOnRuleFail: tag.removeTagOnRuleFail,
+      name: category.name,
+      color: category.color,
+      autoCategorizing: category.autoCategorizing,
+      autoCategoryPerson: category.autoCategoryPerson,
+      rules: category.rules || [],
+      removeCategoryOnRuleFail: category.removeCategoryOnRuleFail,
     });
     setDialogOpen(true);
   };
 
-  const handleDeleteClick = (tag: Tag) => {
-    setTagToDelete(tag);
+  const handleDeleteClick = (category: Category) => {
+    setCategoryToDelete(category);
   };
 
   const handleConfirmDelete = async () => {
-    if (!tagToDelete) return;
+    if (!categoryToDelete) return;
 
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/tags/${tagToDelete._id}`, {
+      const response = await fetch(`/api/categories/${categoryToDelete._id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete tag');
+        throw new Error('Failed to delete category');
       }
 
-      toast.success('Tag deleted successfully');
-      await loadTags(pagination.page, pagination.limit);
-      setTagToDelete(null);
+      toast.success('Category deleted successfully');
+      await loadCategories(pagination.page, pagination.limit);
+      setCategoryToDelete(null);
     } catch (error: any) {
       console.error(error);
-      toast.error(error.message || 'Unable to delete tag');
+      toast.error(error.message || 'Unable to delete category');
     } finally {
       setIsDeleting(false);
     }
   };
 
-  const onSubmit = async (values: TagFormValues) => {
+  const onSubmit = async (values: CategoryFormValues) => {
     try {
       setSaving(true);
-      const url = editingTag ? '/api/tags' : '/api/tags';
-      const method = editingTag ? 'PUT' : 'POST';
+      const url = editingCategory ? '/api/categories' : '/api/categories';
+      const method = editingCategory ? 'PUT' : 'POST';
 
-      const payload = editingTag
-        ? { ...values, _id: editingTag._id }
+      const payload = editingCategory
+        ? { ...values, _id: editingCategory._id }
         : values;
 
       const response = await fetch(url, {
@@ -414,16 +414,16 @@ export default function TagsManager() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to save tag');
+        throw new Error(errorData.error || 'Failed to save category');
       }
 
-      toast.success(`Tag ${editingTag ? 'updated' : 'created'} successfully`);
-      await loadTags(pagination.page, pagination.limit);
+      toast.success(`Category ${editingCategory ? 'updated' : 'created'} successfully`);
+      await loadCategories(pagination.page, pagination.limit);
       setDialogOpen(false);
-      setEditingTag(null);
+      setEditingCategory(null);
     } catch (error: any) {
       console.error(error);
-      toast.error(error.message || 'Unable to save tag');
+      toast.error(error.message || 'Unable to save category');
     } finally {
       setSaving(false);
     }
@@ -442,8 +442,8 @@ export default function TagsManager() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Tags Manager</h3>
-          <p className="text-sm text-muted-foreground">Create and manage tags for your contacts</p>
+          <h3 className="text-lg font-semibold">Categories Manager</h3>
+          <p className="text-sm text-muted-foreground">Create and manage categories for your contacts</p>
         </div>
         <Button onClick={handleCreate}>
           <Plus className="h-4 w-4 mr-2" />
@@ -453,13 +453,13 @@ export default function TagsManager() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Existing Tags</CardTitle>
-          <CardDescription>Manage your tags</CardDescription>
+          <CardTitle>Existing Categories</CardTitle>
+          <CardDescription>Manage your categories</CardDescription>
         </CardHeader>
         <CardContent>
           <DataTable
             columns={columns}
-            data={tags}
+            data={categories}
             loading={loading}
             pagination={
               pagination.totalPages > 0
@@ -472,7 +472,7 @@ export default function TagsManager() {
                   }
                 : undefined
             }
-            emptyMessage='No tags found. Click "Create" to add your first tag.'
+            emptyMessage='No categories found. Click "Create" to add your first category.'
           />
         </CardContent>
       </Card>
@@ -481,15 +481,15 @@ export default function TagsManager() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingTag ? 'Edit Tag' : 'Create Tag'}</DialogTitle>
+            <DialogTitle>{editingCategory ? 'Edit Category' : 'Create Category'}</DialogTitle>
             <DialogDescription>
-              {editingTag ? 'Update tag details' : 'Create a new tag for your contacts'}
+              {editingCategory ? 'Update category details' : 'Create a new category for your contacts'}
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="name">Tag Name</Label>
+              <Label htmlFor="name">Category Name</Label>
               <Controller
                 name="name"
                 control={control}
@@ -551,36 +551,36 @@ export default function TagsManager() {
 
             <div className="space-y-2">
               <Controller
-                name="autoTagging"
+                name="autoCategorizing"
                 control={control}
                 render={({ field }) => (
                   <div className="flex items-center gap-3">
                     <Checkbox
-                      id="autoTagging"
+                      id="autoCategorizing"
                       checked={field.value}
                       onCheckedChange={(checked) => field.onChange(Boolean(checked))}
                     />
-                    <Label htmlFor="autoTagging" className="font-medium cursor-pointer">
-                      Auto Tagging
+                    <Label htmlFor="autoCategorizing" className="font-medium cursor-pointer">
+                      Auto Categorizing
                     </Label>
                   </div>
                 )}
               />
             </div>
 
-            {autoTagging && (
+            {autoCategorizing && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="autoTagPerson">Auto Tag Person</Label>
+                  <Label htmlFor="autoCategoryPerson">Auto Category Person</Label>
                   <Controller
-                    name="autoTagPerson"
+                    name="autoCategoryPerson"
                     control={control}
                     render={({ field }) => (
                       <Select
                         value={field.value}
                         onValueChange={field.onChange}
                       >
-                        <SelectTrigger id="autoTagPerson">
+                        <SelectTrigger id="autoCategoryPerson">
                           <SelectValue placeholder="Select person type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -590,8 +590,8 @@ export default function TagsManager() {
                       </Select>
                     )}
                   />
-                  {errors.autoTagPerson && (
-                    <p className="text-sm text-destructive">{errors.autoTagPerson.message}</p>
+                  {errors.autoCategoryPerson && (
+                    <p className="text-sm text-destructive">{errors.autoCategoryPerson.message}</p>
                   )}
                 </div>
 
@@ -631,7 +631,7 @@ export default function TagsManager() {
                       )}
 
                       <div className="space-y-2">
-                        <Label>Auto Tag Add Rule Type</Label>
+                        <Label>Auto Category Add Rule Type</Label>
                         <Controller
                           name={`rules.${index}.ruleType`}
                           control={control}
@@ -761,9 +761,9 @@ export default function TagsManager() {
                     </Button>
                   )}
 
-                  {autoTagging && fields.length > 0 && (
+                  {autoCategorizing && fields.length > 0 && (
                     <p className="text-sm text-muted-foreground italic mt-4">
-                      Note: The tag rule(s) above are considering confirmed inspections that are paid or unpaid.
+                      Note: The category rule(s) above are considering confirmed inspections that are paid or unpaid.
                     </p>
                   )}
                 </div>
@@ -772,17 +772,17 @@ export default function TagsManager() {
 
             <div className="space-y-2">
               <Controller
-                name="removeTagOnRuleFail"
+                name="removeCategoryOnRuleFail"
                 control={control}
                 render={({ field }) => (
                   <div className="flex items-center gap-3">
                     <Checkbox
-                      id="removeTagOnRuleFail"
+                      id="removeCategoryOnRuleFail"
                       checked={field.value}
                       onCheckedChange={(checked) => field.onChange(Boolean(checked))}
                     />
-                    <Label htmlFor="removeTagOnRuleFail" className="font-medium cursor-pointer">
-                      Remove Tag on Rule Fail
+                    <Label htmlFor="removeCategoryOnRuleFail" className="font-medium cursor-pointer">
+                      Remove Category on Rule Fail
                     </Label>
                   </div>
                 )}
@@ -795,7 +795,7 @@ export default function TagsManager() {
                 variant="outline"
                 onClick={() => {
                   setDialogOpen(false);
-                  setEditingTag(null);
+                  setEditingCategory(null);
                 }}
                 disabled={saving}
               >
@@ -808,7 +808,7 @@ export default function TagsManager() {
                     Saving...
                   </>
                 ) : (
-                  editingTag ? 'Update' : 'Create'
+                  editingCategory ? 'Update' : 'Create'
                 )}
               </Button>
             </div>
@@ -817,12 +817,12 @@ export default function TagsManager() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={Boolean(tagToDelete)} onOpenChange={(open) => !open && !isDeleting && setTagToDelete(null)}>
+      <AlertDialog open={Boolean(categoryToDelete)} onOpenChange={(open) => !open && !isDeleting && setCategoryToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Tag?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Category?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the tag "{tagToDelete?.name}"? This action cannot be undone.
+              Are you sure you want to delete the category "{categoryToDelete?.name}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

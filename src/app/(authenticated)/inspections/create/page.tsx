@@ -67,7 +67,7 @@ const inspectionFormSchema = z.object({
     email: z.string().optional(),
     ccEmail: z.string().optional(),
     phone: z.string().optional(),
-    tags: z.array(z.string()),
+    categories: z.array(z.string()),
     notes: z.string().optional(),
     privateNotes: z.string().optional(),
   })),
@@ -90,7 +90,7 @@ const inspectionFormSchema = z.object({
     phone: z.string().optional(),
     agency: z.string().optional(),
     photoUrl: z.string().optional(),
-    tags: z.array(z.string()),
+    categories: z.array(z.string()),
     notes: z.string().optional(),
     privateNotes: z.string().optional(),
   })),
@@ -102,7 +102,7 @@ const inspectionFormSchema = z.object({
     phone: z.string().optional(),
     agency: z.string().optional(),
     photoUrl: z.string().optional(),
-    tags: z.array(z.string()),
+    categories: z.array(z.string()),
     notes: z.string().optional(),
     privateNotes: z.string().optional(),
   })),
@@ -147,7 +147,7 @@ export default function CreateInspectionPage() {
       email: '',
       ccEmail: '',
       phone: '',
-        tags: [],
+        categories: [],
       notes: '',
       privateNotes: '',
       }],
@@ -163,7 +163,7 @@ export default function CreateInspectionPage() {
         phone: '',
         agency: undefined,
         photoUrl: undefined,
-        tags: [],
+        categories: [],
         notes: '',
         privateNotes: '',
       }],
@@ -175,7 +175,7 @@ export default function CreateInspectionPage() {
         phone: '',
         agency: undefined,
         photoUrl: undefined,
-        tags: [],
+        categories: [],
         notes: '',
         privateNotes: '',
       }],
@@ -1182,8 +1182,8 @@ export default function CreateInspectionPage() {
                       email: selectedClient.email || '',
                       ccEmail: selectedClient.ccEmail || '',
                       phone: selectedClient.phone || '',
-                      tags: (selectedClient.tags || []).map((tag: any) => 
-                        typeof tag === 'string' ? tag : tag.name || tag
+                      categories: (selectedClient.categories || []).map((category: any) => 
+                        typeof category === 'string' ? category : category.name || category
                       ),
                       notes: selectedClient.internalNotes || '',
                       privateNotes: selectedClient.internalAdminNotes || '',
@@ -1352,25 +1352,25 @@ export default function CreateInspectionPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor={`tags-${index}`}>Tags</Label>
+                      <Label htmlFor={`categories-${index}`}>Categories</Label>
                       <CreatableSelect
                         isMulti
-                        value={(client.tags || []).map(tag => ({ value: tag, label: tag }))}
+                        value={(client.categories || []).map(category => ({ value: category, label: category }))}
                         onChange={(selectedOptions) => {
                           const currentClients = form.getValues('clients');
                           const newClients = [...currentClients];
-                          newClients[index].tags = selectedOptions.map(opt => opt.value);
+                          newClients[index].categories = selectedOptions.map(opt => opt.value);
                           form.setValue('clients', newClients);
                         }}
                         onCreateOption={(inputValue) => {
                           const currentClients = form.getValues('clients');
                           const newClients = [...currentClients];
-                          if (!newClients[index].tags.includes(inputValue.trim())) {
-                            newClients[index].tags.push(inputValue.trim());
+                          if (!newClients[index].categories.includes(inputValue.trim())) {
+                            newClients[index].categories.push(inputValue.trim());
                             form.setValue('clients', newClients);
                           }
                         }}
-                        placeholder="Type and press Enter to add tags..."
+                        placeholder="Type and press Enter to add categories..."
                         className="react-select-container"
                         classNamePrefix="react-select"
                         formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
@@ -1429,7 +1429,7 @@ export default function CreateInspectionPage() {
                         email: '',
                         ccEmail: '',
                         phone: '',
-                        tags: [],
+                        categories: [],
                         notes: '',
                         privateNotes: '',
                       },
@@ -1498,8 +1498,8 @@ export default function CreateInspectionPage() {
                       phone: selectedAgent.phone || '',
                       agency: selectedAgent.agency?._id?.toString() || selectedAgent.agency || undefined,
                       photoUrl: selectedAgent.photoUrl || undefined,
-                      tags: (selectedAgent.tags || []).map((tag: any) => 
-                        typeof tag === 'string' ? tag : tag.name || tag
+                      categories: (selectedAgent.categories || []).map((category: any) => 
+                        typeof category === 'string' ? category : category.name || category
                       ) || [],
                       notes: selectedAgent.internalNotes || '',
                       privateNotes: selectedAgent.internalAdminNotes || '',
@@ -1556,7 +1556,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 firstName: e.target.value,
                               };
                               form.setValue('agents', newAgents);
@@ -1574,7 +1574,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 lastName: e.target.value,
                               };
                               form.setValue('agents', newAgents);
@@ -1596,7 +1596,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 email: e.target.value,
                               };
                               form.setValue('agents', newAgents);
@@ -1615,7 +1615,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 ccEmail: e.target.value,
                               };
                               form.setValue('agents', newAgents);
@@ -1636,7 +1636,7 @@ export default function CreateInspectionPage() {
                             const newAgents = [...currentAgents];
                             newAgents[index] = {
                               ...newAgents[index],
-                              tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                               phone: e.target.value,
                             };
                             form.setValue('agents', newAgents);
@@ -1676,7 +1676,7 @@ export default function CreateInspectionPage() {
                               // Store the new agency name as a string (will be created on form submit)
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 agency: option.value.trim(), // Store as string name, not ID
                               };
                               form.setValue('agents', newAgents);
@@ -1692,7 +1692,7 @@ export default function CreateInspectionPage() {
                               
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 agency: option?.value || undefined,
                               };
                               form.setValue('agents', newAgents);
@@ -1700,7 +1700,7 @@ export default function CreateInspectionPage() {
                               // Clear selection
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 agency: undefined,
                               };
                               form.setValue('agents', newAgents);
@@ -1766,7 +1766,7 @@ export default function CreateInspectionPage() {
                             const newAgents = [...currentAgents];
                             newAgents[index] = {
                               ...newAgents[index],
-                              tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                               photoUrl: url || undefined,
                             };
                             form.setValue('agents', newAgents);
@@ -1776,32 +1776,32 @@ export default function CreateInspectionPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor={`agentTags-${index}`}>Tags</Label>
+                        <Label htmlFor={`agentCategories-${index}`}>Categories</Label>
                         <CreatableSelect
                           isMulti
-                          value={(agent.tags || []).map(tag => ({ value: tag, label: tag }))}
+                          value={(agent.categories || []).map(category => ({ value: category, label: category }))}
                           onChange={(selectedOptions) => {
                             const currentAgents = form.getValues('agents');
                             const newAgents = [...currentAgents];
                             newAgents[index] = {
                               ...newAgents[index],
-                              tags: selectedOptions.map(opt => opt.value),
+                              categories: selectedOptions.map(opt => opt.value),
                             };
                             form.setValue('agents', newAgents);
                           }}
                           onCreateOption={(inputValue) => {
                             const currentAgents = form.getValues('agents');
                             const newAgents = [...currentAgents];
-                            const currentTags = newAgents[index].tags || [];
-                            if (!currentTags.includes(inputValue.trim())) {
+                            const currentCategories = newAgents[index].categories || [];
+                            if (!currentCategories.includes(inputValue.trim())) {
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: [...currentTags, inputValue.trim()],
+                                categories: [...currentCategories, inputValue.trim()],
                               };
                               form.setValue('agents', newAgents);
                             }
                           }}
-                          placeholder="Type and press Enter to add tags..."
+                          placeholder="Type and press Enter to add categories..."
                           className="react-select-container"
                           classNamePrefix="react-select"
                           formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
@@ -1819,7 +1819,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 notes: e.target.value,
                               };
                               form.setValue('agents', newAgents);
@@ -1839,7 +1839,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 privateNotes: e.target.value,
                               };
                               form.setValue('agents', newAgents);
@@ -1868,7 +1868,7 @@ export default function CreateInspectionPage() {
                         phone: '',
                         agency: undefined,
                         photoUrl: undefined,
-                        tags: [],
+                        categories: [],
                         notes: '',
                         privateNotes: '',
                       },
@@ -1937,8 +1937,8 @@ export default function CreateInspectionPage() {
                       phone: selectedAgent.phone || '',
                       agency: selectedAgent.agency?._id?.toString() || selectedAgent.agency || undefined,
                       photoUrl: selectedAgent.photoUrl || undefined,
-                      tags: (selectedAgent.tags || []).map((tag: any) => 
-                        typeof tag === 'string' ? tag : tag.name || tag
+                      categories: (selectedAgent.categories || []).map((category: any) => 
+                        typeof category === 'string' ? category : category.name || category
                       ) || [],
                       notes: selectedAgent.internalNotes || '',
                       privateNotes: selectedAgent.internalAdminNotes || '',
@@ -1995,7 +1995,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 firstName: e.target.value,
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2013,7 +2013,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 lastName: e.target.value,
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2035,7 +2035,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 email: e.target.value,
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2054,7 +2054,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 ccEmail: e.target.value,
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2075,7 +2075,7 @@ export default function CreateInspectionPage() {
                             const newAgents = [...currentAgents];
                             newAgents[index] = {
                               ...newAgents[index],
-                              tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                               phone: e.target.value,
                             };
                             form.setValue('listingAgents', newAgents);
@@ -2115,7 +2115,7 @@ export default function CreateInspectionPage() {
                               // Store the new agency name as a string (will be created on form submit)
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 agency: option.value.trim(), // Store as string name, not ID
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2131,7 +2131,7 @@ export default function CreateInspectionPage() {
                               
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 agency: option?.value || undefined,
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2139,7 +2139,7 @@ export default function CreateInspectionPage() {
                               // Clear selection
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 agency: undefined,
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2205,7 +2205,7 @@ export default function CreateInspectionPage() {
                             const newAgents = [...currentAgents];
                             newAgents[index] = {
                               ...newAgents[index],
-                              tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                               photoUrl: url || undefined,
                             };
                             form.setValue('listingAgents', newAgents);
@@ -2215,32 +2215,32 @@ export default function CreateInspectionPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor={`listingAgentTags-${index}`}>Tags</Label>
+                        <Label htmlFor={`listingAgentCategories-${index}`}>Categories</Label>
                         <CreatableSelect
                           isMulti
-                          value={(agent.tags || []).map(tag => ({ value: tag, label: tag }))}
+                          value={(agent.categories || []).map(category => ({ value: category, label: category }))}
                           onChange={(selectedOptions) => {
                             const currentAgents = form.getValues('listingAgents');
                             const newAgents = [...currentAgents];
                             newAgents[index] = {
                               ...newAgents[index],
-                              tags: selectedOptions.map(opt => opt.value),
+                              categories: selectedOptions.map(opt => opt.value),
                             };
                             form.setValue('listingAgents', newAgents);
                           }}
                           onCreateOption={(inputValue) => {
                             const currentAgents = form.getValues('listingAgents');
                             const newAgents = [...currentAgents];
-                            const currentTags = newAgents[index].tags || [];
-                            if (!currentTags.includes(inputValue.trim())) {
+                            const currentCategories = newAgents[index].categories || [];
+                            if (!currentCategories.includes(inputValue.trim())) {
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: [...currentTags, inputValue.trim()],
+                                categories: [...currentCategories, inputValue.trim()],
                               };
                               form.setValue('listingAgents', newAgents);
                             }
                           }}
-                          placeholder="Type and press Enter to add tags..."
+                          placeholder="Type and press Enter to add categories..."
                           className="react-select-container"
                           classNamePrefix="react-select"
                           formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
@@ -2258,7 +2258,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 notes: e.target.value,
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2278,7 +2278,7 @@ export default function CreateInspectionPage() {
                               const newAgents = [...currentAgents];
                               newAgents[index] = {
                                 ...newAgents[index],
-                                tags: newAgents[index].tags || [],
+                                categories: newAgents[index].categories || [],
                                 privateNotes: e.target.value,
                               };
                               form.setValue('listingAgents', newAgents);
@@ -2307,7 +2307,7 @@ export default function CreateInspectionPage() {
                         phone: '',
                         agency: undefined,
                         photoUrl: undefined,
-                        tags: [],
+                        categories: [],
                         notes: '',
                         privateNotes: '',
                       },

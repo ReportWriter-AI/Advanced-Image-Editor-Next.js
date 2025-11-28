@@ -12,7 +12,7 @@ export interface IPerson extends Document {
   mobilePhone?: string;
   personCompany?: string;
   role?: 'Attorney' | 'Insurance agent' | 'Transaction coordinator' | 'Title company' | 'Other';
-  tags: mongoose.Types.ObjectId[];
+  categories: mongoose.Types.ObjectId[];
   internalNotes?: string;
   internalAdminNotes?: string;
   company: mongoose.Types.ObjectId;
@@ -70,9 +70,9 @@ const PersonSchema = new Schema<IPerson>(
       type: String,
       enum: ['Attorney', 'Insurance agent', 'Transaction coordinator', 'Title company', 'Other'],
     },
-    tags: [{
+    categories: [{
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Tag',
+      ref: 'Category',
     }],
     internalNotes: {
       type: String,
@@ -102,7 +102,7 @@ const PersonSchema = new Schema<IPerson>(
 
 PersonSchema.index({ company: 1 });
 PersonSchema.index({ email: 1 });
-PersonSchema.index({ tags: 1 });
+PersonSchema.index({ categories: 1 });
 
 const Person: Model<IPerson> = mongoose.models.Person || mongoose.model<IPerson>('Person', PersonSchema);
 

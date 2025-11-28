@@ -3,13 +3,14 @@ import { createInspection, getAllInspections } from "@/lib/inspection";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import dbConnect from "@/lib/db";
 import Client from "@/src/models/Client";
-import Tag from "@/src/models/Tag";
+import Category from "@/src/models/Category";
 import Event from "@/src/models/Event";
 import Agent from "@/src/models/Agent";
 import Agency from "@/src/models/Agency";
 import OrderIdCounter from "@/src/models/OrderIdCounter";
 import Inspection from "@/src/models/Inspection";
 import mongoose from "mongoose";
+import { getOrCreateCategories } from "@/lib/category-utils";
 
 const mapInspectionResponse = (inspection: any) => {
   if (!inspection) return null;
@@ -100,33 +101,14 @@ export async function POST(req: NextRequest) {
         }
 
         const email = clientData.email.trim().toLowerCase();
-        const tagNames = clientData.tags || [];
-        const tagIds: mongoose.Types.ObjectId[] = [];
-
-        // Create or get tags
-        for (const tagName of tagNames) {
-          if (!tagName || !tagName.trim()) continue;
-          
-          const trimmedTagName = tagName.trim();
-          let tag = await Tag.findOne({
-            name: trimmedTagName,
-            company: currentUser.company,
-          });
-
-          if (!tag) {
-            tag = await Tag.create({
-              name: trimmedTagName,
-              color: '#3b82f6',
-              company: currentUser.company,
-              createdBy: currentUser._id,
-              autoTagging: false,
-              rules: [],
-              removeTagOnRuleFail: false,
-            });
-          }
-
-          tagIds.push(tag._id as mongoose.Types.ObjectId);
-        }
+        const categoryNames = clientData.categories || [];
+        
+        // Create or get categories using utility function
+        const categoryIds = await getOrCreateCategories(
+          categoryNames,
+          currentUser.company as mongoose.Types.ObjectId,
+          currentUser._id as mongoose.Types.ObjectId
+        );
 
         // Check if client exists by email
         const existingClient = await Client.findOne({
@@ -143,7 +125,7 @@ export async function POST(req: NextRequest) {
             isCompany,
             ccEmail: clientData.ccEmail?.trim() || existingClient.ccEmail,
             phone: clientData.phone?.trim() || existingClient.phone,
-            tags: tagIds.length > 0 ? tagIds : existingClient.tags,
+            categories: categoryIds.length > 0 ? categoryIds : existingClient.categories,
             internalNotes: clientData.notes?.trim() || existingClient.internalNotes,
             internalAdminNotes: clientData.privateNotes?.trim() || existingClient.internalAdminNotes,
             updatedBy: currentUser._id,
@@ -168,7 +150,7 @@ export async function POST(req: NextRequest) {
             email,
             ccEmail: clientData.ccEmail?.trim(),
             phone: clientData.phone?.trim(),
-            tags: tagIds,
+            categories: categoryIds,
             internalNotes: clientData.notes?.trim(),
             internalAdminNotes: clientData.privateNotes?.trim(),
             company: currentUser.company,
@@ -229,33 +211,14 @@ export async function POST(req: NextRequest) {
         }
 
         const agentEmail = agentData.email.trim().toLowerCase();
-        const tagNames = agentData.tags || [];
-        const tagIds: mongoose.Types.ObjectId[] = [];
-
-        // Create or get tags
-        for (const tagName of tagNames) {
-          if (!tagName || !tagName.trim()) continue;
-          
-          const trimmedTagName = tagName.trim();
-          let tag = await Tag.findOne({
-            name: trimmedTagName,
-            company: currentUser.company,
-          });
-
-          if (!tag) {
-            tag = await Tag.create({
-              name: trimmedTagName,
-              color: '#3b82f6',
-              company: currentUser.company,
-              createdBy: currentUser._id,
-              autoTagging: false,
-              rules: [],
-              removeTagOnRuleFail: false,
-            });
-          }
-
-          tagIds.push(tag._id as mongoose.Types.ObjectId);
-        }
+        const categoryNames = agentData.categories || [];
+        
+        // Create or get categories using utility function
+        const categoryIds = await getOrCreateCategories(
+          categoryNames,
+          currentUser.company as mongoose.Types.ObjectId,
+          currentUser._id as mongoose.Types.ObjectId
+        );
 
         // Handle agency
         let agencyId: mongoose.Types.ObjectId | undefined = undefined;
@@ -296,7 +259,7 @@ export async function POST(req: NextRequest) {
             lastName: agentData.lastName?.trim() || existingAgent.lastName,
             ccEmail: agentData.ccEmail?.trim() || existingAgent.ccEmail,
             phone: agentData.phone?.trim() || existingAgent.phone,
-            tags: tagIds.length > 0 ? tagIds : existingAgent.tags,
+            categories: categoryIds.length > 0 ? categoryIds : existingAgent.categories,
             internalNotes: agentData.notes?.trim() || existingAgent.internalNotes,
             internalAdminNotes: agentData.privateNotes?.trim() || existingAgent.internalAdminNotes,
             updatedBy: currentUser._id,
@@ -321,7 +284,7 @@ export async function POST(req: NextRequest) {
             ccEmail: agentData.ccEmail?.trim(),
             phone: agentData.phone?.trim(),
             photoUrl: agentData.photoUrl?.trim() || undefined,
-            tags: tagIds,
+            categories: categoryIds,
             internalNotes: agentData.notes?.trim(),
             internalAdminNotes: agentData.privateNotes?.trim(),
             company: currentUser.company,
@@ -358,33 +321,14 @@ export async function POST(req: NextRequest) {
         }
 
         const agentEmail = agentData.email.trim().toLowerCase();
-        const tagNames = agentData.tags || [];
-        const tagIds: mongoose.Types.ObjectId[] = [];
-
-        // Create or get tags
-        for (const tagName of tagNames) {
-          if (!tagName || !tagName.trim()) continue;
-          
-          const trimmedTagName = tagName.trim();
-          let tag = await Tag.findOne({
-            name: trimmedTagName,
-            company: currentUser.company,
-          });
-
-          if (!tag) {
-            tag = await Tag.create({
-              name: trimmedTagName,
-              color: '#3b82f6',
-              company: currentUser.company,
-              createdBy: currentUser._id,
-              autoTagging: false,
-              rules: [],
-              removeTagOnRuleFail: false,
-            });
-          }
-
-          tagIds.push(tag._id as mongoose.Types.ObjectId);
-        }
+        const categoryNames = agentData.categories || [];
+        
+        // Create or get categories using utility function
+        const categoryIds = await getOrCreateCategories(
+          categoryNames,
+          currentUser.company as mongoose.Types.ObjectId,
+          currentUser._id as mongoose.Types.ObjectId
+        );
 
         // Handle agency
         let agencyId: mongoose.Types.ObjectId | undefined = undefined;
@@ -425,7 +369,7 @@ export async function POST(req: NextRequest) {
             lastName: agentData.lastName?.trim() || existingAgent.lastName,
             ccEmail: agentData.ccEmail?.trim() || existingAgent.ccEmail,
             phone: agentData.phone?.trim() || existingAgent.phone,
-            tags: tagIds.length > 0 ? tagIds : existingAgent.tags,
+            categories: categoryIds.length > 0 ? categoryIds : existingAgent.categories,
             internalNotes: agentData.notes?.trim() || existingAgent.internalNotes,
             internalAdminNotes: agentData.privateNotes?.trim() || existingAgent.internalAdminNotes,
             updatedBy: currentUser._id,
@@ -450,7 +394,7 @@ export async function POST(req: NextRequest) {
             ccEmail: agentData.ccEmail?.trim(),
             phone: agentData.phone?.trim(),
             photoUrl: agentData.photoUrl?.trim() || undefined,
-            tags: tagIds,
+            categories: categoryIds,
             internalNotes: agentData.notes?.trim(),
             internalAdminNotes: agentData.privateNotes?.trim(),
             company: currentUser.company,

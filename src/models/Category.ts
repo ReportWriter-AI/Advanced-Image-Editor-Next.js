@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export interface ITagRule {
+export interface ICategoryRule {
   operation?: 'AND' | 'OR';
   ruleType: string;
   condition: 'Equal To' | 'Greater Than' | 'Less Than';
@@ -9,13 +9,13 @@ export interface ITagRule {
   days?: number;
 }
 
-export interface ITag extends Document {
+export interface ICategory extends Document {
   name: string;
   color: string;
-  autoTagging: boolean;
-  autoTagPerson?: 'Agent' | 'Client';
-  rules: ITagRule[];
-  removeTagOnRuleFail: boolean;
+  autoCategorizing: boolean;
+  autoCategoryPerson?: 'Agent' | 'Client';
+  rules: ICategoryRule[];
+  removeCategoryOnRuleFail: boolean;
   company: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   updatedBy?: mongoose.Types.ObjectId;
@@ -23,7 +23,7 @@ export interface ITag extends Document {
   updatedAt: Date;
 }
 
-const TagRuleSchema = new Schema<ITagRule>(
+const CategoryRuleSchema = new Schema<ICategoryRule>(
   {
     operation: {
       type: String,
@@ -53,31 +53,31 @@ const TagRuleSchema = new Schema<ITagRule>(
   { _id: false }
 );
 
-const TagSchema = new Schema<ITag>(
+const CategorySchema = new Schema<ICategory>(
   {
     name: {
       type: String,
-      required: [true, 'Tag name is required'],
+      required: [true, 'Category name is required'],
       trim: true,
     },
     color: {
       type: String,
-      required: [true, 'Tag color is required'],
+      required: [true, 'Category color is required'],
       default: '#3b82f6',
     },
-    autoTagging: {
+    autoCategorizing: {
       type: Boolean,
       default: false,
     },
-    autoTagPerson: {
+    autoCategoryPerson: {
       type: String,
       enum: ['Agent', 'Client'],
     },
     rules: {
-      type: [TagRuleSchema],
+      type: [CategoryRuleSchema],
       default: [],
     },
-    removeTagOnRuleFail: {
+    removeCategoryOnRuleFail: {
       type: Boolean,
       default: false,
     },
@@ -102,9 +102,9 @@ const TagSchema = new Schema<ITag>(
   }
 );
 
-TagSchema.index({ company: 1, name: 1 });
+CategorySchema.index({ company: 1, name: 1 });
 
-const Tag: Model<ITag> = mongoose.models.Tag || mongoose.model<ITag>('Tag', TagSchema);
+const Category: Model<ICategory> = mongoose.models.Category || mongoose.model<ICategory>('Category', CategorySchema);
 
-export default Tag;
+export default Category;
 

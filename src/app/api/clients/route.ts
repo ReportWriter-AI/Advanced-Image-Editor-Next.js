@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import Client from '@/src/models/Client';
+import { getOrCreateCategories } from '@/lib/category-utils';
+import mongoose from 'mongoose';
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,8 +31,8 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '10', 10);
     const search = searchParams.get('search') || '';
-    const tagsParam = searchParams.get('tags');
-    const tagIds = tagsParam ? tagsParam.split(',').filter(Boolean) : [];
+    const categoriesParam = searchParams.get('categories');
+    const categoryIds = categoriesParam ? categoriesParam.split(',').filter(Boolean) : [];
     const skip = (page - 1) * limit;
 
     // Build query
@@ -45,16 +47,16 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Add tags filter (AND condition - client must have all selected tags)
-    if (tagIds.length > 0) {
-      query.tags = { $all: tagIds };
+    // Add categories filter (OR condition - client must have any of the selected categories)
+    if (categoryIds.length > 0) {
+      query.categories = { $in: categoryIds };
     }
 
     const total = await Client.countDocuments(query);
     const totalPages = Math.ceil(total / limit);
 
     const clients = await Client.find(query)
-      .populate('tags', 'name color')
+      .populate('categories', 'name color')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -102,7 +104,7 @@ export async function POST(request: NextRequest) {
       phone,
       homePhone,
       mobilePhone,
-      tags,
+      categories,
       internalNotes,
       internalAdminNotes,
       excludeFromMassEmail,
@@ -139,6 +141,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Process categories: accept both strings (names) and ObjectIds (backward compatibility)
+    const categoryIds = await getOrCreateCategories(
+      Array.isArray(categories) ? categories : [],
+      currentUser.company,
+      currentUser._id
+    );
+
     const client = await Client.create({
       isCompany: Boolean(isCompany),
       firstName: isCompany ? undefined : firstName?.trim(),
@@ -149,7 +158,7 @@ export async function POST(request: NextRequest) {
       phone: phone?.trim() || undefined,
       homePhone: homePhone?.trim() || undefined,
       mobilePhone: mobilePhone?.trim() || undefined,
-      tags: Array.isArray(tags) ? tags : [],
+      categories: categoryIds,
       internalNotes: internalNotes?.trim() || undefined,
       internalAdminNotes: internalAdminNotes?.trim() || undefined,
       excludeFromMassEmail: Boolean(excludeFromMassEmail ?? false),
@@ -160,7 +169,7 @@ export async function POST(request: NextRequest) {
     });
 
     const populatedClient = await Client.findById(client._id)
-      .populate('tags', 'name color')
+      .populate('categories', 'name color')
       .lean();
 
     return NextResponse.json(
@@ -201,7 +210,7 @@ export async function PUT(request: NextRequest) {
       phone,
       homePhone,
       mobilePhone,
-      tags,
+      categories,
       internalNotes,
       internalAdminNotes,
       excludeFromMassEmail,
@@ -242,6 +251,13 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Process categories: accept both strings (names) and ObjectIds (backward compatibility)
+    const categoryIds = await getOrCreateCategories(
+      Array.isArray(categories) ? categories : [],
+      currentUser.company,
+      currentUser._id
+    );
+
     const client = await Client.findOneAndUpdate(
       { _id, company: currentUser.company },
       {
@@ -254,7 +270,7 @@ export async function PUT(request: NextRequest) {
         phone: phone?.trim() || undefined,
         homePhone: homePhone?.trim() || undefined,
         mobilePhone: mobilePhone?.trim() || undefined,
-        tags: Array.isArray(tags) ? tags : [],
+        categories: categoryIds,
         internalNotes: internalNotes?.trim() || undefined,
         internalAdminNotes: internalAdminNotes?.trim() || undefined,
         excludeFromMassEmail: Boolean(excludeFromMassEmail ?? false),
@@ -262,7 +278,7 @@ export async function PUT(request: NextRequest) {
         updatedBy: currentUser._id,
       },
       { new: true }
-    ).populate('tags', 'name color');
+    ).populate('categories', 'name color');
 
     if (!client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });

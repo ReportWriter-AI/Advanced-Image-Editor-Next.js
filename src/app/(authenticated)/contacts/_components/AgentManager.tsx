@@ -53,6 +53,7 @@ import {
 import { DataTable, Column } from '@/components/ui/data-table';
 import { MultiSelect, MultiSelectOption } from '@/components/ui/multi-select';
 import { ImageUpload } from '@/components/ui/image-upload';
+import CreatableSelect from 'react-select/creatable';
 
 const months = [
   'January',
@@ -91,7 +92,7 @@ const agentSchema = z.object({
   instagramUrl: z.string().url('Invalid URL format').optional().or(z.literal('')),
   tiktokUrl: z.string().url('Invalid URL format').optional().or(z.literal('')),
   websiteUrl: z.string().url('Invalid URL format').optional().or(z.literal('')),
-  tags: z.array(z.string()).optional(),
+  categories: z.array(z.string()).optional(),
   agency: z.string().optional(),
   agencyPhone: z.string().optional(),
   agentTeam: z.string().optional(),
@@ -112,7 +113,7 @@ const agentSchema = z.object({
 
 type AgentFormValues = z.infer<typeof agentSchema>;
 
-interface Tag {
+interface Category {
   _id: string;
   name: string;
   color: string;
@@ -149,7 +150,7 @@ interface Agent {
   instagramUrl?: string;
   tiktokUrl?: string;
   websiteUrl?: string;
-  tags?: Tag[];
+  categories?: Category[];
   agency?: Agency | string;
   agencyPhone?: string;
   agentTeam?: AgentTeam | string;
@@ -527,43 +528,43 @@ function AgentTeamSearchSelect({
   );
 }
 
-// Tag Search Component
-function TagSearchInput({
-  selectedTags,
-  onAddTag,
-  onRemoveTag,
-  allTags,
+// Category Search Component
+function CategorySearchInput({
+  selectedCategorys,
+  onAddCategory,
+  onRemoveCategory,
+  allCategorys,
   disabled = false,
 }: {
-  selectedTags: Tag[];
-  onAddTag: (tag: Tag) => void;
-  onRemoveTag: (tagId: string) => void;
-  allTags: Tag[];
+  selectedCategorys: Category[];
+  onAddCategory: (tag: Category) => void;
+  onRemoveCategory: (tagId: string) => void;
+  allCategorys: Category[];
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter tags client-side based on search query
-  const filteredTags = useMemo(() => {
-    // Filter out already selected tags
-    const availableTags = allTags.filter(
-      (tag) => !selectedTags.some((st) => st._id === tag._id)
+  // Filter categories client-side based on search query
+  const filteredCategorys = useMemo(() => {
+    // Filter out already selected categories
+    const availableCategorys = allCategorys.filter(
+      (tag) => !selectedCategorys.some((st) => st._id === tag._id)
     );
 
     if (!searchQuery.trim()) {
-      return availableTags;
+      return availableCategorys;
     }
 
-    // Filter tags by name (case-insensitive)
+    // Filter categories by name (case-insensitive)
     const query = searchQuery.trim().toLowerCase();
-    return availableTags.filter((tag) =>
+    return availableCategorys.filter((tag) =>
       tag.name.toLowerCase().includes(query)
     );
-  }, [searchQuery, allTags, selectedTags]);
+  }, [searchQuery, allCategorys, selectedCategorys]);
 
-  const handleSelectTag = (tag: Tag) => {
-    onAddTag(tag);
+  const handleSelectCategory = (tag: Category) => {
+    onAddCategory(tag);
     setSearchQuery('');
     setOpen(false);
   };
@@ -580,25 +581,25 @@ function TagSearchInput({
             className="w-full justify-between"
             disabled={disabled}
           >
-            <span className="text-muted-foreground">Search and select tags...</span>
+            <span className="text-muted-foreground">Search and select categories...</span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="Search tags..."
+              placeholder="Search categories..."
               value={searchQuery}
               onValueChange={setSearchQuery}
             />
             <CommandList>
-              {filteredTags.length > 0 ? (
+              {filteredCategorys.length > 0 ? (
                 <CommandGroup>
-                  {filteredTags.map((tag) => (
+                  {filteredCategorys.map((tag) => (
                     <CommandItem
                       key={tag._id}
                       value={tag.name}
-                      onSelect={() => handleSelectTag(tag)}
+                      onSelect={() => handleSelectCategory(tag)}
                     >
                       <div className="flex items-center gap-2 w-full">
                         <div
@@ -612,7 +613,7 @@ function TagSearchInput({
                 </CommandGroup>
               ) : (
                 <CommandEmpty>
-                  {searchQuery.trim() ? 'No tags found' : 'No tags available'}
+                  {searchQuery.trim() ? 'No categories found' : 'No categories available'}
                 </CommandEmpty>
               )}
             </CommandList>
@@ -620,9 +621,9 @@ function TagSearchInput({
         </PopoverContent>
       </Popover>
 
-      {selectedTags.length > 0 && (
+      {selectedCategorys.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
-          {selectedTags.map((tag) => (
+          {selectedCategorys.map((tag) => (
             <div
               key={tag._id}
               className="flex items-center gap-1 px-2 py-1 bg-muted rounded text-sm"
@@ -634,7 +635,7 @@ function TagSearchInput({
               <span>{tag.name}</span>
               <button
                 type="button"
-                onClick={() => onRemoveTag(tag._id)}
+                onClick={() => onRemoveCategory(tag._id)}
                 className="text-destructive hover:text-destructive/80 ml-1"
                 disabled={disabled}
               >
@@ -656,7 +657,6 @@ export default function AgentManager() {
   const [agentToDelete, setAgentToDelete] = useState<Agent | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -665,11 +665,11 @@ export default function AgentManager() {
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
-  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [loadingTags, setLoadingTags] = useState(false);
-  const [allTagsForInput, setAllTagsForInput] = useState<Tag[]>([]);
-  const [loadingAllTags, setLoadingAllTags] = useState(false);
+  const [selectedFilterCategorys, setSelectedFilterCategorys] = useState<string[]>([]);
+  const [availableCategorys, setAvailableCategorys] = useState<Category[]>([]);
+  const [loadingCategorys, setLoadingCategorys] = useState(false);
+  const [allCategorysForInput, setAllCategorysForInput] = useState<Category[]>([]);
+  const [loadingAllCategorys, setLoadingAllCategorys] = useState(false);
 
   const form = useForm<AgentFormValues>({
     resolver: zodResolver(agentSchema),
@@ -693,7 +693,7 @@ export default function AgentManager() {
       instagramUrl: '',
       tiktokUrl: '',
       websiteUrl: '',
-      tags: [],
+      categories: [],
       agency: undefined,
       agencyPhone: '',
       agentTeam: undefined,
@@ -713,8 +713,8 @@ export default function AgentManager() {
   } = form;
 
   useEffect(() => {
-    loadAgents(pagination.page, pagination.limit, searchQuery, selectedFilterTags);
-  }, [pagination.page, pagination.limit, searchQuery, selectedFilterTags]);
+    loadAgents(pagination.page, pagination.limit, searchQuery, selectedFilterCategorys);
+  }, [pagination.page, pagination.limit, searchQuery, selectedFilterCategorys]);
 
   // Debounce search input
   useEffect(() => {
@@ -726,45 +726,45 @@ export default function AgentManager() {
   }, [searchInput]);
 
   useEffect(() => {
-    loadAvailableTags();
+    loadAvailableCategorys();
   }, []);
 
-  const loadAllTags = async () => {
+  const loadAllCategorys = async () => {
     try {
-      setLoadingAllTags(true);
-      const response = await fetch('/api/tags?limit=1000', {
+      setLoadingAllCategorys(true);
+      const response = await fetch('/api/categories?limit=1000', {
         credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
-        setAllTagsForInput(data.tags || []);
+        setAllCategorysForInput(data.categories || []);
       }
     } catch (error: any) {
-      console.error('Error loading all tags:', error);
+      console.error('Error loading all categories:', error);
     } finally {
-      setLoadingAllTags(false);
+      setLoadingAllCategorys(false);
     }
   };
 
-  const loadAvailableTags = async () => {
+  const loadAvailableCategorys = async () => {
     try {
-      setLoadingTags(true);
-      const response = await fetch('/api/tags?limit=1000', {
+      setLoadingCategorys(true);
+      const response = await fetch('/api/categories?limit=1000', {
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load tags');
+        throw new Error('Failed to load categories');
       }
 
       const data = await response.json();
-      setAvailableTags(data.tags || []);
+      setAvailableCategorys(data.categories || []);
     } catch (error: any) {
       console.error(error);
-      toast.error(error.message || 'Unable to load tags');
+      toast.error(error.message || 'Unable to load categories');
     } finally {
-      setLoadingTags(false);
+      setLoadingCategorys(false);
     }
   };
 
@@ -772,7 +772,7 @@ export default function AgentManager() {
     page: number = 1,
     limit: number = 10,
     search: string = '',
-    tags: string[] = []
+    categories: string[] = []
   ) => {
     try {
       setLoading(true);
@@ -785,8 +785,8 @@ export default function AgentManager() {
         params.append('search', search.trim());
       }
 
-      if (tags.length > 0) {
-        params.append('tags', tags.join(','));
+      if (categories.length > 0) {
+        params.append('categories', categories.join(','));
       }
 
       const response = await fetch(`/api/agents?${params.toString()}`, {
@@ -815,8 +815,8 @@ export default function AgentManager() {
     setPagination((prev) => ({ ...prev, page: 1 })); // Reset to page 1 on search
   };
 
-  const handleTagsChange = (tags: string[]) => {
-    setSelectedFilterTags(tags);
+  const handleCategorysChange = (categories: string[]) => {
+    setSelectedFilterCategorys(categories);
     setPagination((prev) => ({ ...prev, page: 1 })); // Reset to page 1 on filter change
   };
 
@@ -845,13 +845,13 @@ export default function AgentManager() {
       cell: (row) => <span>{row.phone || '-'}</span>,
     },
     {
-      id: 'tags',
-      header: 'Tags',
+      id: 'categories',
+      header: 'Categories',
       cell: (row) => (
         <div>
-          {row.tags && row.tags.length > 0 ? (
+          {row.categories && row.categories.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {row.tags.slice(0, 3).map((tag) => (
+              {row.categories.slice(0, 3).map((tag) => (
                 <div
                   key={tag._id}
                   className="flex items-center gap-1 px-2 py-0.5 bg-muted rounded text-xs"
@@ -863,9 +863,9 @@ export default function AgentManager() {
                   <span>{tag.name}</span>
                 </div>
               ))}
-              {row.tags.length > 3 && (
+              {row.categories.length > 3 && (
                 <span className="text-xs text-muted-foreground">
-                  +{row.tags.length - 3}
+                  +{row.categories.length - 3}
                 </span>
               )}
             </div>
@@ -902,8 +902,7 @@ export default function AgentManager() {
 
   const handleCreate = () => {
     setEditingAgent(null);
-    setSelectedTags([]);
-    loadAllTags();
+    loadAllCategorys();
     reset({
       firstName: '',
       lastName: '',
@@ -924,7 +923,7 @@ export default function AgentManager() {
       instagramUrl: '',
       tiktokUrl: '',
       websiteUrl: '',
-      tags: [],
+      categories: [],
       agency: undefined,
       agencyPhone: '',
       agentTeam: undefined,
@@ -938,8 +937,11 @@ export default function AgentManager() {
 
   const handleEdit = (agent: Agent) => {
     setEditingAgent(agent);
-    setSelectedTags(agent.tags || []);
-    loadAllTags();
+    loadAllCategorys();
+    // Convert category ObjectIds to names for display
+    const categoryNames = (agent.categories || []).map((c) => 
+      typeof c === 'object' && c.name ? c.name : String(c)
+    );
     reset({
       firstName: agent.firstName || '',
       lastName: agent.lastName || '',
@@ -960,7 +962,7 @@ export default function AgentManager() {
       instagramUrl: agent.instagramUrl || '',
       tiktokUrl: agent.tiktokUrl || '',
       websiteUrl: agent.websiteUrl || '',
-      tags: (agent.tags || []).map((t) => t._id),
+      categories: categoryNames,
       agency: agent.agency && typeof agent.agency === 'object' ? agent.agency._id : agent.agency || undefined,
       agencyPhone: agent.agencyPhone || '',
       agentTeam: agent.agentTeam && typeof agent.agentTeam === 'object' ? agent.agentTeam._id : agent.agentTeam || undefined,
@@ -991,8 +993,8 @@ export default function AgentManager() {
       }
 
       toast.success('Agent deleted successfully');
-      await loadAgents(pagination.page, pagination.limit, searchQuery, selectedFilterTags);
-      await loadAvailableTags();
+      await loadAgents(pagination.page, pagination.limit, searchQuery, selectedFilterCategorys);
+      await loadAvailableCategorys();
       setAgentToDelete(null);
     } catch (error: any) {
       console.error(error);
@@ -1002,37 +1004,16 @@ export default function AgentManager() {
     }
   };
 
-  const handleAddTag = (tag: Tag) => {
-    if (!selectedTags.some((t) => t._id === tag._id)) {
-      setSelectedTags([...selectedTags, tag]);
-      const currentTags = form.getValues('tags') || [];
-      form.setValue('tags', [...currentTags, tag._id]);
-    }
-  };
-
-  const handleRemoveTag = (tagId: string) => {
-    setSelectedTags(selectedTags.filter((t) => t._id !== tagId));
-    const currentTags = form.getValues('tags') || [];
-    form.setValue('tags', currentTags.filter((id) => id !== tagId));
-  };
 
   const onSubmit = async (values: AgentFormValues) => {
     try {
       setSaving(true);
 
-      // Get all tag IDs from selectedTags
-      const tagIds: string[] = selectedTags.map((tag) => tag._id);
-
-      // Also check form values.tags for any additional tag IDs
-      if (values.tags && Array.isArray(values.tags)) {
-        for (const tagId of values.tags) {
-          if (typeof tagId === 'string' && !tagIds.includes(tagId)) {
-            if (tagId.match(/^[0-9a-fA-F]{24}$/)) {
-              tagIds.push(tagId);
-            }
-          }
-        }
-      }
+      // Categories are now stored as strings (names) in the form
+      // Filter out empty strings and send to API
+      const categoryNames = (values.categories || []).filter((name) => 
+        typeof name === 'string' && name.trim().length > 0
+      );
 
       const url = editingAgent ? '/api/agents' : '/api/agents';
       const method = editingAgent ? 'PUT' : 'POST';
@@ -1040,7 +1021,7 @@ export default function AgentManager() {
       // Prepare payload - handle empty strings and null values
       const payload: any = {
         ...values,
-        tags: tagIds,
+        categories: categoryNames,
         // Handle null explicitly to clear the field, undefined to keep existing value
         photoUrl: values.photoUrl === null ? null : (values.photoUrl || undefined),
         ccEmail: values.ccEmail?.trim() || undefined,
@@ -1075,12 +1056,11 @@ export default function AgentManager() {
       }
 
       toast.success(`Agent ${editingAgent ? 'updated' : 'created'} successfully`);
-      await loadAgents(pagination.page, pagination.limit, searchQuery, selectedFilterTags);
-      await loadAvailableTags();
-      await loadAllTags();
+      await loadAgents(pagination.page, pagination.limit, searchQuery, selectedFilterCategorys);
+      await loadAvailableCategorys();
+      await loadAllCategorys();
       setDialogOpen(false);
       setEditingAgent(null);
-      setSelectedTags([]);
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || 'Unable to save agent');
@@ -1089,10 +1069,16 @@ export default function AgentManager() {
     }
   };
 
-  const tagOptions: MultiSelectOption[] = availableTags.map((tag) => ({
+  const tagOptions: MultiSelectOption[] = availableCategorys.map((tag) => ({
     value: tag._id,
     label: tag.name,
     description: tag.color,
+  }));
+
+  // Category options for CreatableSelect (using names as values)
+  const categoryOptions = allCategorysForInput.map((category) => ({
+    value: category.name,
+    label: category.name,
   }));
 
   return (
@@ -1125,14 +1111,14 @@ export default function AgentManager() {
               </div>
             </div>
             <div className="flex-1 space-y-2">
-              <Label>Filter by Tags</Label>
+              <Label>Filter by Categories</Label>
               <MultiSelect
-                value={selectedFilterTags}
-                onChange={handleTagsChange}
+                value={selectedFilterCategorys}
+                onChange={handleCategorysChange}
                 options={tagOptions}
-                placeholder="Select tags..."
-                emptyText="No tags found"
-                disabled={loadingTags}
+                placeholder="Select categories..."
+                emptyText="No categories found"
+                disabled={loadingCategorys}
                 maxBadges={3}
               />
             </div>
@@ -1431,15 +1417,34 @@ export default function AgentManager() {
               />
             </div>
 
-            {/* Tags */}
+            {/* Categorys */}
             <div className="space-y-2">
-              <Label>Tags</Label>
-              <TagSearchInput
-                selectedTags={selectedTags}
-                onAddTag={handleAddTag}
-                onRemoveTag={handleRemoveTag}
-                allTags={allTagsForInput}
-                disabled={saving || loadingAllTags}
+              <Label>Categories</Label>
+              <Controller
+                name="categories"
+                control={control}
+                render={({ field }) => (
+                  <CreatableSelect
+                    isMulti
+                    value={(field.value || []).map((name: string) => ({ value: name, label: name }))}
+                    onChange={(selectedOptions) => {
+                      field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : []);
+                    }}
+                    onCreateOption={(inputValue) => {
+                      const trimmedValue = inputValue.trim();
+                      if (trimmedValue && !field.value?.includes(trimmedValue)) {
+                        field.onChange([...(field.value || []), trimmedValue]);
+                      }
+                    }}
+                    options={categoryOptions}
+                    placeholder="Type and press Enter to add categories..."
+                    isClearable
+                    isDisabled={saving || loadingAllCategorys}
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                    formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
+                  />
+                )}
               />
             </div>
 
@@ -1612,7 +1617,6 @@ export default function AgentManager() {
                 onClick={() => {
                   setDialogOpen(false);
                   setEditingAgent(null);
-                  setSelectedTags([]);
                 }}
                 disabled={saving}
               >

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
-import Tag from '@/src/models/Tag';
+import Category from '@/src/models/Category';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,13 +14,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (!currentUser.company) {
-      return NextResponse.json({ tags: [] });
+      return NextResponse.json({ categories: [] });
     }
 
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
 
-    const tags = await Tag.find({
+    const categories = await Category.find({
       company: currentUser.company,
       name: { $regex: query, $options: 'i' },
     })
@@ -28,11 +28,11 @@ export async function GET(request: NextRequest) {
       .limit(20)
       .lean();
 
-    return NextResponse.json({ tags });
+    return NextResponse.json({ categories });
   } catch (error: any) {
-    console.error('Search tags error:', error);
+    console.error('Search categories error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to search tags' },
+      { error: error.message || 'Failed to search categories' },
       { status: 500 }
     );
   }

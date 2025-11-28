@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
-import Tag from '@/src/models/Tag';
+import Category from '@/src/models/Category';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     if (!currentUser.company) {
       return NextResponse.json({ 
-        tags: [],
+        categories: [],
         pagination: {
           page: 1,
           limit: 10,
@@ -30,17 +30,17 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10', 10);
     const skip = (page - 1) * limit;
 
-    const total = await Tag.countDocuments({ company: currentUser.company });
+    const total = await Category.countDocuments({ company: currentUser.company });
     const totalPages = Math.ceil(total / limit);
 
-    const tags = await Tag.find({ company: currentUser.company })
+    const categories = await Category.find({ company: currentUser.company })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
 
     return NextResponse.json({ 
-      tags,
+      categories,
       pagination: {
         page,
         limit,
@@ -49,9 +49,9 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error: any) {
-    console.error('Get tags error:', error);
+    console.error('Get categories error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch tags' },
+      { error: error.message || 'Failed to fetch categories' },
       { status: 500 }
     );
   }
@@ -74,18 +74,18 @@ export async function POST(request: NextRequest) {
     const {
       name,
       color,
-      autoTagging,
-      autoTagPerson,
+      autoCategorizing,
+      autoCategoryPerson,
       rules,
-      removeTagOnRuleFail,
+      removeCategoryOnRuleFail,
     } = body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
-      return NextResponse.json({ error: 'Tag name is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Category name is required' }, { status: 400 });
     }
 
     if (!color || typeof color !== 'string') {
-      return NextResponse.json({ error: 'Tag color is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Category color is required' }, { status: 400 });
     }
 
     // Validate color format (hex color)
@@ -94,12 +94,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid color format. Use hex color (e.g., #3b82f6)' }, { status: 400 });
     }
 
-    if (autoTagging && !autoTagPerson) {
-      return NextResponse.json({ error: 'Auto Tag Person is required when Auto Tagging is enabled' }, { status: 400 });
+    if (autoCategorizing && !autoCategoryPerson) {
+      return NextResponse.json({ error: 'Auto Category Person is required when Auto Categorizing is enabled' }, { status: 400 });
     }
 
-    if (autoTagging && (!rules || !Array.isArray(rules) || rules.length === 0)) {
-      return NextResponse.json({ error: 'At least one rule is required when Auto Tagging is enabled' }, { status: 400 });
+    if (autoCategorizing && (!rules || !Array.isArray(rules) || rules.length === 0)) {
+      return NextResponse.json({ error: 'At least one rule is required when Auto Categorizing is enabled' }, { status: 400 });
     }
 
     // Validate rules
@@ -114,32 +114,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const tag = await Tag.create({
+    const category = await Category.create({
       name: name.trim(),
       color,
-      autoTagging: Boolean(autoTagging),
-      autoTagPerson: autoTagging ? autoTagPerson : undefined,
+      autoCategorizing: Boolean(autoCategorizing),
+      autoCategoryPerson: autoCategorizing ? autoCategoryPerson : undefined,
       rules: rules || [],
-      removeTagOnRuleFail: Boolean(removeTagOnRuleFail),
+      removeCategoryOnRuleFail: Boolean(removeCategoryOnRuleFail),
       company: currentUser.company,
       createdBy: currentUser._id,
       updatedBy: currentUser._id,
     });
 
     return NextResponse.json(
-      { message: 'Tag created successfully', tag: tag.toObject() },
+      { message: 'Category created successfully', category: category.toObject() },
       { status: 201 }
     );
   } catch (error: any) {
-    console.error('Create tag error:', error);
+    console.error('Create category error:', error);
     if (error.code === 11000) {
       return NextResponse.json(
-        { error: 'A tag with this name already exists' },
+        { error: 'A category with this name already exists' },
         { status: 409 }
       );
     }
     return NextResponse.json(
-      { error: error.message || 'Failed to create tag' },
+      { error: error.message || 'Failed to create category' },
       { status: 500 }
     );
   }
@@ -163,22 +163,22 @@ export async function PUT(request: NextRequest) {
       _id,
       name,
       color,
-      autoTagging,
-      autoTagPerson,
+      autoCategorizing,
+      autoCategoryPerson,
       rules,
-      removeTagOnRuleFail,
+      removeCategoryOnRuleFail,
     } = body;
 
     if (!_id) {
-      return NextResponse.json({ error: 'Tag ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Category ID is required' }, { status: 400 });
     }
 
     if (!name || typeof name !== 'string' || !name.trim()) {
-      return NextResponse.json({ error: 'Tag name is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Category name is required' }, { status: 400 });
     }
 
     if (!color || typeof color !== 'string') {
-      return NextResponse.json({ error: 'Tag color is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Category color is required' }, { status: 400 });
     }
 
     // Validate color format
@@ -187,12 +187,12 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid color format. Use hex color (e.g., #3b82f6)' }, { status: 400 });
     }
 
-    if (autoTagging && !autoTagPerson) {
-      return NextResponse.json({ error: 'Auto Tag Person is required when Auto Tagging is enabled' }, { status: 400 });
+    if (autoCategorizing && !autoCategoryPerson) {
+      return NextResponse.json({ error: 'Auto Category Person is required when Auto Categorizing is enabled' }, { status: 400 });
     }
 
-    if (autoTagging && (!rules || !Array.isArray(rules) || rules.length === 0)) {
-      return NextResponse.json({ error: 'At least one rule is required when Auto Tagging is enabled' }, { status: 400 });
+    if (autoCategorizing && (!rules || !Array.isArray(rules) || rules.length === 0)) {
+      return NextResponse.json({ error: 'At least one rule is required when Auto Categorizing is enabled' }, { status: 400 });
     }
 
     // Validate rules
@@ -207,31 +207,31 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const tag = await Tag.findOneAndUpdate(
+    const category = await Category.findOneAndUpdate(
       { _id, company: currentUser.company },
       {
         name: name.trim(),
         color,
-        autoTagging: Boolean(autoTagging),
-        autoTagPerson: autoTagging ? autoTagPerson : undefined,
+        autoCategorizing: Boolean(autoCategorizing),
+        autoCategoryPerson: autoCategorizing ? autoCategoryPerson : undefined,
         rules: rules || [],
-        removeTagOnRuleFail: Boolean(removeTagOnRuleFail),
+        removeCategoryOnRuleFail: Boolean(removeCategoryOnRuleFail),
         updatedBy: currentUser._id,
       },
       { new: true }
     );
 
-    if (!tag) {
-      return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
+    if (!category) {
+      return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
     return NextResponse.json(
-      { message: 'Tag updated successfully', tag: tag.toObject() }
+      { message: 'Category updated successfully', category: category.toObject() }
     );
   } catch (error: any) {
-    console.error('Update tag error:', error);
+    console.error('Update category error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to update tag' },
+      { error: error.message || 'Failed to update category' },
       { status: 500 }
     );
   }

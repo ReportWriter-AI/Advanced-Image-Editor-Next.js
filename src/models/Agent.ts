@@ -20,7 +20,7 @@ export interface IAgent extends Document {
   instagramUrl?: string;
   tiktokUrl?: string;
   websiteUrl?: string;
-  tags: mongoose.Types.ObjectId[];
+  categories: mongoose.Types.ObjectId[];
   agency?: mongoose.Types.ObjectId;
   agencyPhone?: string;
   internalNotes?: string;
@@ -130,9 +130,9 @@ const AgentSchema = new Schema<IAgent>(
       type: String,
       trim: true,
     },
-    tags: [{
+    categories: [{
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Tag',
+      ref: 'Category',
     }],
     agency: {
       type: mongoose.Schema.Types.ObjectId,
@@ -179,7 +179,7 @@ const AgentSchema = new Schema<IAgent>(
 AgentSchema.index({ company: 1 });
 AgentSchema.index({ email: 1 });
 AgentSchema.index({ company: 1, email: 1 }, { unique: true }); // Unique email per company
-AgentSchema.index({ tags: 1 });
+AgentSchema.index({ categories: 1 });
 AgentSchema.index({ agency: 1 });
 AgentSchema.index({ excludeFromMassEmail: 1 });
 AgentSchema.index({ unsubscribedFromMassEmails: 1 });

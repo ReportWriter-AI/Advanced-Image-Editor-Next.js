@@ -5,6 +5,8 @@ import { getCurrentUser } from '@/lib/auth-helpers';
 import Agent from '@/src/models/Agent';
 import AgentTeam from '@/src/models/AgentTeam';
 import '@/src/models/Agency';
+import { getOrCreateCategories } from '@/lib/category-utils';
+import mongoose from 'mongoose';
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,8 +33,8 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '10', 10);
     const search = searchParams.get('search') || '';
-    const tagsParam = searchParams.get('tags');
-    const tagIds = tagsParam ? tagsParam.split(',').filter(Boolean) : [];
+    const categoriesParam = searchParams.get('categories');
+    const categoryIds = categoriesParam ? categoriesParam.split(',').filter(Boolean) : [];
     const skip = (page - 1) * limit;
 
     // Build query
@@ -47,16 +49,16 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Add tags filter (AND condition - agent must have all selected tags)
-    if (tagIds.length > 0) {
-      query.tags = { $all: tagIds };
+    // Add categories filter (OR condition - agent must have any of the selected categories)
+    if (categoryIds.length > 0) {
+      query.categories = { $in: categoryIds };
     }
 
     const total = await Agent.countDocuments(query);
     const totalPages = Math.ceil(total / limit);
 
     const agents = await Agent.find(query)
-      .populate('tags', 'name color')
+      .populate('categories', 'name color')
       .populate('agency', 'name')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -138,7 +140,7 @@ export async function POST(request: NextRequest) {
       instagramUrl,
       tiktokUrl,
       websiteUrl,
-      tags,
+      categories,
       agency,
       agencyPhone,
       agentTeam,
@@ -183,6 +185,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'An agent with this email already exists' }, { status: 400 });
     }
 
+    // Process categories: accept both strings (names) and ObjectIds (backward compatibility)
+    const categoryIds = await getOrCreateCategories(
+      Array.isArray(categories) ? categories : [],
+      currentUser.company,
+      currentUser._id
+    );
+
     const agent = await Agent.create({
       firstName: firstName.trim(),
       lastName: lastName?.trim() || undefined,
@@ -204,7 +213,7 @@ export async function POST(request: NextRequest) {
       instagramUrl: instagramUrl?.trim() || undefined,
       tiktokUrl: tiktokUrl?.trim() || undefined,
       websiteUrl: websiteUrl?.trim() || undefined,
-      tags: Array.isArray(tags) ? tags : [],
+      categories: categoryIds,
       // Handle null explicitly to clear the field, undefined to keep existing value
       agency: agency === null ? null : (agency || undefined),
       agencyPhone: agencyPhone?.trim() || undefined,
@@ -246,7 +255,7 @@ export async function POST(request: NextRequest) {
     }
 
     const populatedAgent = await Agent.findById(agent._id)
-      .populate('tags', 'name color')
+      .populate('categories', 'name color')
       .populate('agency', 'name')
       .lean();
 
@@ -314,7 +323,7 @@ export async function PUT(request: NextRequest) {
       instagramUrl,
       tiktokUrl,
       websiteUrl,
-      tags,
+      categories,
       agency,
       agencyPhone,
       agentTeam,
@@ -369,6 +378,13 @@ export async function PUT(request: NextRequest) {
     if (!currentAgent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
+
+    // Process categories: accept both strings (names) and ObjectIds (backward compatibility)
+    const categoryIds = await getOrCreateCategories(
+      Array.isArray(categories) ? categories : [],
+      currentUser.company,
+      currentUser._id
+    );
 
     // Find which team the agent currently belongs to
     const oldTeam = await AgentTeam.findOne({
@@ -433,7 +449,7 @@ export async function PUT(request: NextRequest) {
         instagramUrl: instagramUrl?.trim() || undefined,
         tiktokUrl: tiktokUrl?.trim() || undefined,
         websiteUrl: websiteUrl?.trim() || undefined,
-        tags: Array.isArray(tags) ? tags : [],
+        categories: categoryIds,
         // Handle null explicitly to clear the field, undefined to keep existing value
         agency: agency === null ? null : (agency || undefined),
         agencyPhone: agencyPhone?.trim() || undefined,
@@ -445,7 +461,7 @@ export async function PUT(request: NextRequest) {
       },
       { new: true }
     )
-      .populate('tags', 'name color')
+      .populate('categories', 'name color')
       .populate('agency', 'name')
       .lean();
 

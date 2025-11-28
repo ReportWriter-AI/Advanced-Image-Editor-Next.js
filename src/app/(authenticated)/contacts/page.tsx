@@ -1,7 +1,7 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import TagsManager from "./_components/TagsManager";
+import CategoriesManager from "./_components/CategoriesManager";
 import PeopleManager from "./_components/PeopleManager";
 import ClientManager from "./_components/ClientManager";
 import AgencyManager from "./_components/AgencyManager";
@@ -23,7 +23,7 @@ export default function ContactsPage() {
           <TabsTrigger value="agencies">Agencies</TabsTrigger>
           <TabsTrigger value="clients">Clients</TabsTrigger>
           <TabsTrigger value="people">People</TabsTrigger>
-          <TabsTrigger value="tags-manager">Tags Manager</TabsTrigger>
+          <TabsTrigger value="categories-manager">Categories Manager</TabsTrigger>
         </TabsList>
         
         <TabsContent value="agents" className="mt-6">
@@ -46,8 +46,8 @@ export default function ContactsPage() {
           <PeopleManager />
         </TabsContent>
         
-        <TabsContent value="tags-manager" className="mt-6">
-          <TagsManager />
+        <TabsContent value="categories-manager" className="mt-6">
+          <CategoriesManager />
         </TabsContent>
       </Tabs>
     </div>
