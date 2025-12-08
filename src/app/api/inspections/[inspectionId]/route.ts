@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { deleteInspection, updateInspection, getInspection } from "@/lib/inspection";
 import dbConnect from "@/lib/db";
 import Inspection from "@/src/models/Inspection";
+import Defect from "@/src/models/Defect";
+import InspectionInformationBlock from "@/src/models/InspectionInformationBlock";
 import mongoose from "mongoose";
 import { extractR2KeyFromUrl, deleteFromR2 } from "@/lib/r2";
 
@@ -196,17 +198,12 @@ export async function DELETE(
       );
     }
 
-    // Import MongoDB client for related collections (defects, info blocks)
-    // These might not be migrated to Mongoose yet, so we'll use native driver for them
-    const { default: clientPromise } = await import("@/lib/mongodb");
-    const client = await clientPromise;
-    const db = client.db("agi_inspections_db");
-    const { ObjectId } = await import("mongodb");
-    const mongoOid = new ObjectId(inspectionId);
+    // Fetch related documents using Mongoose models
+    const mongooseOid = new mongoose.Types.ObjectId(inspectionId);
 
     const [defects, infoBlocks] = await Promise.all([
-      db.collection("defects").find({ inspection_id: mongoOid }).toArray(),
-      db.collection("inspectioninformationblocks").find({ inspection_id: mongoOid }).project({ images: 1 }).toArray(),
+      Defect.find({ inspection_id: mongooseOid }).lean(),
+      InspectionInformationBlock.find({ inspection_id: mongooseOid }).select('images').lean(),
     ]);
 
     // Build list of URLs to delete from R2 (exclude reports/* to preserve permanent report links)

@@ -200,6 +200,7 @@ async function handler(request: Request) {
     console.log('  - annotations length:', defectData.annotations?.length || 0);
     console.log('  - originalImage:', defectData.originalImage);
 
+    console.log('💾 defectData:', defectData);
   await createDefect(defectData);
 
     console.log('✅ createDefect completed successfully');

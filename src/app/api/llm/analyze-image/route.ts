@@ -210,6 +210,8 @@ export async function POST(request: Request) {
       },
     });
 
+    return NextResponse.json({ success: true });
+
     console.log('✅ QStash publish successful');
   } catch (qstashError) {
     console.error('❌ QStash publish failed:', qstashError);

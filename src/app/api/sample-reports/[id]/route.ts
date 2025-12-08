@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ObjectId } from 'mongodb';
+import mongoose from 'mongoose';
 import dbConnect from '../../../../../lib/db';
 import { getCurrentUser } from '../../../../../lib/auth-helpers';
 import SampleReport from '../../../../../src/models/SampleReport';
-import clientPromise from '../../../../../lib/mongodb';
+import Inspection from '../../../../../src/models/Inspection';
 
 type RouteParams = {
   params: Promise<{ id: string }>;
@@ -71,15 +71,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     if (inspectionIdForHeader !== undefined) {
-      if (inspectionIdForHeader && ObjectId.isValid(inspectionIdForHeader)) {
-        const client = await clientPromise;
-        const db = client.db(process.env.INSPECTIONS_DB_NAME ?? 'agi_inspections_db');
-        const inspectionDoc = await db
-          .collection('inspections')
-          .findOne(
-            { _id: new ObjectId(inspectionIdForHeader) },
-            { projection: { headerImage: 1 } }
-          );
+      if (inspectionIdForHeader && mongoose.Types.ObjectId.isValid(inspectionIdForHeader)) {
+        const inspectionDoc = await Inspection.findById(
+          new mongoose.Types.ObjectId(inspectionIdForHeader)
+        )
+          .select('headerImage')
+          .lean();
 
         const headerImage =
           typeof inspectionDoc?.headerImage === 'string' && inspectionDoc.headerImage.trim()

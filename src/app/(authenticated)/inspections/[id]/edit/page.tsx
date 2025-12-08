@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { splitCommaSeparated } from '@/lib/utils';
 import TaskDialog from '../_components/TaskDialog';
 import TaskCommentsDialog from '../_components/TaskCommentsDialog';
+import ServiceSelectionDialog from './_components/ServiceSelectionDialog';
 import EventsManager from '@/components/EventsManager';
 
 const InformationSections = dynamic(() => import('../../../../../../components/InformationSections'), { 
@@ -131,6 +132,7 @@ export default function InspectionEditPage() {
     referralSource?: string;
     discountCode?: any;
     discountCodeId?: string;
+    token?: string;
     customData?: Record<string, any>;
     internalNotes?: string;
     clientNote?: string;
@@ -220,6 +222,9 @@ export default function InspectionEditPage() {
   // Agreements state
   const [agreements, setAgreements] = useState<any[]>([]);
   const [loadingAgreements, setLoadingAgreements] = useState(false);
+
+  // Service selection dialog state
+  const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
 
   // Fetch inspection details
   const fetchInspectionDetails = async () => {
@@ -1369,6 +1374,182 @@ export default function InspectionEditPage() {
     }
   };
 
+  // Addon request handlers
+  const handleApproveAddon = async (requestIndex: number) => {
+    try {
+      // @ts-ignore
+      const request = inspectionDetails.requestedAddons?.filter((req: any) => req.status === 'pending')[requestIndex];
+      
+      if (!request) {
+        toast.error('Request not found');
+        return;
+      }
+
+      // Find the service in the inspection
+      // @ts-ignore
+      const serviceIndex = inspectionDetails.services?.findIndex(
+        (s: any) => s.serviceId?.toString() === request.serviceId?.toString()
+      );
+
+      if (serviceIndex === -1 || serviceIndex === undefined) {
+        toast.error('Service not found in inspection');
+        return;
+      }
+
+      // Update the request status and add addon to service
+      // @ts-ignore
+      const updatedRequestedAddons = [...(inspectionDetails.requestedAddons || [])];
+      const actualRequestIndex = updatedRequestedAddons.findIndex(
+        (req: any) => req.serviceId?.toString() === request.serviceId?.toString() && 
+                      req.addonName === request.addonName && 
+                      req.status === 'pending'
+      );
+
+      if (actualRequestIndex === -1) {
+        toast.error('Request not found');
+        return;
+      }
+
+      updatedRequestedAddons[actualRequestIndex] = {
+        ...updatedRequestedAddons[actualRequestIndex],
+        status: 'approved',
+        processedAt: new Date().toISOString(),
+      };
+
+      // Add addon to service
+      // @ts-ignore
+      const updatedServices = [...(inspectionDetails.services || [])];
+      if (!updatedServices[serviceIndex].addOns) {
+        updatedServices[serviceIndex].addOns = [];
+      }
+
+      updatedServices[serviceIndex].addOns.push({
+        name: request.addonName,
+        addFee: request.addFee,
+        addHours: request.addHours,
+      });
+
+      // Update in database
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestedAddons: updatedRequestedAddons,
+          services: updatedServices,
+        }),
+      });
+
+      if (response.ok) {
+        setInspectionDetails(prev => ({
+          ...prev,
+          requestedAddons: updatedRequestedAddons,
+          services: updatedServices,
+        }));
+        toast.success('Add-on approved and added to service');
+      } else {
+        const errorData = await response.json();
+        toast.error(`Failed to approve: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error approving addon:', error);
+      toast.error('Failed to approve add-on. Please try again.');
+    }
+  };
+
+  const handleRejectAddon = async (requestIndex: number) => {
+    try {
+      // @ts-ignore
+      const request = inspectionDetails.requestedAddons?.filter((req: any) => req.status === 'pending')[requestIndex];
+      
+      if (!request) {
+        toast.error('Request not found');
+        return;
+      }
+
+      // Update the request status
+      // @ts-ignore
+      const updatedRequestedAddons = [...(inspectionDetails.requestedAddons || [])];
+      const actualRequestIndex = updatedRequestedAddons.findIndex(
+        (req: any) => req.serviceId?.toString() === request.serviceId?.toString() && 
+                      req.addonName === request.addonName && 
+                      req.status === 'pending'
+      );
+
+      if (actualRequestIndex === -1) {
+        toast.error('Request not found');
+        return;
+      }
+
+      updatedRequestedAddons[actualRequestIndex] = {
+        ...updatedRequestedAddons[actualRequestIndex],
+        status: 'rejected',
+        processedAt: new Date().toISOString(),
+      };
+
+      // Update in database
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestedAddons: updatedRequestedAddons,
+        }),
+      });
+
+      if (response.ok) {
+        setInspectionDetails(prev => ({
+          ...prev,
+          requestedAddons: updatedRequestedAddons,
+        }));
+        toast.info('Add-on request rejected');
+      } else {
+        const errorData = await response.json();
+        toast.error(`Failed to reject: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error rejecting addon:', error);
+      toast.error('Failed to reject add-on. Please try again.');
+    }
+  };
+
+  const handleSaveServices = async (selectedServices: Array<{
+    serviceId: string;
+    serviceName: string;
+    addOns: Array<{ name: string; addFee?: number; addHours?: number }>;
+  }>) => {
+    try {
+      // Combine with existing services (allows duplicates)
+      // @ts-ignore
+      const updatedServices = [
+        // @ts-ignore
+        ...(inspectionDetails.services || []),
+        ...selectedServices
+      ];
+      
+      // Update in database
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ services: updatedServices }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save services');
+      }
+      
+      // Update local state
+      setInspectionDetails(prev => ({
+        ...prev,
+        services: updatedServices
+      }));
+      
+      toast.success('Services added successfully');
+    } catch (error: any) {
+      console.error('Error saving services:', error);
+      toast.error(error.message || 'Failed to save services');
+    }
+  };
+
   const startEditing = (defect: Defect) => {
     setEditingId(defect._id);
     setEditedValues({ ...defect });
@@ -1534,19 +1715,52 @@ export default function InspectionEditPage() {
   return (
     <div className="container mx-auto py-6">
       {/* Header with back button */}
-      <div className="mb-6 flex items-center gap-4">
-        <Button
-          variant="ghost"
-          onClick={() => router.push('/inspections')}
-          className="flex items-center gap-2"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Inspections
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Edit Inspection</h1>
-          <p className="text-muted-foreground mt-1">ID: {inspectionId.slice(-8)}</p>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            onClick={() => router.push('/inspections')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Inspections
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Edit Inspection</h1>
+            <p className="text-muted-foreground mt-1">ID: {inspectionId.slice(-8)}</p>
+          </div>
         </div>
+        
+        {/* Client View Actions */}
+        {inspectionDetails.token && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const clientViewUrl = `${window.location.origin}/inspection/${inspectionId}?token=${inspectionDetails.token}`;
+                window.open(clientViewUrl, '_blank');
+              }}
+              className="flex items-center gap-2"
+            >
+              <i className="fas fa-external-link-alt"></i>
+              Client View
+            </Button>
+            <Button
+              onClick={() => {
+                const clientViewUrl = `${window.location.origin}/inspection/${inspectionId}?token=${inspectionDetails.token}`;
+                navigator.clipboard.writeText(clientViewUrl).then(() => {
+                  toast.success('Link copied to clipboard!');
+                }).catch(() => {
+                  toast.error('Failed to copy link');
+                });
+              }}
+              className="flex items-center gap-2"
+            >
+              <i className="fas fa-copy"></i>
+              Copy Link
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -2340,6 +2554,146 @@ export default function InspectionEditPage() {
                 )}
               </div>
 
+              {/* Services & Add-on Requests Section */}
+              <div className="p-4 border rounded-lg bg-muted/50">
+                <h3 className="font-semibold text-lg mb-4">Services & Add-on Requests</h3>
+                
+                {/* Current Services */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium text-md">Current Services</h4>
+                    <Button
+                      size="sm"
+                      onClick={() => setServiceDialogOpen(true)}
+                      className="gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Services
+                    </Button>
+                  </div>
+                  {/* @ts-ignore */}
+                  {inspectionDetails.services && inspectionDetails.services.length > 0 ? (
+                    <div className="space-y-3">
+                      {/* @ts-ignore */}
+                      {inspectionDetails.services.map((service: any, index: number) => (
+                        <div key={index} className="p-3 bg-card border rounded-lg">
+                          <p className="font-medium text-sm mb-2">{service.serviceName || 'Service'}</p>
+                          {service.addOns && service.addOns.length > 0 ? (
+                            <div className="ml-4 space-y-1">
+                              <p className="text-xs text-muted-foreground mb-1">Add-ons:</p>
+                              {service.addOns.map((addon: any, addonIndex: number) => (
+                                <div key={addonIndex} className="flex items-center justify-between text-xs bg-muted/50 p-2 rounded">
+                                  <span>{addon.name}</span>
+                                  <span className="text-muted-foreground">
+                                    {addon.addFee ? `$${addon.addFee.toFixed(2)}` : ''}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground ml-4">No add-ons</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-muted-foreground">No services</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Pending Add-on Requests */}
+                <div>
+                  <h4 className="font-medium text-md mb-3">Pending Add-on Requests</h4>
+                  {/* @ts-ignore */}
+                  {inspectionDetails.requestedAddons && inspectionDetails.requestedAddons.filter((req: any) => req.status === 'pending').length > 0 ? (
+                    <div className="space-y-3">
+                      {/* @ts-ignore */}
+                      {inspectionDetails.requestedAddons
+                        .filter((req: any) => req.status === 'pending')
+                        .map((request: any, index: number) => (
+                          <div key={index} className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex-1">
+                                <p className="font-medium text-sm">{request.addonName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Requested: {new Date(request.requestedAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="text-right text-xs">
+                                <p className="font-medium">${(request.addFee || 0).toFixed(2)}</p>
+                                {request.addHours > 0 && (
+                                  <p className="text-muted-foreground">{request.addHours}h</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex gap-2 mt-3">
+                              <Button
+                                size="sm"
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                                onClick={() => handleApproveAddon(index)}
+                              >
+                                <i className="fas fa-check mr-1"></i>
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                className="flex-1"
+                                onClick={() => handleRejectAddon(index)}
+                              >
+                                <i className="fas fa-times mr-1"></i>
+                                Reject
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-muted-foreground">No pending requests</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Processed Requests */}
+                {/* @ts-ignore */}
+                {inspectionDetails.requestedAddons && inspectionDetails.requestedAddons.filter((req: any) => req.status !== 'pending').length > 0 && (
+                  <div className="mt-6 pt-4 border-t">
+                    <h4 className="font-medium text-md mb-3">Processed Requests</h4>
+                    <div className="space-y-2">
+                      {/* @ts-ignore */}
+                      {inspectionDetails.requestedAddons
+                        .filter((req: any) => req.status !== 'pending')
+                        .map((request: any, index: number) => (
+                          <div key={index} className={`p-2 rounded border text-xs ${
+                            request.status === 'approved' 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-red-50 border-red-200'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">{request.addonName}</span>
+                              <span className={`px-2 py-0.5 rounded text-xs ${
+                                request.status === 'approved'
+                                  ? 'bg-green-200 text-green-800'
+                                  : 'bg-red-200 text-red-800'
+                              }`}>
+                                {request.status}
+                              </span>
+                            </div>
+                            {request.processedAt && (
+                              <p className="text-muted-foreground mt-1">
+                                {new Date(request.processedAt).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
             </div>
             
             {/* Right Grid - Combined Card - 2/3 width on desktop */}
@@ -3095,6 +3449,13 @@ export default function InspectionEditPage() {
         task={selectedTaskForComments}
         inspectionId={inspectionId}
         onCommentDeleted={fetchTasks}
+      />
+
+      {/* Service Selection Dialog */}
+      <ServiceSelectionDialog
+        open={serviceDialogOpen}
+        onOpenChange={setServiceDialogOpen}
+        onSave={handleSaveServices}
       />
 
       {/* Delete Task Confirmation Dialog */}

@@ -7,6 +7,7 @@ import OrderIdCounter from "@/src/models/OrderIdCounter";
 import Inspection from "@/src/models/Inspection";
 import mongoose from "mongoose";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
+import { generateSecureToken } from "@/src/lib/token-utils";
 
 const mapInspectionResponse = (inspection: any) => {
   if (!inspection) return null;
@@ -67,6 +68,32 @@ export async function POST(req: NextRequest) {
       // Continue without orderId if generation fails
     }
 
+    // Generate unique token for client view access
+    let token: string | undefined = undefined;
+    let tokenGenerationAttempts = 0;
+    const maxTokenAttempts = 5;
+    
+    while (tokenGenerationAttempts < maxTokenAttempts) {
+      try {
+        const generatedToken = generateSecureToken();
+        // Check if token already exists
+        const existingInspection = await Inspection.findOne({ token: generatedToken });
+        if (!existingInspection) {
+          token = generatedToken;
+          break;
+        }
+        tokenGenerationAttempts++;
+      } catch (error) {
+        console.error('Error generating token:', error);
+        tokenGenerationAttempts++;
+      }
+    }
+    
+    if (!token) {
+      console.error('Failed to generate unique token after multiple attempts');
+      // Continue without token - token is optional
+    }
+
     const inspection = await createInspection({
       status,
       date,
@@ -84,6 +111,7 @@ export async function POST(req: NextRequest) {
       confirmedInspection,
       disableAutomatedNotifications,
       internalNotes: internalNotes?.trim() || undefined,
+      token,
       customData,
     });
 

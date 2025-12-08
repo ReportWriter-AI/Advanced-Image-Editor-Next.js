@@ -1,4 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import './DiscountCode';
+import './Service';
 
 export interface IInspection extends Document {
   status: string;
@@ -14,6 +16,16 @@ export interface IInspection extends Document {
       addFee?: number;
       addHours?: number;
     }>;
+  }>;
+  requestedAddons?: Array<{
+    serviceId: mongoose.Types.ObjectId;
+    addonName: string;
+    addFee?: number;
+    addHours?: number;
+    status: 'pending' | 'approved' | 'rejected';
+    requestedAt: Date;
+    processedAt?: Date;
+    processedBy?: mongoose.Types.ObjectId;
   }>;
   discountCode?: mongoose.Types.ObjectId;
   location?: {
@@ -49,6 +61,7 @@ export interface IInspection extends Document {
   internalNotes?: string;
   clientNote?: string;
   clientAgreedToTerms?: boolean;
+  token?: string;
   customData?: Record<string, any>;
   closingDate?: {
     date?: Date;
@@ -119,6 +132,42 @@ const InspectionSchema = new Schema<IInspection>(
           type: Number,
         },
       }],
+    }],
+    requestedAddons: [{
+      serviceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Service',
+        required: true,
+      },
+      addonName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      addFee: {
+        type: Number,
+      },
+      addHours: {
+        type: Number,
+      },
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending',
+        required: true,
+      },
+      requestedAt: {
+        type: Date,
+        default: Date.now,
+        required: true,
+      },
+      processedAt: {
+        type: Date,
+      },
+      processedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
     }],
     discountCode: {
       type: mongoose.Schema.Types.ObjectId,
@@ -247,6 +296,13 @@ const InspectionSchema = new Schema<IInspection>(
     clientAgreedToTerms: {
       type: Boolean,
       default: false,
+    },
+    token: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+      trim: true,
     },
     customData: {
       type: mongoose.Schema.Types.Mixed,

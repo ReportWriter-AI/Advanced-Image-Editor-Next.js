@@ -1,8 +1,7 @@
 // lib/defect.ts
-import clientPromise from "./mongodb";
-import { ObjectId } from "mongodb";
-
-const DB_NAME = "agi_inspections_db"; // change this
+import dbConnect from "./db";
+import Defect from "@/src/models/Defect";
+import mongoose from "mongoose";
 
 // 3. Create defect
 export async function createDefect(data: {
@@ -25,36 +24,32 @@ export async function createDefect(data: {
   annotations?: any[]; // Store annotation shapes (arrows, circles, squares, freehand) as JSON
   originalImage?: string; // Original image without annotations (for re-editing)
 }) {
-  const client = await clientPromise;
-  const db = client.db(DB_NAME);
+  await dbConnect();
 
   // ensure inspection_id stored as ObjectId
   const defectData = {
     ...data,
-    inspection_id: new ObjectId(data.inspection_id),
+    inspection_id: new mongoose.Types.ObjectId(data.inspection_id),
   };
 
-  const result = await db.collection("defects").insertOne(defectData);
-  return result.insertedId.toString();
+  const result = await Defect.create(defectData);
+  return (result as any)._id.toString();
 }
 
 // 4. Get defects by inspection_id
 export async function getDefectsByInspection(inspectionId: string) {
-  const client = await clientPromise;
-  const db = client.db(DB_NAME);
-  return await db
-    .collection("defects")
-    .find({ inspection_id: new ObjectId(inspectionId) })
-    .toArray();
+  await dbConnect();
+  return await Defect.find({ 
+    inspection_id: new mongoose.Types.ObjectId(inspectionId) 
+  }).lean();
 }
 
 
 export async function deleteDefect(defectId: string) {
-  const client = await clientPromise;
-  const db = client.db(DB_NAME);
+  await dbConnect();
 
-  const result = await db.collection("defects").deleteOne({
-    _id: new ObjectId(defectId)
+  const result = await Defect.deleteOne({
+    _id: new mongoose.Types.ObjectId(defectId)
   });
 
   return result;
@@ -76,13 +71,12 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   annotations?: any[]; // Update annotation shapes
   originalImage?: string; // Update original image
 }) {
-  const client = await clientPromise;
-  const db = client.db(DB_NAME);
+  await dbConnect();
 
-  const result = await db.collection("defects").updateOne(
+  const result = await Defect.updateOne(
     {
-      _id: new ObjectId(defectId),
-      inspection_id: new ObjectId(inspectionId), // ensure it belongs to the right inspection
+      _id: new mongoose.Types.ObjectId(defectId),
+      inspection_id: new mongoose.Types.ObjectId(inspectionId), // ensure it belongs to the right inspection
     },
     {
       $set: updates,

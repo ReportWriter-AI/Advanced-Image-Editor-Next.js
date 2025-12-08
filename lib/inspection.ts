@@ -43,6 +43,7 @@ type CreateInspectionParams = {
   internalNotes?: string;
   clientNote?: string;
   clientAgreedToTerms?: boolean;
+  token?: string;
   customData?: Record<string, any>;
 };
 
@@ -199,6 +200,38 @@ const formatInspection = (doc: IInspection | null) => {
         })
     : [];
 
+  // Format services with populated service names
+  const formattedServices = doc.services && Array.isArray(doc.services)
+    ? doc.services.map((service: any) => {
+        const serviceId = service.serviceId && typeof service.serviceId === 'object'
+          ? service.serviceId._id?.toString()
+          : service.serviceId?.toString();
+        const serviceName = service.serviceId && typeof service.serviceId === 'object'
+          ? service.serviceId.name
+          : '';
+
+        return {
+          serviceId,
+          serviceName,
+          addOns: service.addOns || [],
+        };
+      })
+    : [];
+
+  // Format requested addons
+  const formattedRequestedAddons = doc.requestedAddons && Array.isArray(doc.requestedAddons)
+    ? doc.requestedAddons.map((request: any) => ({
+        serviceId: request.serviceId?.toString() || '',
+        addonName: request.addonName || '',
+        addFee: request.addFee || 0,
+        addHours: request.addHours || 0,
+        status: request.status || 'pending',
+        requestedAt: request.requestedAt ? new Date(request.requestedAt).toISOString() : null,
+        processedAt: request.processedAt ? new Date(request.processedAt).toISOString() : null,
+        processedBy: request.processedBy?.toString() || null,
+      }))
+    : [];
+
   return {
     _id: doc._id?.toString(),
     id: doc._id?.toString(),
@@ -209,7 +242,8 @@ const formatInspection = (doc: IInspection | null) => {
     inspector: formattedInspector,
     inspectorId: inspectorDoc ? (typeof inspectorDoc === 'object' && '_id' in inspectorDoc ? inspectorDoc._id?.toString() : (inspectorDoc as mongoose.Types.ObjectId).toString()) : null,
     companyOwnerRequested: doc.companyOwnerRequested ?? false,
-    services: doc.services ?? null,
+    services: formattedServices,
+    requestedAddons: formattedRequestedAddons,
     discountCode: formattedDiscountCode,
     discountCodeId: discountCodeDoc ? (typeof discountCodeDoc === 'object' && '_id' in discountCodeDoc ? discountCodeDoc._id?.toString() : (discountCodeDoc as mongoose.Types.ObjectId).toString()) : null,
     location: doc.location ?? null,
@@ -230,6 +264,7 @@ const formatInspection = (doc: IInspection | null) => {
     disableAutomatedNotifications: doc.disableAutomatedNotifications ?? false,
     internalNotes: doc.internalNotes ?? null,
     clientNote: doc.clientNote ?? null,
+    token: doc.token ?? null,
     clients: formattedClients,
     agents: formattedAgents,
     listingAgent: formattedListingAgents,
@@ -282,6 +317,7 @@ export async function createInspection({
   internalNotes,
   clientNote,
   clientAgreedToTerms,
+  token,
   customData,
 }: CreateInspectionParams) {
   if (!companyId) {
@@ -366,6 +402,10 @@ export async function createInspection({
 
   if (clientAgreedToTerms !== undefined) {
     inspectionData.clientAgreedToTerms = clientAgreedToTerms;
+  }
+
+  if (token !== undefined && token.trim()) {
+    inspectionData.token = String(token).trim();
   }
 
   if (customData !== undefined && Object.keys(customData).length > 0) {
@@ -544,6 +584,7 @@ export async function getInspection(inspectionId: string) {
     .populate('officeNotes.createdBy', 'firstName lastName profileImageUrl')
     .populate('closingDate.lastModifiedBy', 'firstName lastName')
     .populate('endOfInspectionPeriod.lastModifiedBy', 'firstName lastName')
+    .populate('services.serviceId', 'name')
     .lean();
   return formatInspection(inspection as any);
 }
@@ -590,6 +631,14 @@ export async function updateInspection(inspectionId: string, data: Partial<{
   listingAgent: string[]; // array of listing agent IDs
   referralSource: string; // referral source
   discountCode: string; // discount code ID
+  services: Array<{
+    serviceId: string;
+    addOns?: Array<{
+      name: string;
+      addFee?: number;
+      addHours?: number;
+    }>;
+  }>; // services with their addons
   customData: Record<string, any>; // custom field data
   internalNotes: string; // internal notes
   closingDate: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // closing date with metadata
@@ -610,9 +659,18 @@ export async function updateInspection(inspectionId: string, data: Partial<{
       } else if (key === 'discountCode' && value && mongoose.Types.ObjectId.isValid(value as string)) {
         acc[key] = new mongoose.Types.ObjectId(value as string);
       } else if ((key === 'clients' || key === 'agents' || key === 'listingAgent') && Array.isArray(value)) {
+        // @ts-ignore
         acc[key] = value.map((id: string) => 
           mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id
         );
+      } else if (key === 'services' && Array.isArray(value)) {
+        // Handle services array with serviceId conversion to ObjectId
+        acc[key] = value.map((service: any) => ({
+          serviceId: mongoose.Types.ObjectId.isValid(service.serviceId) 
+            ? new mongoose.Types.ObjectId(service.serviceId) 
+            : service.serviceId,
+          addOns: service.addOns || [],
+        }));
       } else if (key === 'closingDate' || key === 'endOfInspectionPeriod') {
         // Handle date fields with metadata
         const dateField = value as { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date };

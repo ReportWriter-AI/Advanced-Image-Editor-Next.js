@@ -1,29 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ObjectId } from 'mongodb';
+import mongoose from 'mongoose';
 import dbConnect from '../../../../lib/db';
 import { getCurrentUser } from '../../../../lib/auth-helpers';
 import SampleReport from '../../../../src/models/SampleReport';
-import clientPromise from '../../../../lib/mongodb';
-
-const INSPECTION_DB_NAME = process.env.INSPECTIONS_DB_NAME ?? 'agi_inspections_db';
+import Inspection from '../../../../src/models/Inspection';
 
 const fetchHeaderImagesForInspections = async (inspectionIds: string[]) => {
-  const validInspectionObjectIds = inspectionIds.filter((id) => ObjectId.isValid(id));
+  const validInspectionObjectIds = inspectionIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
 
   if (validInspectionObjectIds.length === 0) {
     return new Map<string, string>();
   }
 
-  const client = await clientPromise;
-  const db = client.db(INSPECTION_DB_NAME);
-
-  const inspectionDocs = await db
-    .collection('inspections')
-    .find(
-      { _id: { $in: validInspectionObjectIds.map((id) => new ObjectId(id)) } },
-      { projection: { headerImage: 1 } }
-    )
-    .toArray();
+  const inspectionDocs = await Inspection.find(
+    { _id: { $in: validInspectionObjectIds.map((id) => new mongoose.Types.ObjectId(id)) } }
+  )
+    .select('headerImage')
+    .lean();
 
   const headerMap = new Map<string, string>();
   inspectionDocs.forEach((doc) => {
@@ -131,7 +124,7 @@ export async function POST(request: NextRequest) {
     const nextOrder = typeof maxOrderDoc?.order === 'number' ? maxOrderDoc.order + 1 : 1;
 
     let headerImage: string | undefined;
-    if (inspectionId && ObjectId.isValid(inspectionId)) {
+    if (inspectionId && mongoose.Types.ObjectId.isValid(inspectionId)) {
       const headerMap = await fetchHeaderImagesForInspections([inspectionId]);
       headerImage = headerMap.get(inspectionId);
     }
