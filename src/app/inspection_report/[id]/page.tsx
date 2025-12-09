@@ -2752,7 +2752,7 @@ export default function Page() {
               </section>
               
                 {visibleSections.map((section, idx) => {
-                  const defectPartsView = splitDefectText(section.defect_description || section.defect || "");
+                  const defectPartsView = (section.defect_description || section.defect || "");
                   const defectTitle = section.defectTitle || defectPartsView.title;
                   const defectParagraphsRaw = Array.isArray(section.defectParagraphs) && section.defectParagraphs.length
                     ? section.defectParagraphs
