@@ -3460,7 +3460,7 @@ const drawSquare = (
 
 
             {/* Record Video */}
-           <button
+           {/* <button
   onClick={() => cameraVideoRef.current?.click()}
   style={{
     backgroundColor: "#007bff",
@@ -3480,7 +3480,7 @@ const drawSquare = (
   }
 >
   Record Video
-</button>
+</button> */}
 
           </div>
 

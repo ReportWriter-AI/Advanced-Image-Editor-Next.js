@@ -2147,7 +2147,7 @@ export default function Page() {
         const laborRate = toNumber(defect.labor_rate);
         const hoursRequired = toNumber(defect.hours_required);
         const laborCost = laborRate * hoursRequired;
-        const baseCost = materialCost + laborCost;
+        const baseCost = toNumber(defect.base_cost);
         const photoCount = 1 + (defect.additional_images?.length || 0);
         const totalEstimatedCost = baseCost * photoCount;
 
