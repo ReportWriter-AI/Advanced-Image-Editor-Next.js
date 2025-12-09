@@ -184,7 +184,7 @@ async function handler(request: Request) {
       labor_type: classifyData.trade || "",
       labor_rate: laborRate,
       hours_required: laborHours,
-      recommendation: classifyData.narrative || "",
+      recommendation: classifyData.recommendation || "",
       title: classifyData.title || "",
       narrative: classifyData.narrative || "",
       severity: classifyData.severity || "",

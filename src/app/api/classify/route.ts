@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
 			return Response.json({
 				title: data.title,
 				narrative: data.narrative,
+				recommendation: data.recommendation || "",
 				severity: data.severity,
 				trade: data.trade,
 			});
@@ -225,6 +226,7 @@ export async function POST(req: NextRequest) {
 		return Response.json({
 			title: data.title,
 			narrative: data.narrative,
+			recommendation: data.recommendation || "",
 			severity: data.severity,
 			trade: tradeClean,
 			action_type: data.action_type,

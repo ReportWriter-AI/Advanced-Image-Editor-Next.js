@@ -19,6 +19,7 @@ export const supabase = createClient(
 export type ClassificationResponse = {
 	title: string;
 	narrative: string;
+	recommendation: string;
 	severity: string;
 	trade: string;
 };
@@ -193,12 +194,15 @@ word choice and formatting from ${exampleBlock}.
 - Narratives should be informative but not long try to keep direct and to the point just enough information!
 - If there is a  context provided - honor it and provide outputs accordingly ${contextText}.  
 
+# The structure should be split into two separate fields:
 
-# The structure of the comment should go like this:
+NARRATIVE (description only):
 1. State the defect: "The light fixture was inoperable."
 2. State why it's an issue: "This can lead to safety hazards around the house at night."
+
+RECOMMENDATION (action to take):
 3. What needs to be done & by who: "I recommend having a qualified electrician change the bulbs, ensure proper install and functionality, and replace light fixture if necessary." 
-    Allow  some variation in sentence 3. (instead of always saying "I recommend having..." sometimes say "My recommendation is to..")
+    Allow some variation (instead of always saying "I recommend having..." sometimes say "My recommendation is to..")
 
 # IMPORTANT FOR RECOMMENDATIONS DETERMINATION:
 
@@ -248,6 +252,7 @@ OUTPUT JSON
 {
   "title": "",
   "narrative": "",
+  "recommendation": "",
   "severity": "",
   "trade": ""
 }
@@ -294,11 +299,15 @@ word choice and formatting from ${exampleBlock}.
 
 
 
-# The structure of the comment should go like this:
+# The structure should be split into two separate fields:
+
+NARRATIVE (description only):
 1. State the defect: "The light fixture was inoperable."
 2. State why it's an issue: "This can lead to safety hazards around the house at night."
+
+RECOMMENDATION (action to take):
 3. What needs to be done & by who: "I recommend having a qualified electrician change the bulbs, ensure proper install and functionality, and replace light fixture if necessary." 
-    Allow  some variation in sentence 3. (instead of always saying "I recommend having..." sometimes say "My recommendation is to..")
+    Allow some variation (instead of always saying "I recommend having..." sometimes say "My recommendation is to..")
 
 # IMPORTANT FOR RECOMMENDATIONS DETERMINATION:
 
@@ -440,6 +449,7 @@ OUTPUT JSON
 {
   "title": "",
   "narrative": "",
+  "recommendation": "",
   "severity": "",
   "trade": "",
   "action_type": "contractor_repair",

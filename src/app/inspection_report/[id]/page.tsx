@@ -908,11 +908,32 @@ export default function Page() {
     }
   }, [resolvedInspectionId, informationBlocks.length]); // Only re-run when id changes or informationBlocks initially loads
 
+  // Severity mapping functions - defined before handlers that use them
+  const severityToImportance = useCallback((severity?: string) => {
+    if (!severity) return 'Immediate Attention';
+    switch (severity) {
+      case 'major_hazard': return 'Major Hazard';
+      case 'repair_needed': return 'Items for Repair';
+      case 'maintenance_minor': return 'Maintenance Items';
+      default: return 'Immediate Attention';
+    }
+  }, []);
+
+  const severityToCategory = useCallback((severity?: string): 'red' | 'orange' | 'blue' | 'purple' => {
+    if (!severity) return 'red';
+    switch (severity) {
+      case 'major_hazard': return 'red';
+      case 'repair_needed': return 'orange';
+      case 'maintenance_minor': return 'blue';
+      default: return 'red';
+    }
+  }, []);
+
   const handleDownloadPDF = async (reportType: 'full' | 'summary' = 'full') => {
     try {
       // Filter sections based on report type
       const sectionsToExport = reportType === 'summary' 
-        ? reportSections.filter(section => nearestCategory(section.color) !== 'blue') // Exclude blue maintenance items for summary
+        ? reportSections.filter(section => section.severity !== 'maintenance_minor') // Exclude maintenance_minor items for summary
         : reportSections; // All sections for full report
       
       // Transform reportSections into defects payload compatible with API
@@ -1005,7 +1026,7 @@ export default function Page() {
 
       // Filter sections based on report type
       const sectionsToExport = reportType === 'summary' 
-        ? reportSections.filter(section => nearestCategory(section.color) !== 'blue') // Exclude blue maintenance items for summary
+        ? reportSections.filter(section => section.severity !== 'maintenance_minor') // Exclude maintenance_minor items for summary
         : reportSections; // All sections for full report
 
       // Build summary table rows and totals - ONLY for sections with actual defects
@@ -1032,7 +1053,7 @@ export default function Page() {
         .map((s) => {
           const defectParts = splitDefectText(s.defect_description || s.defect || "");
           const summaryDefect = s.defectTitle || defectParts.title || (s.defect || "").trim() || (defectParts.paragraphs[0] || "");
-          const cat = nearestCategory(s.color) || 'red';
+          const cat = severityToCategory(s.severity);
           const catClass = {
             red: 'rpt-row-cat-red',
             orange: 'rpt-row-cat-orange',
@@ -1054,7 +1075,7 @@ export default function Page() {
         ? sectionsToExport.map((s) => {
             const defectParts = splitDefectText(s.defect_description || s.defect || "");
             const defectTitle = (s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
-            const cat = nearestCategory(s.color) || 'red';
+            const cat = severityToCategory(s.severity);
             const catClass = {
               red: 'rpt-row-cat-red',
               orange: 'rpt-row-cat-orange',
@@ -1098,10 +1119,10 @@ export default function Page() {
           const selectedRgb = parseColorToRgb(selectedColor);
           const shadowColor = selectedRgb ? `rgba(${selectedRgb.r}, ${selectedRgb.g}, ${selectedRgb.b}, 0.18)` : 'rgba(214, 54, 54, 0.18)';
           const highlightBg = selectedRgb ? `rgba(${selectedRgb.r}, ${selectedRgb.g}, ${selectedRgb.b}, 0.12)` : 'rgba(214, 54, 54, 0.12)';
-          const badgeLabel = escapeHtml(colorToImportance(selectedColor));
+          const badgeLabel = escapeHtml(severityToImportance(s.severity));
           const locationText = escapeHtml(s.location || 'Not specified');
 
-          const category = nearestCategory(selectedColor) || 'red';
+          const category = severityToCategory(s.severity);
           const defectParts = splitDefectText(s.defect_description || s.defect || "");
           const summaryTitle = (s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
           const summaryBody = (defectParts.paragraphs && defectParts.paragraphs.length > 0
@@ -2175,6 +2196,10 @@ export default function Page() {
           video: defect.video,
           type: defect.type,
           thumbnail: defect.thumbnail,
+          title: defect.title || '',
+          narrative: defect.narrative || '',
+          severity: defect.severity || '',
+          trade: defect.trade || '',
           estimatedCosts: {
             materials: "General materials",
             materialsCost: defect.material_total_cost,
@@ -2241,15 +2266,19 @@ export default function Page() {
     return cat === 'red' || cat === 'purple';
   };
 
+  const isHazardSeverity = (severity?: string) => {
+    return severity === 'major_hazard';
+  };
+
   const visibleSections = useMemo(() => {
     let sections = reportSections;
     
     // Filter sections based on mode
     if (filterMode === 'hazard') {
-      sections = reportSections.filter((r) => isHazardColor(r.color));
+      sections = reportSections.filter((r) => isHazardSeverity(r.severity));
     } else if (filterMode === 'summary') {
-      // For summary, exclude blue (maintenance items) defects
-      sections = reportSections.filter((r) => nearestCategory(r.color) !== 'blue');
+      // For summary, exclude maintenance_minor (maintenance items) defects
+      sections = reportSections.filter((r) => r.severity !== 'maintenance_minor');
     }
     
     // Add sections that have information blocks but no defects
@@ -2717,7 +2746,7 @@ export default function Page() {
                         // Removed defects summary column cell
                         // Defects summary column removed; no need to compute bodyCandidate/defectSummary
 
-                        const cat = nearestCategory(section.color) || 'red';
+                        const cat = severityToCategory(section.severity);
                         let catClass = '';
                         if(cat === 'red') catClass = styles.summaryRowCatRed;
                         else if(cat === 'orange') catClass = styles.summaryRowCatOrange;
@@ -2757,6 +2786,7 @@ export default function Page() {
                 {visibleSections.map((section, idx) => {
                   const defectPartsView = splitDefectText(section.defect_description || section.defect || "");
                   const defectTitle = section.defectTitle || defectPartsView.title;
+                  const title = section.title || '';
                   const defectParagraphsRaw = Array.isArray(section.defectParagraphs) && section.defectParagraphs.length
                     ? section.defectParagraphs
                     : defectPartsView.paragraphs.length
@@ -3790,7 +3820,7 @@ export default function Page() {
                             <span className={styles.defectNumberPrefix}>{section.numbering} - </span>
                             {hasCombinedSectionLabel && (
                               <span className={styles.defectSectionPart}>
-                                {combinedSectionLabel} 
+                                        {title} 
                               </span>
                             )}
                             {/* {defectTitle && (
@@ -3798,7 +3828,7 @@ export default function Page() {
                             )} */}
                           </span>
                           <span className={styles.importanceBadgeSmall} style={{ background: getSelectedColor(section) }}>
-                            {colorToImportance(section.color)}
+                            {severityToImportance(section.severity)}
                           </span>
                         </div>
                         <div className={styles.defectDivider} />
@@ -3812,26 +3842,29 @@ export default function Page() {
                         </div>
 
                         {/* Body paragraph */}
-                        {(defectParagraphs[0] || section.defect_description) && (
+                        {(section.narrative) && (
                           <div className={styles.defectParagraph}>
-                            {defectParagraphs[0] || section.defect_description}
+                                    {section.narrative}
                           </div>
                         )}
+
+                        {/* {section.trade && <h3>Trade: {section.trade}</h3>} */}
 
                         {/* Costs and recommendation */}
                         {!inspection?.hidePricing ? (
                           <>
+                                    {section.estimatedCosts?.recommendation && (
+                                      <div className={styles.defectRecommendation}>
+                                        Recommended: {section.estimatedCosts.recommendation}
+                                      </div>
+                                    )}
                             <div className={styles.defectCostLine}>
                               Materials: {formatCurrency(section.estimatedCosts?.materialsCost || 0)} • Labor: {formatCurrency(section.estimatedCosts?.laborRate || 0)}/hr • Hours: {section.estimatedCosts?.hoursRequired || 0}
                             </div>
                             <div className={`${styles.defectCostLine} ${styles.defectTotalLine}`}>
                               Total: {formatCurrency(section.estimatedCosts?.totalEstimatedCost || 0)}
                             </div>
-                            {section.estimatedCosts?.recommendation && (
-                              <div className={styles.defectRecommendation}>
-                                Recommended: {section.estimatedCosts.recommendation}
-                              </div>
-                            )}
+                          
                           </>
                         ) : (
                           section.estimatedCosts?.recommendation ? (
