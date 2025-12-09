@@ -74,6 +74,9 @@ export async function POST(request: Request) {
     let isThreeSixty = false;
     let annotations: any[] | undefined;
     let originalImage: string | undefined;
+    let state: string | undefined;
+    let city: string | undefined;
+    let zipCode: string | undefined;
   
     const contentType = request.headers.get("content-type") || "";
   
@@ -93,6 +96,9 @@ export async function POST(request: Request) {
       thumbnailUrlJson = body.thumbnailUrl;
       annotations = body.annotations; // Editable annotations
       originalImage = body.originalImage; // Original unannotated image
+      state = body.state;
+      city = body.city;
+      zipCode = body.zipCode;
 
       console.log('🔍 analyze-image received JSON body');
       console.log('📊 annotations:', annotations);
@@ -116,6 +122,9 @@ export async function POST(request: Request) {
       videoSrc = form.get("videoSrc") as string | null;
       const isThreeSixtyStr = form.get("isThreeSixty") as string | null;
       isThreeSixty = isThreeSixtyStr === 'true';
+      state = form.get("state") as string | undefined;
+      city = form.get("city") as string | undefined;
+      zipCode = form.get("zipCode") as string | undefined;
     }
     else {
       return NextResponse.json(
@@ -206,7 +215,10 @@ export async function POST(request: Request) {
         type,
         isThreeSixty,
         annotations, // Pass annotations for saving
-        originalImage // Pass original image URL
+        originalImage, // Pass original image URL
+        state, // Pass state for classify API
+        city, // Pass city for classify API
+        zipCode, // Pass zipCode for classify API
       },
     });
 

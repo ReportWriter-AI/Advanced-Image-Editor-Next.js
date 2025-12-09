@@ -56,6 +56,11 @@ function ImageEditorPageContent() {
   const [isThreeSixty, setIsThreeSixty] = useState(false); // 360° photo flag
   const [preloadedAnnotations, setPreloadedAnnotations] = useState<any[] | undefined>(undefined);
   const [currentAnnotations, setCurrentAnnotations] = useState<any[]>([]);
+  
+  // Inspection location data for classify API
+  const [inspectionState, setInspectionState] = useState<string>('');
+  const [inspectionCity, setInspectionCity] = useState<string>('');
+  const [inspectionZipCode, setInspectionZipCode] = useState<string>('');
 
   // Custom items from localStorage - TEMPLATE (all inspections)
   const [customLocations, setCustomLocations] = useState<string[]>([]);
@@ -246,6 +251,33 @@ function ImageEditorPageContent() {
   const filteredLocations = allLocations.filter(locationItem =>
     locationItem.toLowerCase().includes(locationSearch2.toLowerCase())
   );
+
+  // Fetch inspection data to get location info for classify API
+  useEffect(() => {
+    if (selectedInspectionId) {
+      const fetchInspection = async () => {
+        try {
+          const response = await fetch(`/api/inspections/${selectedInspectionId}`);
+          if (response.ok) {
+            const inspection = await response.json();
+            if (inspection && inspection.location) {
+              setInspectionState(inspection.location.state || '');
+              setInspectionCity(inspection.location.city || '');
+              setInspectionZipCode(inspection.location.zip || '');
+              console.log('✅ Inspection location loaded:', {
+                state: inspection.location.state,
+                city: inspection.location.city,
+                zip: inspection.location.zip
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching inspection:', error);
+        }
+      };
+      fetchInspection();
+    }
+  }, [selectedInspectionId]);
 
   // Fetch parent defect info when in additional location mode
   useEffect(() => {
@@ -1201,6 +1233,9 @@ function ImageEditorPageContent() {
           thumbnailUrl: thumbnailPublicUrl,
           annotations: currentAnnotations, // Include annotations for saving
           originalImage: originalImageUrl || imagePublicUrl, // Use original (unannotated) if available, otherwise annotated
+          state: inspectionState, // Pass state for classify API
+          city: inspectionCity, // Pass city for classify API
+          zipCode: inspectionZipCode, // Pass zipCode for classify API
         }),
       });
       

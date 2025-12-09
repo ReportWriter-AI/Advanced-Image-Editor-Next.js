@@ -1,19 +1,12 @@
 // /app/api/process-analysis/route.ts
 import { NextResponse } from "next/server";
-import { verifySignature } from "@upstash/qstash/nextjs";
-import OpenAI from 'openai';
+import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { uploadToR2 } from "@/lib/r2";
 import { createDefect } from "@/lib/defect";
-
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
-// import { NextResponse } from "next/server";
+import { getInspection } from "@/lib/inspection";
 
 // Force dynamic rendering to avoid build-time execution
 export const dynamic = 'force-dynamic';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
 
 function decodeBase64Image(dataString: string) {
     const matches = dataString.match(/^data:(.+);base64,(.+)$/);
@@ -55,7 +48,10 @@ async function handler(request: Request) {
       videoSrc,
       isThreeSixty,
       annotations,
-      originalImage
+      originalImage,
+      state: passedState,
+      city: passedCity,
+      zipCode: passedZipCode
     } = body;
 
 
@@ -104,71 +100,74 @@ async function handler(request: Request) {
       //   console.log('no video found')
       // }
 
-    // ✅ Create OpenAI thread
-    const thread = await openai.beta.threads.create();
-
-    const content: any[] = [
-      { type: "text", text: `Description: ${description} || Location: ${location}` },
-    ];
-
-    // if (file) {
-    //   const uploaded = await openai.files.create({ file, purpose: "vision" });
-    //   content.push({ type: "image_file", image_file: { file_id: uploaded.id } });
-    
-      content.push({ type: "image_url", image_url: { url: finalImageUrl } });
-    // }
-
-    await openai.beta.threads.messages.create(thread.id, {
-      role: "user",
-      content,
-    });
-
-    
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: process.env.OPENAI_ASSISTANT_ID!,
-    });
-    
-    // Poll until done
-    let runStatus = run.status;
-    while (!["completed", "failed", "cancelled"].includes(runStatus)) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const currentRun = await openai.beta.threads.runs.retrieve(run.id, {
-        thread_id: thread.id,
-      });
-      runStatus = currentRun.status;
+    // ✅ Fetch inspection to get companyId and location info
+    const inspection = await getInspection(inspectionId);
+    if (!inspection || !inspection.companyId) {
+      return NextResponse.json({ error: "Inspection not found or missing companyId" }, { status: 404 });
     }
 
-    
-    if (runStatus !== "completed") {
-  console.error("Run failed:", runStatus);
-      return NextResponse.json({ error: "Run failed" }, { status: 500 });
-    }
+    const companyId = inspection.companyId.toString();
+    // Use passed values if available, otherwise fall back to inspection location
+    const inspectionState = passedState || inspection.location?.state || "";
+    const inspectionCity = passedCity || inspection.location?.city || "";
+    const inspectionZip = passedZipCode || inspection.location?.zip || "";
 
-    const messages = await openai.beta.threads.messages.list(thread.id);
-
-    let assistantResponse = "";
-    for (const msg of messages.data) {
-      if (msg.role === "assistant") {
-        for (const c of msg.content) {
-          if (c.type === "text") {
-            assistantResponse = c.text.value;
-            break;
-          }
-        }
+    // ✅ Convert image URL to Blob for classify API
+    let imageBlob: Blob;
+    if (finalImageUrl) {
+      const imageResponse = await fetch(finalImageUrl);
+      if (!imageResponse.ok) {
+        return NextResponse.json({ error: "Failed to fetch image for classification" }, { status: 500 });
       }
-      if (assistantResponse) break;
+      imageBlob = await imageResponse.blob();
+    } else {
+      return NextResponse.json({ error: "No image URL available" }, { status: 400 });
     }
 
-    const jsonMatch = assistantResponse.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-  console.error("Assistant response not JSON:", assistantResponse);
-      return NextResponse.json({ error: "Invalid AI response" }, { status: 500 });
+    // ✅ Call classify API
+    const formData = new FormData();
+    formData.append('file', imageBlob, 'defect-image.png');
+    formData.append('company_id', companyId);
+    formData.append('context', `${description || ''} || Location: ${location || ''}`);
+    formData.append('include_pricing', 'true');
+    
+    if (inspectionZip) {
+      formData.append('zip_code', inspectionZip);
+    }
+    if (inspectionState) {
+      formData.append('state', inspectionState);
+    }
+    if (inspectionCity) {
+      formData.append('city', inspectionCity);
+    }
+    formData.append('overhead_profit_factor', '1.0');
+
+    const classifyResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/classify`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!classifyResponse.ok) {
+      const errorText = await classifyResponse.text();
+      console.error("Classify API error:", errorText);
+      return NextResponse.json({ error: "Classification failed", details: errorText }, { status: 500 });
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    const classifyData = await classifyResponse.json();
 
-    // Calculate total cost from AI analysis
-    const totalCost = (parsed.materials_total_cost || 0) + ((parsed.labor_rate || 0) * (parsed.hours_required || 0));
+    // ✅ Map classify API response to defect data structure
+    const materialsCost = classifyData.materials_cost || 0;
+    const laborHours = classifyData.labor_hours || 0;
+    const laborCost = classifyData.labor_cost || 0;
+    const laborRate = laborHours > 0 ? Math.round(laborCost / laborHours) : 0;
+    const totalCost = classifyData.estimated_cost || 0;
+    
+    // Extract materials as a comma-separated string
+    const materialsArray = classifyData.materials || [];
+    const materialsString = materialsArray
+      .map((m: any) => m.label || '')
+      .filter((label: string) => label)
+      .join(', ') || '';
 
     const defectData = {
       inspection_id: inspectionId,
@@ -176,14 +175,13 @@ async function handler(request: Request) {
       location: location || "",
       section: section || "",
       subsection: subSection || "",
-      defect_description: parsed.defect || description || "",
-      defect_short_description: parsed.short_description || "",
-      materials: parsed.materials_names || "",
-      material_total_cost: totalCost, // Use calculated total cost
-      labor_type: parsed.labor_type || "",
-      labor_rate: parsed.labor_rate || 0,
-      hours_required: parsed.hours_required || 0,
-      recommendation: parsed.recommendation || "",
+      defect_description: classifyData.task_description || description || "",
+      materials: materialsString,
+      material_total_cost: materialsCost,
+      labor_type: classifyData.trade || "",
+      labor_rate: laborRate,
+      hours_required: laborHours,
+      recommendation: classifyData.narrative || "",
       color: selectedColor || undefined,
       type: type,
       thumbnail: finalThumbnailUrl,

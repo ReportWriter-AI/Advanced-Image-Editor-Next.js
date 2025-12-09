@@ -86,7 +86,7 @@ export default function DefectsPage() {
         formData.append('city', city);
       }
 
-      const response = await fetch('http://localhost:8000/classify', {
+      const response = await fetch('/api/classify', {
         method: 'POST',
         body: formData,
       });
@@ -127,7 +127,7 @@ export default function DefectsPage() {
         formData.append('files', extractFiles[i]);
       }
 
-      const response = await fetch('http://localhost:8000/extractor/upload', {
+      const response = await fetch('/api/extractor/upload', {
         method: 'POST',
         body: formData,
       });
