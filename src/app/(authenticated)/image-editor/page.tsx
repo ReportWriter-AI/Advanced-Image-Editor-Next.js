@@ -1253,7 +1253,7 @@ function ImageEditorPageContent() {
       console.log('✅ API response:', result);
       
       // Show success toast
-      toast.success('You can see the details in the report');
+      toast.success('You can see the details in the report once it is ready');
       
       // Check if the analysis was accepted and started
       if (response.status === 202) {
