@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import ImageEditor from '../../../../components/ImageEditor';
 import { useState, useRef, useEffect, Suspense } from 'react';
 import { useAnalysisStore } from '@/lib/store';
+import { toast } from 'sonner';
 
 function ImageEditorPageContent() {
   const searchParams = useSearchParams();
@@ -1250,6 +1251,9 @@ function ImageEditorPageContent() {
       
       const result = await response.json();
       console.log('✅ API response:', result);
+      
+      // Show success toast
+      toast.success('You can see the details in the report');
       
       // Check if the analysis was accepted and started
       if (response.status === 202) {
