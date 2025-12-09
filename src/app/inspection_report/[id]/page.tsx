@@ -2769,7 +2769,7 @@ export default function Page() {
                           >
                             <td>{section.numbering}</td>
                             <td>{sectionLabel}</td>
-                            <td>{defectTitle}</td>
+                            <td>{section.narrative || defectTitle}</td>
                           </tr>
                         );
                       })}
@@ -3913,7 +3913,7 @@ export default function Page() {
                           <tr key={section.id || index}>
                             <td>{section.numbering || `${index + 1}`}</td>
                             <td>{section.sectionName || section.heading?.split(' - ')[0] || ''}</td>
-                            <td>{section.defect || section.defect_description || ''}</td>
+                            <td>{section.narrative || section.defect || section.defect_description || ''}</td>
                             <td style={{ textAlign: 'right' }}>
                               ${section.estimatedCosts?.totalEstimatedCost || 0}
                             </td>
