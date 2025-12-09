@@ -19,6 +19,10 @@ export interface IDefect extends Document {
 	labor_rate: number;
 	hours_required: number;
 	recommendation: string;
+	title: string;
+	narrative: string;
+	severity: string;
+	trade: string;
 	color?: string;
 	isThreeSixty?: boolean;
 	additional_images?: IAdditionalImage[];
@@ -94,6 +98,26 @@ const DefectSchema = new Schema<IDefect>(
 			default: 0,
 		},
 		recommendation: {
+			type: String,
+			trim: true,
+			default: '',
+		},
+		title: {
+			type: String,
+			trim: true,
+			default: '',
+		},
+		narrative: {
+			type: String,
+			trim: true,
+			default: '',
+		},
+		severity: {
+			type: String,
+			trim: true,
+			default: '',
+		},
+		trade: {
 			type: String,
 			trim: true,
 			default: '',

@@ -107,6 +107,9 @@ async function handler(request: Request) {
     }
 
     const companyId = inspection.companyId.toString();
+    console.log("============================")
+    console.log('companyId', companyId);
+    console.log("============================")
     // Use passed values if available, otherwise fall back to inspection location
     const inspectionState = passedState || inspection.location?.state || "";
     const inspectionCity = passedCity || inspection.location?.city || "";
@@ -182,6 +185,10 @@ async function handler(request: Request) {
       labor_rate: laborRate,
       hours_required: laborHours,
       recommendation: classifyData.narrative || "",
+      title: classifyData.title || "",
+      narrative: classifyData.narrative || "",
+      severity: classifyData.severity || "",
+      trade: classifyData.trade || "",
       color: selectedColor || undefined,
       type: type,
       thumbnail: finalThumbnailUrl,

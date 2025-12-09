@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
 		const fileEntries = formData.getAll("files").filter(
 			(f) => f instanceof Blob
-		) as Blob[];
+		);
 
 		if (fileEntries.length === 0) {
 			return new Response("At least one file is required", { status: 400 });
@@ -30,12 +30,12 @@ export async function POST(req: NextRequest) {
 		let inserted = 0;
 		const errors: { file: string; error: string }[] = [];
 
-		for (let i = 0; i < fileEntries.length; i++) {
-			const file = fileEntries[i];
-
+		for (const file of fileEntries) {
+			const fileName = file instanceof File ? file.name : "unknown";
 			try {
-				const buffer = Buffer.from(await file.arrayBuffer());
-				const base64Img = buffer.toString("base64");
+				// Read uploaded image bytes
+				const imgBytes = await file.arrayBuffer();
+				const base64Img = Buffer.from(imgBytes).toString("base64");
 
 				const response = await openai.responses.create({
 					model: EXTRACTOR_MODEL_NAME,
@@ -47,18 +47,17 @@ export async function POST(req: NextRequest) {
 								{
 									type: "input_image",
 									image_url: `data:image/png;base64,${base64Img}`,
-									detail: "auto",
 								},
 							],
 						},
 					],
 				});
 
-				// @ts-ignore
-				const raw: string = response.output_text ?? JSON.stringify(response);
+				const raw: string = response.output_text;
 				const cleaned = cleanJson(raw);
 				const data = JSON.parse(cleaned);
 
+				// Insert into Supabase
 				const { error } = await supabase.from("defect_examples").insert({
 					company_id: companyId,
 					title: data.title,
@@ -69,7 +68,7 @@ export async function POST(req: NextRequest) {
 
 				if (error) {
 					errors.push({
-						file: `file_${i + 1}`,
+						file: fileName,
 						error: error.message,
 					});
 				} else {
@@ -77,8 +76,8 @@ export async function POST(req: NextRequest) {
 				}
 			} catch (err: any) {
 				errors.push({
-					file: `file_${i + 1}`,
-					error: err.message || "Unknown error",
+					file: fileName,
+					error: String(err),
 				});
 			}
 		}

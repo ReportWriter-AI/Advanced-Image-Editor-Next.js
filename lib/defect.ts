@@ -17,6 +17,10 @@ export async function createDefect(data: {
   labor_rate: number;
   hours_required: number;
   recommendation: string;
+  title?: string;
+  narrative?: string;
+  severity?: string;
+  trade?: string;
   color?: string; // Add selected arrow color field
   isThreeSixty?: boolean; // Mark as 360° photo
   additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>; // Multiple location photos (support 360)
@@ -64,6 +68,10 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   labor_rate?: number;
   hours_required?: number;
   recommendation?: string;
+  title?: string;
+  narrative?: string;
+  severity?: string;
+  trade?: string;
   isThreeSixty?: boolean;
   additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>; // Multiple location photos (support 360)
   base_cost?: number; // Base cost for calculation

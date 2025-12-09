@@ -9,8 +9,6 @@ import {
 	buildPromptNarrativeOnly,
 	buildPromptWithPricing,
 	loadExamplesFromSupabase,
-	ClassificationResponse,
-	PricingResponse,
 	MaterialItem,
 } from "@/lib/defects";
 
@@ -77,23 +75,19 @@ export async function POST(req: NextRequest) {
 			],
 		});
 
-		// @ts-ignore – output_text helper available on Responses
-		const raw: string = response.output_text ?? JSON.stringify(response);
+		const raw: string = response.output_text;
 		const rawClean = repairLLMJson(raw);
 
 		let data: any;
 		try {
 			data = JSON.parse(rawClean);
 		} catch (err: any) {
-			return Response.json(
-				{
-					error: "JSON parsing failed",
-					raw_output: raw,
-					fixed_attempt: rawClean,
-					parse_error: err.message,
-				},
-				{ status: 500 }
-			);
+			return Response.json({
+				error: "JSON parsing failed",
+				raw_output: raw,
+				fixed_attempt: rawClean,
+				parse_error: String(err),
+			});
 		}
 
 		// Severity override
@@ -103,87 +97,103 @@ export async function POST(req: NextRequest) {
 
 		// No pricing
 		if (!includePricing) {
-			const result: ClassificationResponse = {
+			return Response.json({
 				title: data.title,
 				narrative: data.narrative,
 				severity: data.severity,
 				trade: data.trade,
-			};
-			return Response.json(result);
+			});
 		}
 
-		// -----------------
+		// ---------------
 		// Pricing engine
-		// -----------------
+		// ---------------
+
 		const tradeRaw = data.trade || "";
 		const tradeClean = tradeRaw.trim();
 
-		// 1. Contractor rate
-		let contractorRate = 40.0;
-		if (tradeClean) {
-			const { data: rateRows } = await supabase
-				.from("contractor_rates")
-				.select("hourly_rate")
-				.eq("trade", tradeClean)
-				.limit(1);
+		// 1. Load contractor rate
+		const rateResp = await supabase
+			.from("contractor_rates")
+			.select("hourly_rate")
+			.eq("trade", tradeClean)
+			.limit(1);
 
-			if (rateRows && rateRows.length > 0) {
-				contractorRate = Number(rateRows[0].hourly_rate) || 40.0;
-			}
+		let contractorRate = 40.0;
+		if (rateResp.data && rateResp.data.length > 0) {
+			contractorRate = Number(rateResp.data[0].hourly_rate) || 40.0;
 		}
 
-		// 2. Area modifiers
+		// 2. Area modifiers (state/city based)
+		const modResp = await supabase
+			.from("area_modification_factors")
+			.select("modifier")
+			.eq("state", state)
+			.eq("city", city)
+			.limit(1);
+
 		let areaModifier = 0;
-		if (state && city) {
-			const { data: modRows } = await supabase
+		if (modResp.data && modResp.data.length > 0) {
+			areaModifier = Number(modResp.data[0].modifier) || 0;
+		} else {
+			const avgResp = await supabase
 				.from("area_modification_factors")
 				.select("modifier")
 				.eq("state", state)
-				.eq("city", city)
+				.eq("city", "AVERAGE")
 				.limit(1);
-
-			if (modRows && modRows.length > 0) {
-				areaModifier = Number(modRows[0].modifier) || 0;
-			} else {
-				const { data: avgRows } = await supabase
-					.from("area_modification_factors")
-					.select("modifier")
-					.eq("state", state)
-					.eq("city", "AVERAGE")
-					.limit(1);
-				if (avgRows && avgRows.length > 0) {
-					areaModifier = Number(avgRows[0].modifier) || 0;
-				}
+			if (avgResp.data && avgResp.data.length > 0) {
+				areaModifier = Number(avgResp.data[0].modifier) || 0;
 			}
 		}
 
 		// 3. Labor hours
 		let laborHours = 1.0;
-		if (data.labor_hours !== undefined) {
-			const n = Number(data.labor_hours);
-			if (!Number.isNaN(n) && n > 0) laborHours = n;
+		try {
+			laborHours = Number(data.labor_hours || 1.0);
+			if (isNaN(laborHours)) laborHours = 1.0;
+		} catch {
+			laborHours = 1.0;
 		}
 
-		// 4. Materials
-		const rawMaterials: any[] = Array.isArray(data.materials)
-			? data.materials
-			: [];
+		// 4. Materials - trust model GPT5 for items and prices
+		const rawMaterials = data.materials || [];
 
-		const materials: MaterialItem[] = [];
-		let materialsCost = 0;
+		const materialsLines: MaterialItem[] = [];
+		let materialsCost = 0.0;
 
 		for (const m of rawMaterials) {
 			const label = m.label || "";
-			const unit_size = m.unit_size ?? null;
+			const unit_size = m.unit_size || null;
 
-			const qty = Number(m.qty ?? 1) || 1;
-			const unit_price = Number(m.unit_price ?? 0) || 0;
-			const line_total =
-				Number(m.line_total ?? unit_price * qty) || unit_price * qty;
+			let qty = 1.0;
+			try {
+				qty = Number(m.qty || 1);
+				if (isNaN(qty)) qty = 1.0;
+			} catch {
+				qty = 1.0;
+			}
+
+			let unit_price = 0.0;
+			try {
+				unit_price = Number(m.unit_price || 0.0);
+				if (isNaN(unit_price)) unit_price = 0.0;
+			} catch {
+				unit_price = 0.0;
+			}
+
+			// If line_total missing, compute it
+			let line_total = unit_price * qty;
+			try {
+				line_total = Number(m.line_total || unit_price * qty);
+				if (isNaN(line_total)) line_total = unit_price * qty;
+			} catch {
+				line_total = unit_price * qty;
+			}
 
 			materialsCost += line_total;
 
-			materials.push({
+			materialsLines.push({
 				label,
 				unit_size,
 				qty,
@@ -200,23 +210,33 @@ export async function POST(req: NextRequest) {
 		const areaAdjustedCost = subtotal * (1 + areaModifier / 100);
 		const finalCost = areaAdjustedCost * overheadProfitFactor;
 
-		const result: PricingResponse = {
+		data.labor_hours = laborHours;
+		data.contractor_rate = contractorRate;
+		data.area_modifier = areaModifier;
+		data.materials = materialsLines;
+		data.materials_cost = materialsCost;
+		data.labor_cost = Number(baseLaborCost.toFixed(2));
+		data.estimated_cost = Number(finalCost.toFixed(2));
+
+		// Ensure task_description/action_type exists
+		if (!data.action_type) data.action_type = "contractor_repair";
+		if (!data.task_description) data.task_description = "";
+
+		return Response.json({
 			title: data.title,
 			narrative: data.narrative,
 			severity: data.severity,
 			trade: tradeClean,
-			action_type: data.action_type || "contractor_repair",
-			task_description: data.task_description || "",
-			labor_hours: laborHours,
-			contractor_rate: contractorRate,
-			area_modifier: areaModifier,
-			materials,
-			materials_cost: materialsCost,
-			labor_cost: Number(baseLaborCost.toFixed(2)),
-			estimated_cost: Number(finalCost.toFixed(2)),
-		};
-
-		return Response.json(result);
+			action_type: data.action_type,
+			task_description: data.task_description,
+			labor_hours: data.labor_hours,
+			contractor_rate: data.contractor_rate,
+			area_modifier: data.area_modifier,
+			materials: data.materials,
+			materials_cost: data.materials_cost,
+			labor_cost: data.labor_cost,
+			estimated_cost: data.estimated_cost,
+		});
 	} catch (err: any) {
 		console.error("Classify error:", err);
 		return new Response("Internal Server Error", { status: 500 });
