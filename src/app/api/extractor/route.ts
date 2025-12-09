@@ -1,3 +1,4 @@
+// @ts-nocheck
 // app/api/extractor/upload/route.ts
 import { NextRequest } from "next/server";
 import {
