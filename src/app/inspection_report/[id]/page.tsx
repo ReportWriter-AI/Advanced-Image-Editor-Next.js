@@ -105,9 +105,12 @@ const splitDefectText = (raw?: string): DefectTextParts => {
     };
   }
 
-  const dashMatch = normalized.match(/^([^–-]{3,120})[–-]\s*([\s\S]+)$/);
+  // Only match dashes that are used as separators (with spaces around them)
+  // This avoids matching hyphens in compound words like "de-energize" or "re-energize"
+  // Pattern requires space before or after the dash to distinguish from compound words
+  const dashMatch = normalized.match(/^([^–-]{3,120})(\s+[–-]\s+|\s+[–-]|[–-]\s+)([\s\S]+)$/);
   if (dashMatch) {
-    const [, title, remainder] = dashMatch;
+    const [, title, , remainder] = dashMatch;
     const trimmedRemainder = remainder.trim();
     const paragraphs = trimmedRemainder
       ? trimmedRemainder.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
@@ -1027,7 +1030,7 @@ export default function Page() {
       const defectSectionsForTable = sectionsToExport.filter(s => s.defect || s.defect_description);
       const summaryTableRows = defectSectionsForTable
         .map((s) => {
-          const defectParts = (s.defect_description || s.defect || "");
+          const defectParts = splitDefectText(s.defect_description || s.defect || "");
           const summaryDefect = s.defectTitle || defectParts.title || (s.defect || "").trim() || (defectParts.paragraphs[0] || "");
           const cat = nearestCategory(s.color) || 'red';
           const catClass = {
@@ -1049,7 +1052,7 @@ export default function Page() {
       // Summary HTML export table rows (no separate defects summary column)
       const summaryInspectionTableRows = reportType === 'summary'
         ? sectionsToExport.map((s) => {
-            const defectParts = (s.defect_description || s.defect || "");
+            const defectParts = splitDefectText(s.defect_description || s.defect || "");
             const defectTitle = (s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
             const cat = nearestCategory(s.color) || 'red';
             const catClass = {
@@ -2752,7 +2755,7 @@ export default function Page() {
               </section>
               
                 {visibleSections.map((section, idx) => {
-                  const defectPartsView = (section.defect_description || section.defect || "");
+                  const defectPartsView = splitDefectText(section.defect_description || section.defect || "");
                   const defectTitle = section.defectTitle || defectPartsView.title;
                   const defectParagraphsRaw = Array.isArray(section.defectParagraphs) && section.defectParagraphs.length
                     ? section.defectParagraphs
@@ -3368,16 +3371,20 @@ export default function Page() {
                                             // Add break after "can be made." before "By checking out"
                                             .replace(/(can be made\.)(\s*By checking out)/g, '$1\n\n$2')
                                             // Add break before ALL CAPS headings (but not at start)
-                                            .replace(/([a-z.,)])([A-Z][A-Z\s,/]+[-:])/g, '$1\n\n$2')
+                                            // Require space before the heading to avoid matching compound words like "de-energize"
+                                            .replace(/([a-z.,)])(\s+)([A-Z][A-Z\s,/]+[-:])/g, '$1$2\n\n$3')
                                             // Separate concatenated URLs (energystar.gov/http://)
                                             .replace(/(\.gov\/)(https?:\/\/)/gi, '$1\n$2')
                                             .replace(/(\.org)(https?:\/\/)/gi, '$1\n$2')
                                             // Add break AFTER category headings and BEFORE their URLs
-                                            .replace(/([A-Z\s,/]+-)(https?:\/\/)/g, '$1\n$2')
+                                            // Require space before hyphen to avoid matching compound words
+                                            .replace(/(\s+[A-Z\s,/]+-)(https?:\/\/)/g, '$1\n$2')
                                             // Add break before numbered items
                                             .replace(/([a-z.,)])(\d+\.\s)/g, '$1\n$2')
                                             // Add break before bullet items
-                                            .replace(/([a-z.,)])(-\s[A-Z])/g, '$1\n$2')
+                                            // Require space before hyphen to avoid matching compound words like "de-energize"
+                                            // Only match if hyphen is followed by space(s) and uppercase letter (bullet format: "- Item")
+                                            .replace(/(\s|^)(-\s+[A-Z])/gm, '$1\n$2')
                                             // Add break before URLs (but not at start)
                                             .replace(/([a-z)])(\s*https?:\/\/)/gi, '$1\n$2')
                                             // Add break after paragraph sentences before "The following"
@@ -3783,12 +3790,12 @@ export default function Page() {
                             <span className={styles.defectNumberPrefix}>{section.numbering} - </span>
                             {hasCombinedSectionLabel && (
                               <span className={styles.defectSectionPart}>
-                                {combinedSectionLabel} - 
+                                {combinedSectionLabel} 
                               </span>
                             )}
-                            {defectTitle && (
+                            {/* {defectTitle && (
                               <span className={styles.defectTitlePart}>{defectTitle}</span>
-                            )}
+                            )} */}
                           </span>
                           <span className={styles.importanceBadgeSmall} style={{ background: getSelectedColor(section) }}>
                             {colorToImportance(section.color)}
