@@ -1027,7 +1027,7 @@ export default function Page() {
       const defectSectionsForTable = sectionsToExport.filter(s => s.defect || s.defect_description);
       const summaryTableRows = defectSectionsForTable
         .map((s) => {
-          const defectParts = splitDefectText(s.defect_description || s.defect || "");
+          const defectParts = (s.defect_description || s.defect || "");
           const summaryDefect = s.defectTitle || defectParts.title || (s.defect || "").trim() || (defectParts.paragraphs[0] || "");
           const cat = nearestCategory(s.color) || 'red';
           const catClass = {
@@ -1049,7 +1049,7 @@ export default function Page() {
       // Summary HTML export table rows (no separate defects summary column)
       const summaryInspectionTableRows = reportType === 'summary'
         ? sectionsToExport.map((s) => {
-            const defectParts = splitDefectText(s.defect_description || s.defect || "");
+            const defectParts = (s.defect_description || s.defect || "");
             const defectTitle = (s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
             const cat = nearestCategory(s.color) || 'red';
             const catClass = {
