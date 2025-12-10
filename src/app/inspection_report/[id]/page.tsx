@@ -939,11 +939,11 @@ export default function Page() {
       // Transform reportSections into defects payload compatible with API
       // ONLY include sections that have actual defects (not information sections)
       const defectsPayload = sectionsToExport
-        .filter((r: any) => r.defect || r.defect_description)
+        .filter((r: any) => r.narrative || r.defect || r.defect_description)
         .map((r: any) => ({
         section: r.heading2?.split(' - ')[0] || '',
         subsection: r.heading2?.split(' - ')[1] || '',
-  defect_description: r.defect_description || r.defect || '',
+  defect_description: r.narrative || r.defect_description || r.defect || '',
         image: r.image,
         location: r.location,
         material_total_cost: r.estimatedCosts?.materialsCost ?? 0,
@@ -1030,11 +1030,11 @@ export default function Page() {
         : reportSections; // All sections for full report
 
       // Build summary table rows and totals - ONLY for sections with actual defects
-      const defectSectionsForCost = sectionsToExport.filter(s => s.defect || s.defect_description);
+      const defectSectionsForCost = sectionsToExport.filter(s => s.narrative || s.defect || s.defect_description);
       const summaryRows = defectSectionsForCost
         .map((s) => {
           const cost = s.estimatedCosts?.totalEstimatedCost ?? 0;
-          const def = s.defectTitle || s.defect || (s.defect_description ? String(s.defect_description).split('.')[0] : '');
+          const def = s.narrative || s.defectTitle || s.defect || (s.defect_description ? String(s.defect_description).split('.')[0] : '');
           return `
             <tr>
               <td>${escapeHtml(s.numbering ?? '')}</td>
@@ -1048,11 +1048,11 @@ export default function Page() {
       const totalAll = defectSectionsForCost.reduce((sum: number, s: any) => sum + (s.estimatedCosts?.totalEstimatedCost ?? 0), 0);
 
       // Filter summaryTableRows to ONLY show sections with actual defects (not information sections)
-      const defectSectionsForTable = sectionsToExport.filter(s => s.defect || s.defect_description);
+      const defectSectionsForTable = sectionsToExport.filter(s => s.narrative || s.defect || s.defect_description);
       const summaryTableRows = defectSectionsForTable
         .map((s) => {
-          const defectParts = splitDefectText(s.defect_description || s.defect || "");
-          const summaryDefect = s.defectTitle || defectParts.title || (s.defect || "").trim() || (defectParts.paragraphs[0] || "");
+          const defectParts = splitDefectText(s.narrative || s.defect_description || s.defect || "");
+          const summaryDefect = s.narrative || s.defectTitle || defectParts.title || (s.defect || "").trim() || (defectParts.paragraphs[0] || "");
           const cat = severityToCategory(s.severity);
           const catClass = {
             red: 'rpt-row-cat-red',
@@ -1073,8 +1073,8 @@ export default function Page() {
       // Summary HTML export table rows (no separate defects summary column)
       const summaryInspectionTableRows = reportType === 'summary'
         ? sectionsToExport.map((s) => {
-            const defectParts = splitDefectText(s.defect_description || s.defect || "");
-            const defectTitle = (s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
+            const defectParts = splitDefectText(s.narrative || s.defect_description || s.defect || "");
+            const defectTitle = (s.narrative || s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
             const cat = severityToCategory(s.severity);
             const catClass = {
               red: 'rpt-row-cat-red',
@@ -1099,12 +1099,12 @@ export default function Page() {
       const sectionHtml = sectionsToExport
         .map((s, idx) => {
           // Determine if this section has an actual defect
-          const hasDefect = !!(s.defect || s.defect_description);
+          const hasDefect = !!(s.narrative || s.defect || s.defect_description);
           
           const imgSrc = typeof s.image === 'string' ? s.image : '';
           const cost = s.estimatedCosts?.totalEstimatedCost ?? 0;
-          const defectPartsExport = splitDefectText(s.defect_description || "");
-          const exportTitle = s.defectTitle || defectPartsExport.title;
+          const defectPartsExport = splitDefectText(s.narrative || s.defect_description || "");
+          const exportTitle = s.narrative || s.defectTitle || defectPartsExport.title;
           const exportParagraphs = Array.isArray(s.defectParagraphs) && s.defectParagraphs.length
             ? s.defectParagraphs
             : defectPartsExport.paragraphs.length
@@ -1114,7 +1114,7 @@ export default function Page() {
                 : [];
           const defectBodyHtml = exportParagraphs.length
             ? exportParagraphs.map((p: string) => `<p class="rpt-defect-body">${escapeHtml(p)}</p>`).join("")
-            : (s.defect_description ? `<p class="rpt-defect-body">${escapeHtml(s.defect_description)}</p>` : "");
+            : (s.narrative || s.defect_description ? `<p class="rpt-defect-body">${escapeHtml(s.narrative || s.defect_description)}</p>` : "");
           const selectedColor = s.color || '#dc2626';
           const selectedRgb = parseColorToRgb(selectedColor);
           const shadowColor = selectedRgb ? `rgba(${selectedRgb.r}, ${selectedRgb.g}, ${selectedRgb.b}, 0.18)` : 'rgba(214, 54, 54, 0.18)';
@@ -1123,8 +1123,8 @@ export default function Page() {
           const locationText = escapeHtml(s.location || 'Not specified');
 
           const category = severityToCategory(s.severity);
-          const defectParts = splitDefectText(s.defect_description || s.defect || "");
-          const summaryTitle = (s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
+          const defectParts = splitDefectText(s.narrative || s.defect_description || s.defect || "");
+          const summaryTitle = (s.narrative || s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
           const summaryBody = (defectParts.paragraphs && defectParts.paragraphs.length > 0
             ? defectParts.paragraphs[0]
             : (defectParts.body && defectParts.body !== summaryTitle ? defectParts.body : '')).trim();
