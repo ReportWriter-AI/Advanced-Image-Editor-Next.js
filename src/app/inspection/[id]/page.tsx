@@ -6,7 +6,13 @@ import { format } from "date-fns";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { 
+  replaceAgreementPlaceholders, 
+  detectTextInputPlaceholders,
+} from "@/src/utils/agreement-placeholders";
+import React from "react";
 
 interface InspectionData {
   id: string;
@@ -28,6 +34,30 @@ interface AvailableAddon {
   baseDurationHours: number;
 }
 
+interface Agreement {
+  _id: string;
+  agreementId: string;
+  name: string;
+  content: string;
+  isSigned: boolean;
+  inputData?: Record<string, string>;
+}
+
+interface InspectionDataForPlaceholders {
+  address: string;
+  county: string;
+  price: number;
+  fees: string;
+  services: string;
+  currentDate: string;
+  currentYear: string;
+  clientName: string;
+  inspectionDate: string;
+  inspectionTime: string;
+  companyWebsite: string;
+  inspectorSignature?: string;
+}
+
 export default function InspectionClientViewPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -42,6 +72,15 @@ export default function InspectionClientViewPage() {
   const [showAddonModal, setShowAddonModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loadingAddons, setLoadingAddons] = useState(false);
+  const [agreements, setAgreements] = useState<Agreement[]>([]);
+  const [inspectionDataForPlaceholders, setInspectionDataForPlaceholders] = useState<InspectionDataForPlaceholders | null>(null);
+  const [loadingAgreements, setLoadingAgreements] = useState(false);
+  const [showAgreementModal, setShowAgreementModal] = useState(false);
+  const [showViewAgreementsModal, setShowViewAgreementsModal] = useState(false);
+  const [currentAgreementIndex, setCurrentAgreementIndex] = useState(0);
+  const [selectedAgreementsToSign, setSelectedAgreementsToSign] = useState<Set<string>>(new Set());
+  const [signingAgreements, setSigningAgreements] = useState(false);
+  const [agreementInputValues, setAgreementInputValues] = useState<Record<string, Record<string, string>>>({});
 
   useEffect(() => {
     const fetchInspectionData = async () => {
@@ -106,6 +145,34 @@ export default function InspectionClientViewPage() {
     };
 
     fetchAvailableAddons();
+  }, [inspectionId, token]);
+
+  // Fetch agreements
+  useEffect(() => {
+    const fetchAgreements = async () => {
+      if (!inspectionId || !token) {
+        return;
+      }
+
+      setLoadingAgreements(true);
+      try {
+        const response = await fetch(
+          `/api/inspections/${inspectionId}/client-view/agreements?token=${encodeURIComponent(token)}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setAgreements(data.agreements || []);
+          setInspectionDataForPlaceholders(data.inspectionData || null);
+        }
+      } catch (err) {
+        console.error("Error fetching agreements:", err);
+      } finally {
+        setLoadingAgreements(false);
+      }
+    };
+
+    fetchAgreements();
   }, [inspectionId, token]);
 
   // Handle addon selection toggle
@@ -187,6 +254,361 @@ export default function InspectionClientViewPage() {
     acc[addon.serviceName].push(addon);
     return acc;
   }, {} as Record<string, AvailableAddon[]>);
+
+  // Calculate agreement counts
+  const totalAgreements = agreements.length;
+  const unsignedAgreements = agreements.filter(a => !a.isSigned).length;
+
+  // Validate required fields for a specific agreement
+  const validateAgreementRequiredFields = (agreementId: string): { isValid: boolean; missingFields: string[] } => {
+    const agreement = agreements.find(a => a.agreementId === agreementId);
+    if (!agreement) {
+      return { isValid: true, missingFields: [] };
+    }
+
+    const inputValues = collectInputValues(agreementId);
+    const requiredPlaceholders = detectTextInputPlaceholders(agreement.content)
+      .filter(p => p.includes('REQUIRED'));
+    
+    const missingFields: string[] = [];
+    for (const placeholder of requiredPlaceholders) {
+      if (!inputValues[placeholder] || inputValues[placeholder].trim() === '') {
+        // Format placeholder name for display
+        const fieldName = placeholder
+          .replace(/[\[\]]/g, '')
+          .replace(/_/g, ' ')
+          .toLowerCase()
+          .replace(/\b\w/g, l => l.toUpperCase());
+        missingFields.push(fieldName);
+      }
+    }
+
+    return {
+      isValid: missingFields.length === 0,
+      missingFields,
+    };
+  };
+
+  // Handle agreement selection toggle
+  const toggleAgreementSelection = (agreementId: string) => {
+    const newSelected = new Set(selectedAgreementsToSign);
+    
+    // If trying to check the agreement, validate required fields first
+    if (!newSelected.has(agreementId)) {
+      const validation = validateAgreementRequiredFields(agreementId);
+      if (!validation.isValid) {
+        const agreement = agreements.find(a => a.agreementId === agreementId);
+        const agreementName = agreement?.name || 'this agreement';
+        
+        if (validation.missingFields.length === 1) {
+          toast.error(`Please fill in the required field "${validation.missingFields[0]}" in "${agreementName}" before signing`);
+        } else {
+          const fieldsList = validation.missingFields.map(f => `"${f}"`).join(', ');
+          toast.error(`Please fill in all required fields (${fieldsList}) in "${agreementName}" before signing`);
+        }
+        return; // Don't check the checkbox if validation fails
+      }
+    }
+    
+    if (newSelected.has(agreementId)) {
+      newSelected.delete(agreementId);
+    } else {
+      newSelected.add(agreementId);
+    }
+    setSelectedAgreementsToSign(newSelected);
+  };
+
+  // Get current unsigned agreement
+  const getCurrentUnsignedAgreement = () => {
+    const unsigned = agreements.filter(a => !a.isSigned);
+    return unsigned[currentAgreementIndex] || null;
+  };
+
+  // Get progress info
+  const getAgreementProgress = () => {
+    const unsigned = agreements.filter(a => !a.isSigned);
+    const signed = agreements.filter(a => a.isSigned);
+    return {
+      current: currentAgreementIndex + 1,
+      total: unsigned.length,
+      signed: signed.length,
+      totalAgreements: agreements.length,
+    };
+  };
+
+  // Render agreement content with React components for text inputs
+  const renderAgreementContent = (
+    content: string,
+    agreementId: string,
+    inputData: Record<string, string> = {},
+    isReadOnly: boolean = false
+  ) => {
+    // First replace regular placeholders
+    let processedContent = inspectionDataForPlaceholders
+      ? replaceAgreementPlaceholders(content, inspectionDataForPlaceholders)
+      : content;
+
+    // Split content by text input placeholders
+    const TEXT_INPUT_PLACEHOLDERS = [
+      '[CUSTOMER_INITIALS]',
+      '[REQUIRED_CUSTOMER_INITIALS]',
+    ];
+
+    const parts: Array<{ type: 'html' | 'input'; content?: string; placeholder?: string; value?: string; required?: boolean }> = [];
+    let remaining = processedContent;
+    let lastIndex = 0;
+
+    // Find all placeholder positions
+    const placeholderPositions: Array<{ placeholder: string; index: number }> = [];
+    TEXT_INPUT_PLACEHOLDERS.forEach(placeholder => {
+      let index = remaining.indexOf(placeholder);
+      while (index !== -1) {
+        placeholderPositions.push({ placeholder, index: lastIndex + index });
+        index = remaining.indexOf(placeholder, index + 1);
+      }
+    });
+
+    // Sort by position
+    placeholderPositions.sort((a, b) => a.index - b.index);
+
+    // Build parts array
+    let currentIndex = 0;
+    placeholderPositions.forEach(({ placeholder, index }) => {
+      // Add HTML before placeholder
+      if (index > currentIndex) {
+        parts.push({
+          type: 'html',
+          content: processedContent.substring(currentIndex, index),
+        });
+      }
+
+      // Add input placeholder
+      const isRequired = placeholder.includes('REQUIRED');
+      parts.push({
+        type: 'input',
+        placeholder,
+        value: inputData[placeholder] || '',
+        required: isRequired,
+      });
+
+      currentIndex = index + placeholder.length;
+    });
+
+    // Add remaining HTML
+    if (currentIndex < processedContent.length) {
+      parts.push({
+        type: 'html',
+        content: processedContent.substring(currentIndex),
+      });
+    }
+
+    // If no placeholders found, return the whole content as HTML
+    if (parts.length === 0) {
+      parts.push({
+        type: 'html',
+        content: processedContent,
+      });
+    }
+
+    return (
+      <div className="prose prose-sm max-w-none text-gray-700">
+        {parts.map((part, idx) => {
+          if (part.type === 'input') {
+            if (isReadOnly) {
+              return (
+                <span
+                  key={idx}
+                  className="inline-block min-w-[100px] px-2 py-1 border-b border-gray-800 font-medium"
+                >
+                  {part.value || '\u00A0'}
+                </span>
+              );
+            } else {
+              return (
+                <Input
+                  key={idx}
+                  type="text"
+                  data-placeholder={part.placeholder}
+                  data-agreement-id={agreementId}
+                  className="agreement-text-input inline-block min-w-[100px] max-w-[200px] mx-1"
+                  value={part.value}
+                  required={part.required}
+                  maxLength={50}
+                  onChange={(e) => {
+                    // Update local state for immediate feedback
+                    setAgreementInputValues(prev => ({
+                      ...prev,
+                      [agreementId]: {
+                        ...(prev[agreementId] || {}),
+                        [part.placeholder!]: e.target.value,
+                      },
+                    }));
+                  }}
+                />
+              );
+            }
+          } else {
+            return (
+              <span
+                key={idx}
+                dangerouslySetInnerHTML={{ __html: part.content || '' }}
+              />
+            );
+          }
+        })}
+      </div>
+    );
+  };
+
+  // Collect input values from the current agreement
+  const collectInputValues = (agreementId: string): Record<string, string> => {
+    // Use state values if available, otherwise fall back to DOM
+    if (agreementInputValues[agreementId]) {
+      return agreementInputValues[agreementId];
+    }
+    
+    const inputs: Record<string, string> = {};
+    // Use a more specific selector to find inputs within the agreement container
+    const container = document.querySelector(`[data-agreement-id="${agreementId}"]`);
+    if (container) {
+      const inputElements = container.querySelectorAll('.agreement-text-input');
+      
+      inputElements.forEach((input) => {
+        const htmlInput = input as HTMLInputElement;
+        const placeholder = htmlInput.getAttribute('data-placeholder');
+        if (placeholder) {
+          inputs[placeholder] = htmlInput.value || '';
+        }
+      });
+    }
+    
+    return inputs;
+  };
+
+  // Handle signing agreements
+  const handleSignAgreements = async () => {
+    if (selectedAgreementsToSign.size === 0) {
+      return;
+    }
+
+    // Validate required fields for all selected agreements
+    const agreementIds = Array.from(selectedAgreementsToSign);
+    const missingFields: Array<{ agreementName: string; placeholder: string }> = [];
+
+    for (const agreementId of agreementIds) {
+      const agreement = agreements.find(a => a.agreementId === agreementId);
+      if (!agreement) continue;
+
+      const inputValues = collectInputValues(agreementId);
+      const requiredPlaceholders = detectTextInputPlaceholders(agreement.content)
+        .filter(p => p.includes('REQUIRED'));
+      
+      for (const placeholder of requiredPlaceholders) {
+        if (!inputValues[placeholder] || inputValues[placeholder].trim() === '') {
+          // Format placeholder name for display (remove brackets and make readable)
+          const fieldName = placeholder
+            .replace(/[\[\]]/g, '')
+            .replace(/_/g, ' ')
+            .toLowerCase()
+            .replace(/\b\w/g, l => l.toUpperCase());
+          
+          missingFields.push({
+            agreementName: agreement.name,
+            placeholder: fieldName,
+          });
+        }
+      }
+    }
+
+    // Show toast if any required fields are missing
+    if (missingFields.length > 0) {
+      if (missingFields.length === 1) {
+        toast.error(`Please fill in the required field "${missingFields[0].placeholder}" in "${missingFields[0].agreementName}"`);
+      } else {
+        const fieldList = missingFields.map(f => `"${f.placeholder}" in "${f.agreementName}"`).join(', ');
+        toast.error(`Please fill in all required fields: ${fieldList}`);
+      }
+      return;
+    }
+
+    setSigningAgreements(true);
+    try {
+      const agreementIds = Array.from(selectedAgreementsToSign);
+      
+      // Collect input values for each agreement
+      const agreementInputData: Record<string, Record<string, string>> = {};
+      agreementIds.forEach(agreementId => {
+        agreementInputData[agreementId] = collectInputValues(agreementId);
+      });
+      
+      const response = await fetch(
+        `/api/inspections/${inspectionId}/client-view/sign-agreement?token=${encodeURIComponent(token || '')}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            agreementIds,
+            inputData: agreementInputData,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to sign agreements');
+      }
+
+      toast.success('Agreement signed successfully!');
+      
+      // Update local state with input data
+      const updatedAgreements = agreements.map(agreement => 
+        selectedAgreementsToSign.has(agreement.agreementId)
+          ? { 
+              ...agreement, 
+              isSigned: true,
+              inputData: agreementInputData[agreement.agreementId] || {},
+            }
+          : agreement
+      );
+      setAgreements(updatedAgreements);
+      
+      // Clear selections and input values
+      setSelectedAgreementsToSign(new Set());
+      const newInputValues = { ...agreementInputValues };
+      agreementIds.forEach(id => {
+        delete newInputValues[id];
+      });
+      setAgreementInputValues(newInputValues);
+      
+      // Check if there are more unsigned agreements
+      const remainingUnsigned = updatedAgreements.filter(a => !a.isSigned);
+      if (remainingUnsigned.length > 0) {
+        // Move to next unsigned agreement
+        setCurrentAgreementIndex(0);
+      } else {
+        // All agreements signed, close modal
+        setShowAgreementModal(false);
+        setCurrentAgreementIndex(0);
+      }
+    } catch (err: any) {
+      console.error("Error signing agreements:", err);
+      toast.error(err.message || 'Failed to sign agreements');
+    } finally {
+      setSigningAgreements(false);
+    }
+  };
+
+  // Get unsigned agreements for the modal
+  const unsignedAgreementsList = agreements.filter(a => !a.isSigned);
+  
+  // Open agreement modal and reset to first unsigned agreement
+  const openAgreementModal = () => {
+    setCurrentAgreementIndex(0);
+    setSelectedAgreementsToSign(new Set());
+    setShowAgreementModal(true);
+  };
 
   if (loading) {
     return (
@@ -373,6 +795,87 @@ export default function InspectionClientViewPage() {
                   {formatDateTime()}
                 </p>
               </div>
+
+              {/* Agreements Section */}
+              {!loadingAgreements && totalAgreements > 0 && (
+                <div className="mt-8 pt-8 border-t">
+                  <div className="flex items-center mb-3">
+                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mr-3">
+                      <svg
+                        className="w-5 h-5 text-green-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
+                    </div>
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      Agreements
+                    </h2>
+                  </div>
+                  <div className="ml-13 pl-2 space-y-2">
+                    <p className="text-gray-700">
+                      Total Agreements: <span className="font-semibold">{totalAgreements}</span>
+                    </p>
+                    <p className="text-gray-700">
+                      Unsigned Agreements: <span className="font-semibold text-orange-600">{unsignedAgreements}</span>
+                    </p>
+                    {unsignedAgreements > 0 ? (
+                      <Button
+                        onClick={openAgreementModal}
+                        className="mt-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+                      >
+                        <svg
+                          className="w-5 h-5 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                          />
+                        </svg>
+                        Sign Agreements
+                      </Button>
+                    ) : totalAgreements > 0 && (
+                      <Button
+                        onClick={() => setShowViewAgreementsModal(true)}
+                        className="mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                      >
+                        <svg
+                          className="w-5 h-5 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                          />
+                        </svg>
+                        View Agreements
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer */}
@@ -471,11 +974,6 @@ export default function InspectionClientViewPage() {
                               <p className="font-semibold text-purple-600">
                                 ${addon.baseCost.toFixed(2)}
                               </p>
-                              {addon.baseDurationHours > 0 && (
-                                <p className="text-xs text-gray-500">
-                                  +{addon.baseDurationHours}h
-                                </p>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -521,6 +1019,201 @@ export default function InspectionClientViewPage() {
                 )}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Agreement Signing Modal - One at a time */}
+      <Dialog open={showAgreementModal} onOpenChange={(open) => {
+        if (!open) {
+          setShowAgreementModal(false);
+          setCurrentAgreementIndex(0);
+          setSelectedAgreementsToSign(new Set());
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-900">
+              Sign Agreement
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              {(() => {
+                const progress = getAgreementProgress();
+                return `Agreement ${progress.current} of ${progress.total} - Please review and check the box to confirm you agree.`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {(() => {
+              const currentAgreement = getCurrentUnsignedAgreement();
+              if (!currentAgreement) {
+                return (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600">No more agreements to sign.</p>
+                  </div>
+                );
+              }
+
+              const isSelected = selectedAgreementsToSign.has(currentAgreement.agreementId);
+              const savedInputData = currentAgreement.inputData || {};
+              
+              // Merge saved data with current input values
+              const currentInputData = {
+                ...savedInputData,
+                ...(agreementInputValues[currentAgreement.agreementId] || {}),
+              };
+
+              return (
+                <div
+                  data-agreement-id={currentAgreement.agreementId}
+                  className={`p-6 rounded-lg border-2 transition-all ${
+                    isSelected
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-gray-200 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 mb-4">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => toggleAgreementSelection(currentAgreement.agreementId)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        {currentAgreement.name}
+                      </h3>
+                      {renderAgreementContent(
+                        currentAgreement.content,
+                        currentAgreement.agreementId,
+                        currentInputData,
+                        false // isReadOnly = false for signing
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+            <div className="flex-1 text-left">
+              <p className="text-sm text-gray-600">
+                {(() => {
+                  const progress = getAgreementProgress();
+                  return `${progress.signed} of ${progress.totalAgreements} agreement${progress.totalAgreements !== 1 ? 's' : ''} signed`;
+                })()}
+              </p>
+            </div>
+            <div className="flex gap-2 sm:justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowAgreementModal(false);
+                  setCurrentAgreementIndex(0);
+                  setSelectedAgreementsToSign(new Set());
+                }}
+                disabled={signingAgreements}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSignAgreements}
+                disabled={selectedAgreementsToSign.size === 0 || signingAgreements}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+              >
+                {signingAgreements ? (
+                  <>
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                    Signing...
+                  </>
+                ) : (
+                  'Sign Agreement'
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View All Agreements Modal - Read Only */}
+      <Dialog open={showViewAgreementsModal} onOpenChange={setShowViewAgreementsModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-900">
+              All Agreements
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              View all signed agreements for this inspection.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-6">
+            {agreements.map((agreement) => {
+              const savedInputData = agreement.inputData || {};
+
+              return (
+                <div
+                  key={agreement._id}
+                  className={`p-6 rounded-lg border-2 ${
+                    agreement.isSigned
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-gray-200 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="mt-1">
+                      {agreement.isSigned ? (
+                        <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {agreement.name}
+                        </h3>
+                        {agreement.isSigned && (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                            Signed
+                          </span>
+                        )}
+                      </div>
+                      {renderAgreementContent(
+                        agreement.content,
+                        agreement.agreementId,
+                        savedInputData,
+                        true // isReadOnly = true for viewing
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowViewAgreementsModal(false)}
+            >
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

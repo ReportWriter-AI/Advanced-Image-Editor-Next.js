@@ -71,6 +71,7 @@ const teamMemberSchema = z.object({
   password: z.string().optional(),
   sendConfirmation: z.boolean(),
   profileImageUrl: z.string().optional(),
+  signatureImageUrl: z.string().optional(),
 }).refine((data) => {
   // If sendConfirmation is false, password is required
   if (!data.sendConfirmation && !data.password) {
@@ -87,6 +88,7 @@ const editTeamMemberSchema = z.object({
   lastName: z.string().min(1, 'Last name is required'),
   phoneNumber: z.string().optional(),
   profileImageUrl: z.string().optional(),
+  signatureImageUrl: z.string().optional(),
 });
 
 type TeamMemberFormData = z.infer<typeof teamMemberSchema>;
@@ -111,6 +113,7 @@ interface TeamMember {
   can_edit_inspections?: boolean;
   can_delete_inspections?: boolean;
   profileImageUrl?: string;
+  signatureImageUrl?: string;
 }
 
 export default function TeamPage() {
@@ -138,6 +141,7 @@ export default function TeamPage() {
       password: '',
       sendConfirmation: true,
       profileImageUrl: '',
+      signatureImageUrl: '',
     },
   });
 
@@ -148,6 +152,7 @@ export default function TeamPage() {
       lastName: '',
       phoneNumber: '',
       profileImageUrl: '',
+      signatureImageUrl: '',
     },
   });
 
@@ -296,6 +301,7 @@ export default function TeamPage() {
       lastName: member.lastName,
       phoneNumber: member.phoneNumber || '',
       profileImageUrl: member.profileImageUrl || '',
+      signatureImageUrl: member.signatureImageUrl || '',
     });
 
     // Set permissions from member
@@ -564,6 +570,16 @@ export default function TeamPage() {
                       onChange={(url) => addForm.setValue('profileImageUrl', url ?? '')}
                     />
                   </div>
+                  {addType === 'inspector' && (
+                    <div className="space-y-2">
+                      <ImageUpload
+                        label="Signature"
+                        description="Inspector signature image"
+                        value={addForm.watch('signatureImageUrl') || ''}
+                        onChange={(url) => addForm.setValue('signatureImageUrl', url ?? '')}
+                      />
+                    </div>
+                  )}
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="firstName">First Name *</Label>
@@ -786,6 +802,15 @@ export default function TeamPage() {
                   value={editForm.watch('profileImageUrl') || ''}
                   onChange={(url) => editForm.setValue('profileImageUrl', url ?? '')}
                 />
+
+                {editingMember.role === 'inspector' && (
+                  <ImageUpload
+                    label="Signature"
+                    description="Inspector signature image"
+                    value={editForm.watch('signatureImageUrl') || ''}
+                    onChange={(url) => editForm.setValue('signatureImageUrl', url ?? '')}
+                  />
+                )}
 
                 {/* Permissions */}
                 <div className="space-y-3 pt-4 border-t">

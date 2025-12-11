@@ -282,67 +282,27 @@ export default function InspectionEditPage() {
     }
   };
 
-  // Fetch agreements from services
+  // Fetch agreements from inspection
   const fetchAgreements = async () => {
     try {
       setLoadingAgreements(true);
       
-      // Get inspection details with services
+      // Get inspection details with agreements populated
       const inspectionResponse = await fetch(`/api/inspections/${inspectionId}`);
       if (!inspectionResponse.ok) {
         console.error('Failed to fetch inspection for agreements');
-        return;
-      }
-      
-      const inspectionData = await inspectionResponse.json();
-      const services = inspectionData.services || [];
-      
-      if (services.length === 0) {
         setAgreements([]);
         return;
       }
       
-      // Fetch all services to get their agreementIds
-      const servicesResponse = await fetch('/api/services', { credentials: 'include' });
-      if (!servicesResponse.ok) {
-        console.error('Failed to fetch services');
-        return;
-      }
+      const inspectionData = await inspectionResponse.json();
+      const agreements = inspectionData.agreements || [];
       
-      const servicesData = await servicesResponse.json();
-      const allServices = servicesData.services || [];
-      
-      // Get unique agreement IDs from inspection services
-      const uniqueAgreementIds = new Set<string>();
-      services.forEach((inspectionService: any) => {
-        const serviceId = typeof inspectionService.serviceId === 'object' 
-          ? inspectionService.serviceId._id 
-          : inspectionService.serviceId;
-        
-        const fullService = allServices.find((s: any) => s._id.toString() === serviceId.toString());
-        if (fullService && fullService.agreementIds && Array.isArray(fullService.agreementIds)) {
-          fullService.agreementIds.forEach((id: string) => uniqueAgreementIds.add(id.toString()));
-        }
-      });
-      
-      // Fetch all agreements and filter to unique ones
-      const agreementsResponse = await fetch('/api/agreements', { credentials: 'include' });
-      if (!agreementsResponse.ok) {
-        console.error('Failed to fetch agreements');
-        return;
-      }
-      
-      const agreementsData = await agreementsResponse.json();
-      const allAgreements = agreementsData.agreements || [];
-      
-      // Filter to only agreements that are in our unique set
-      const uniqueAgreements = allAgreements.filter((agreement: any) => 
-        uniqueAgreementIds.has(agreement._id.toString())
-      );
-      
-      setAgreements(uniqueAgreements);
+      // Agreements are already populated from the API, so we can use them directly
+      setAgreements(agreements);
     } catch (error) {
       console.error('Error fetching agreements:', error);
+      setAgreements([]);
     } finally {
       setLoadingAgreements(false);
     }
@@ -2539,8 +2499,8 @@ export default function InspectionEditPage() {
                 ) : agreements.length > 0 ? (
                   <div className="space-y-2">
                     {agreements.map((agreement, index) => (
-                      <div key={agreement._id} className="p-3 bg-card border rounded-lg hover:shadow-sm transition-shadow">
-                        <p className="text-sm font-medium">{agreement.name}</p>
+                      <div key={agreement._id || `agreement-${index}`} className="p-3 bg-card border rounded-lg hover:shadow-sm transition-shadow">
+                        <p className="text-sm font-medium">{agreement.name || 'Unnamed Agreement'}</p>
                       </div>
                     ))}
                   </div>

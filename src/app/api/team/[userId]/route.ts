@@ -36,6 +36,7 @@ export async function PUT(
       lastName,
       phoneNumber,
       profileImageUrl,
+      signatureImageUrl,
       // Permissions
       can_schedule_self,
       can_schedule,
@@ -53,6 +54,11 @@ export async function PUT(
     const normalizedProfileImage =
       typeof profileImageUrl === 'string'
         ? profileImageUrl.trim() || null
+        : undefined;
+
+    const normalizedSignatureImage =
+      typeof signatureImageUrl === 'string'
+        ? signatureImageUrl.trim() || null
         : undefined;
 
     const { userId } = await params;
@@ -91,6 +97,11 @@ export async function PUT(
 
     if (normalizedProfileImage !== undefined) {
       updatePayload.profileImageUrl = normalizedProfileImage;
+    }
+
+    // Only update signature for inspectors
+    if (teamMember.role === 'inspector' && normalizedSignatureImage !== undefined) {
+      updatePayload.signatureImageUrl = normalizedSignatureImage;
     }
 
     const updatedUser = await User.findByIdAndUpdate(

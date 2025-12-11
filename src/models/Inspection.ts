@@ -1,6 +1,9 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import './DiscountCode';
 import './Service';
+import './Agreement';
+import './Client';
+import './Company';
 
 export interface IInspection extends Document {
   status: string;
@@ -54,6 +57,11 @@ export interface IInspection extends Document {
   listingAgent?: mongoose.Types.ObjectId[];
   people?: mongoose.Types.ObjectId[];
   clients?: mongoose.Types.ObjectId[];
+  agreements?: Array<{
+    agreementId: mongoose.Types.ObjectId;
+    isSigned: boolean;
+    inputData?: Record<string, string>;
+  }>;
   orderId?: number;
   referralSource?: string;
   confirmedInspection?: boolean;
@@ -266,6 +274,22 @@ const InspectionSchema = new Schema<IInspection>(
     clients: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Client',
+    }],
+    agreements: [{
+      agreementId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Agreement',
+        required: true,
+      },
+      isSigned: {
+        type: Boolean,
+        default: false,
+      },
+      inputData: {
+        type: Map,
+        of: String,
+        default: {},
+      },
     }],
     orderId: {
       type: Number,

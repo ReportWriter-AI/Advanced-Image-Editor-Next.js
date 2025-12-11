@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
       role,
       sendConfirmation,
       profileImageUrl,
+      signatureImageUrl,
       // Permissions
       can_schedule_self,
       can_schedule,
@@ -154,6 +155,11 @@ export async function POST(request: NextRequest) {
         ? profileImageUrl.trim() || null
         : undefined;
 
+    const normalizedSignatureImage =
+      typeof signatureImageUrl === 'string'
+        ? signatureImageUrl.trim() || null
+        : undefined;
+
     // Create the user
     const newUser = await User.create({
       firstName,
@@ -161,6 +167,7 @@ export async function POST(request: NextRequest) {
       email: email.toLowerCase(),
       phoneNumber: phoneNumber || undefined,
       profileImageUrl: normalizedProfileImage ?? undefined,
+      signatureImageUrl: role === 'inspector' ? (normalizedSignatureImage ?? undefined) : undefined,
       password: userPassword,
       role,
       company: currentUser.company,

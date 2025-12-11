@@ -232,6 +232,50 @@ const formatInspection = (doc: IInspection | null) => {
       }))
     : [];
 
+  // Format agreements array
+  const formattedAgreements = doc.agreements && Array.isArray(doc.agreements)
+    ? doc.agreements.map((agreementEntry: any) => {
+        if (typeof agreementEntry === 'object' && agreementEntry !== null) {
+          // Handle new structure with agreementId and isSigned
+          const agreement = agreementEntry.agreementId;
+          const isSigned = agreementEntry.isSigned ?? false;
+          
+          if (agreement && typeof agreement === 'object' && '_id' in agreement) {
+            // Agreement is populated
+            return {
+              _id: agreement._id?.toString() || '',
+              name: agreement.name || '',
+              content: agreement.content || '',
+              isSigned: isSigned,
+            };
+          } else if (agreement && mongoose.Types.ObjectId.isValid(agreement)) {
+            // Agreement is just an ObjectId (not populated)
+            return {
+              _id: agreement.toString(),
+              name: '',
+              content: '',
+              isSigned: isSigned,
+            };
+          }
+        }
+        // Fallback for old structure (just ObjectId) or invalid data
+        if (mongoose.Types.ObjectId.isValid(agreementEntry)) {
+          return {
+            _id: agreementEntry.toString(),
+            name: '',
+            content: '',
+            isSigned: false,
+          };
+        }
+        return {
+          _id: '',
+          name: '',
+          content: '',
+          isSigned: false,
+        };
+      })
+    : [];
+
   return {
     _id: doc._id?.toString(),
     id: doc._id?.toString(),
@@ -268,6 +312,7 @@ const formatInspection = (doc: IInspection | null) => {
     clients: formattedClients,
     agents: formattedAgents,
     listingAgent: formattedListingAgents,
+    agreements: formattedAgreements,
     customData: doc.customData ?? {},
     closingDate: doc.closingDate ? {
       date: doc.closingDate.date ? new Date(doc.closingDate.date).toISOString() : null,
@@ -578,6 +623,7 @@ export async function getInspection(inspectionId: string) {
   const inspection = await Inspection.findById(inspectionId)
     .populate('inspector', 'firstName lastName email phoneNumber profileImageUrl')
     .populate('clients', 'firstName lastName companyName email phone isCompany')
+    .populate('agreements.agreementId', 'name content')
     .populate('agents', 'firstName lastName email phone photoUrl')
     .populate('listingAgent', 'firstName lastName email phone photoUrl')
     .populate('discountCode', 'code type value active')

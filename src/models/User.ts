@@ -7,6 +7,7 @@ export interface IUser extends Document {
   email: string;
   phoneNumber?: string;
   profileImageUrl?: string;
+  signatureImageUrl?: string;
   credentials?: string;
   password: string;
   smsOptIn: boolean;
@@ -72,6 +73,10 @@ const UserSchema = new Schema<IUser>(
       trim: true,
     },
     profileImageUrl: {
+      type: String,
+      trim: true,
+    },
+    signatureImageUrl: {
       type: String,
       trim: true,
     },

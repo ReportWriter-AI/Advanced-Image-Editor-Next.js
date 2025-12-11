@@ -5,6 +5,7 @@ import dbConnect from "@/lib/db";
 import Event from "@/src/models/Event";
 import OrderIdCounter from "@/src/models/OrderIdCounter";
 import Inspection from "@/src/models/Inspection";
+import Service from "@/src/models/Service";
 import mongoose from "mongoose";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
 import { generateSecureToken } from "@/src/lib/token-utils";
@@ -205,6 +206,57 @@ export async function POST(req: NextRequest) {
         await Inspection.findByIdAndUpdate(inspection._id, {
           listingAgent: listingAgentIds,
         });
+      }
+    }
+
+    // Collect unique agreements from services
+    if (inspection?._id && services.length > 0) {
+      try {
+        const uniqueAgreementIds = new Set<string>();
+        
+        // Get all service IDs from the inspection
+        const serviceIds = services
+          .map((s: any) => s.serviceId)
+          .filter((id: any) => id && mongoose.Types.ObjectId.isValid(id))
+          .map((id: any) => new mongoose.Types.ObjectId(id));
+
+        if (serviceIds.length > 0) {
+          // Fetch all services to get their agreementIds
+          const fetchedServices = await Service.find({
+            _id: { $in: serviceIds },
+          }).select('agreementIds').lean();
+
+          // Collect agreementIds from main services
+          fetchedServices.forEach((service: any) => {
+            if (service.agreementIds && Array.isArray(service.agreementIds)) {
+              service.agreementIds.forEach((agreementId: any) => {
+                if (agreementId && mongoose.Types.ObjectId.isValid(agreementId)) {
+                  uniqueAgreementIds.add(agreementId.toString());
+                }
+              });
+            }
+          });
+
+          // Update inspection with unique agreement IDs (with isSigned: false by default)
+          if (uniqueAgreementIds.size > 0) {
+            const agreementObjects = Array.from(uniqueAgreementIds).map(
+              (id: string) => ({
+                agreementId: new mongoose.Types.ObjectId(id),
+                isSigned: false,
+              })
+            );
+            
+            // Fetch the document first to ensure proper schema handling
+            const inspectionDoc = await Inspection.findById(inspection._id);
+            if (inspectionDoc) {
+              inspectionDoc.agreements = agreementObjects;
+              await inspectionDoc.save();
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error collecting agreements from services:', error);
+        // Don't fail the inspection creation if agreement collection fails
       }
     }
 
