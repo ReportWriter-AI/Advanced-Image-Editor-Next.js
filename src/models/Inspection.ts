@@ -53,6 +53,22 @@ export interface IInspection extends Document {
   hidePricing?: boolean;
   requirePaymentToReleaseReports?: boolean;
   paymentNotes?: string;
+  isPaid?: boolean;
+  paymentInfo?: {
+    stripePaymentIntentId?: string;
+    stripeSessionId?: string;
+    amountPaid?: number;
+    paidAt?: Date;
+    currency?: string;
+    paymentMethod?: string;
+  };
+  paymentHistory?: Array<{
+    amount: number;
+    paidAt: Date;
+    stripePaymentIntentId?: string;
+    currency?: string;
+    paymentMethod?: string;
+  }>;
   agents?: mongoose.Types.ObjectId[];
   listingAgent?: mongoose.Types.ObjectId[];
   people?: mongoose.Types.ObjectId[];
@@ -259,6 +275,59 @@ const InspectionSchema = new Schema<IInspection>(
       type: String,
       trim: true,
     },
+    isPaid: {
+      type: Boolean,
+      default: false,
+    },
+    paymentInfo: {
+      stripePaymentIntentId: {
+        type: String,
+        trim: true,
+      },
+      stripeSessionId: {
+        type: String,
+        trim: true,
+      },
+      amountPaid: {
+        type: Number,
+      },
+      paidAt: {
+        type: Date,
+      },
+      currency: {
+        type: String,
+        default: 'usd',
+        trim: true,
+      },
+      paymentMethod: {
+        type: String,
+        trim: true,
+      },
+    },
+    paymentHistory: [{
+      amount: {
+        type: Number,
+        required: true,
+      },
+      paidAt: {
+        type: Date,
+        required: true,
+        default: Date.now,
+      },
+      stripePaymentIntentId: {
+        type: String,
+        trim: true,
+      },
+      currency: {
+        type: String,
+        default: 'usd',
+        trim: true,
+      },
+      paymentMethod: {
+        type: String,
+        trim: true,
+      },
+    }],
     agents: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Agent',

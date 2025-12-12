@@ -209,10 +209,14 @@ const formatInspection = (doc: IInspection | null) => {
         const serviceName = service.serviceId && typeof service.serviceId === 'object'
           ? service.serviceId.name
           : '';
+        const baseCost = service.serviceId && typeof service.serviceId === 'object'
+          ? (service.serviceId.baseCost || 0)
+          : 0;
 
         return {
           serviceId,
           serviceName,
+          baseCost,
           addOns: service.addOns || [],
         };
       })
@@ -630,7 +634,7 @@ export async function getInspection(inspectionId: string) {
     .populate('officeNotes.createdBy', 'firstName lastName profileImageUrl')
     .populate('closingDate.lastModifiedBy', 'firstName lastName')
     .populate('endOfInspectionPeriod.lastModifiedBy', 'firstName lastName')
-    .populate('services.serviceId', 'name')
+    .populate('services.serviceId', 'name baseCost')
     .lean();
   return formatInspection(inspection as any);
 }

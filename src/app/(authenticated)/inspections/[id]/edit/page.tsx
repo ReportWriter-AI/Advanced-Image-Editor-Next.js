@@ -136,6 +136,12 @@ export default function InspectionEditPage() {
     customData?: Record<string, any>;
     internalNotes?: string;
     clientNote?: string;
+    services?: Array<{
+      serviceId: string;
+      serviceName: string;
+      addOns?: Array<{ name: string; addFee?: number; addHours?: number }>;
+    }>;
+    requestedAddons?: any[];
     closingDate?: {
       date?: string;
       lastModifiedBy?: {
@@ -215,6 +221,10 @@ export default function InspectionEditPage() {
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
   const [officeNoteToDelete, setOfficeNoteToDelete] = useState<string | null>(null);
   const [clientNoteToDelete, setClientNoteToDelete] = useState<boolean>(false);
+  const [serviceToDelete, setServiceToDelete] = useState<{ serviceIndex: number; serviceName: string } | null>(null);
+  const [addonToDelete, setAddonToDelete] = useState<{ serviceIndex: number; addonIndex: number; addonName: string; serviceName: string } | null>(null);
+  const [deletingService, setDeletingService] = useState(false);
+  const [deletingAddon, setDeletingAddon] = useState(false);
 
   // Events state
   const [events, setEvents] = useState<any[]>([]);
@@ -225,6 +235,25 @@ export default function InspectionEditPage() {
 
   // Service selection dialog state
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+
+  // Payment state
+  const [paymentInfo, setPaymentInfo] = useState<{
+    subtotal: number;
+    discountAmount: number;
+    total: number;
+    amountPaid: number;
+    remainingBalance: number;
+    isPaid: boolean;
+    currency: string;
+    paymentHistory?: Array<{
+      amount: number;
+      paidAt: string;
+      stripePaymentIntentId?: string;
+      currency?: string;
+      paymentMethod?: string;
+    }>;
+  } | null>(null);
+  const [loadingPayment, setLoadingPayment] = useState(false);
 
   // Fetch inspection details
   const fetchInspectionDetails = async () => {
@@ -308,6 +337,29 @@ export default function InspectionEditPage() {
     }
   };
 
+  // Fetch payment information
+  const fetchPaymentInfo = async () => {
+    try {
+      setLoadingPayment(true);
+      const response = await fetch(`/api/inspections/${inspectionId}/payment`, {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPaymentInfo(data);
+      } else {
+        console.error('Failed to fetch payment info');
+        setPaymentInfo(null);
+      }
+    } catch (error) {
+      console.error('Error fetching payment info:', error);
+      setPaymentInfo(null);
+    } finally {
+      setLoadingPayment(false);
+    }
+  };
+
   const getProxiedSrc = useCallback((url?: string | null) => {
     if (!url) return '';
     if (url.startsWith('data:') || url.startsWith('/api/proxy-image?')) return url;
@@ -333,6 +385,7 @@ export default function InspectionEditPage() {
       fetchTasks();
       fetchCompanyUsers();
       fetchAgreements();
+      fetchPaymentInfo();
       
       // Get current user ID
       fetch('/api/auth/verify-token', {
@@ -968,6 +1021,10 @@ export default function InspectionEditPage() {
         const now = new Date();
         setDetailsLastSaved(now.toLocaleTimeString());
         await fetchInspectionDetails();
+        // Refresh payment info if discount code or services might have changed
+        if (updatePayload.discountCode !== undefined) {
+          await fetchPaymentInfo();
+        }
       }
     } catch (e) {
       console.error('Error auto-saving inspection details:', e);
@@ -1405,6 +1462,8 @@ export default function InspectionEditPage() {
           requestedAddons: updatedRequestedAddons,
           services: updatedServices,
         }));
+        // Refresh payment info
+        await fetchPaymentInfo();
         toast.success('Add-on approved and added to service');
       } else {
         const errorData = await response.json();
@@ -1460,6 +1519,8 @@ export default function InspectionEditPage() {
           ...prev,
           requestedAddons: updatedRequestedAddons,
         }));
+        // Refresh payment info (in case it was previously approved)
+        await fetchPaymentInfo();
         toast.info('Add-on request rejected');
       } else {
         const errorData = await response.json();
@@ -1477,13 +1538,47 @@ export default function InspectionEditPage() {
     addOns: Array<{ name: string; addFee?: number; addHours?: number }>;
   }>) => {
     try {
-      // Combine with existing services (allows duplicates)
       // @ts-ignore
-      const updatedServices = [
-        // @ts-ignore
-        ...(inspectionDetails.services || []),
-        ...selectedServices
-      ];
+      const existingServices = [...(inspectionDetails.services || [])];
+      const updatedServices = [...existingServices];
+      
+      selectedServices.forEach(selectedService => {
+        const serviceIdString = typeof selectedService.serviceId === 'string' 
+          ? selectedService.serviceId 
+          : String(selectedService.serviceId);
+        
+        // Find if this service already exists
+        const existingServiceIndex = updatedServices.findIndex(s => {
+          const existingId = typeof s.serviceId === 'string' 
+            ? s.serviceId 
+            : String(s.serviceId);
+          return existingId === serviceIdString;
+        });
+        
+        if (existingServiceIndex >= 0) {
+          // Service exists - merge addons
+          const existingService = updatedServices[existingServiceIndex];
+          const existingAddons = existingService.addOns || [];
+          const existingAddonNames = new Set(
+            existingAddons.map((a: any) => a.name.toLowerCase())
+          );
+          
+          // Add only new addons that don't already exist
+          const newAddons = selectedService.addOns.filter(addon => 
+            !existingAddonNames.has(addon.name.toLowerCase())
+          );
+          
+          if (newAddons.length > 0) {
+            updatedServices[existingServiceIndex] = {
+              ...existingService,
+              addOns: [...existingAddons, ...newAddons]
+            };
+          }
+        } else {
+          // New service - add it
+          updatedServices.push(selectedService);
+        }
+      });
       
       // Update in database
       const response = await fetch(`/api/inspections/${inspectionId}`, {
@@ -1503,10 +1598,133 @@ export default function InspectionEditPage() {
         services: updatedServices
       }));
       
-      toast.success('Services added successfully');
+      // Refresh payment info
+      await fetchPaymentInfo();
+      
+      const newServicesCount = selectedServices.filter(s => {
+        const serviceIdString = typeof s.serviceId === 'string' ? s.serviceId : String(s.serviceId);
+        return !existingServices.some(existing => {
+          const existingId = typeof existing.serviceId === 'string' 
+            ? existing.serviceId 
+            : String(existing.serviceId);
+          return existingId === serviceIdString;
+        });
+      }).length;
+      
+      const addonsCount = selectedServices.reduce((sum, s) => sum + s.addOns.length, 0);
+      
+      if (newServicesCount > 0 && addonsCount > 0) {
+        toast.success(`${newServicesCount} service${newServicesCount > 1 ? 's' : ''} and ${addonsCount} addon${addonsCount > 1 ? 's' : ''} added successfully`);
+      } else if (newServicesCount > 0) {
+        toast.success(`${newServicesCount} service${newServicesCount > 1 ? 's' : ''} added successfully`);
+      } else if (addonsCount > 0) {
+        toast.success(`${addonsCount} addon${addonsCount > 1 ? 's' : ''} added successfully`);
+      } else {
+        toast.success('Updated successfully');
+      }
     } catch (error: any) {
       console.error('Error saving services:', error);
       toast.error(error.message || 'Failed to save services');
+    }
+  };
+
+  const handleDeleteService = async () => {
+    if (!serviceToDelete) return;
+
+    // @ts-ignore
+    const currentServices = inspectionDetails.services || [];
+    
+    // Validation: An inspection must have at least 1 service
+    if (currentServices.length <= 1) {
+      toast.error('An inspection must have at least one service. Cannot delete the last service.');
+      setServiceToDelete(null);
+      return;
+    }
+
+    setDeletingService(true);
+    try {
+      // @ts-ignore
+      const updatedServices = [...(inspectionDetails.services || [])];
+      updatedServices.splice(serviceToDelete.serviceIndex, 1);
+
+      // Double-check validation before sending to API
+      if (updatedServices.length === 0) {
+        throw new Error('An inspection must have at least one service');
+      }
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ services: updatedServices }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete service');
+      }
+
+      setInspectionDetails(prev => ({
+        ...prev,
+        services: updatedServices
+      }));
+
+      // Refresh payment info
+      await fetchPaymentInfo();
+
+      toast.success(`Service "${serviceToDelete.serviceName}" and all its add-ons deleted successfully`);
+      setServiceToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting service:', error);
+      toast.error(error.message || 'Failed to delete service');
+    } finally {
+      setDeletingService(false);
+    }
+  };
+
+  const handleDeleteAddon = async () => {
+    if (!addonToDelete) return;
+
+    setDeletingAddon(true);
+    try {
+      // @ts-ignore
+      const updatedServices = [...(inspectionDetails.services || [])];
+      const service = updatedServices[addonToDelete.serviceIndex];
+      
+      if (service && service.addOns) {
+        const updatedAddons = [...service.addOns];
+        updatedAddons.splice(addonToDelete.addonIndex, 1);
+        updatedServices[addonToDelete.serviceIndex] = {
+          ...service,
+          addOns: updatedAddons
+        };
+      }
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ services: updatedServices }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete add-on');
+      }
+
+      setInspectionDetails(prev => ({
+        ...prev,
+        services: updatedServices
+      }));
+
+      // Refresh payment info
+      await fetchPaymentInfo();
+
+      toast.success(`Add-on "${addonToDelete.addonName}" deleted successfully`);
+      setAddonToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting add-on:', error);
+      toast.error(error.message || 'Failed to delete add-on');
+    } finally {
+      setDeletingAddon(false);
     }
   };
 
@@ -2535,26 +2753,139 @@ export default function InspectionEditPage() {
                   {inspectionDetails.services && inspectionDetails.services.length > 0 ? (
                     <div className="space-y-3">
                       {/* @ts-ignore */}
-                      {inspectionDetails.services.map((service: any, index: number) => (
-                        <div key={index} className="p-3 bg-card border rounded-lg">
-                          <p className="font-medium text-sm mb-2">{service.serviceName || 'Service'}</p>
-                          {service.addOns && service.addOns.length > 0 ? (
-                            <div className="ml-4 space-y-1">
-                              <p className="text-xs text-muted-foreground mb-1">Add-ons:</p>
-                              {service.addOns.map((addon: any, addonIndex: number) => (
-                                <div key={addonIndex} className="flex items-center justify-between text-xs bg-muted/50 p-2 rounded">
-                                  <span>{addon.name}</span>
-                                  <span className="text-muted-foreground">
-                                    {addon.addFee ? `$${addon.addFee.toFixed(2)}` : ''}
-                                  </span>
-                                </div>
-                              ))}
+                      {inspectionDetails.services.map((service: any, index: number) => {
+                        // Find discount code if available
+                        const discountCode = inspectionDetails.discountCodeId 
+                          ? discountCodes.find((code: any) => code._id === inspectionDetails.discountCodeId)
+                          : null;
+                        
+                        const appliesToServices = discountCode?.appliesToServices || [];
+                        const appliesToAddOns = discountCode?.appliesToAddOns || [];
+                        
+                        const serviceId = service.serviceId;
+                        const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+                        
+                        // Check if service matches discount
+                        const serviceMatches = discountCode && appliesToServices.length > 0 && appliesToServices.some((appliedServiceId: any) => {
+                          const appliedIdString = typeof appliedServiceId === 'string' 
+                            ? appliedServiceId 
+                            : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                          return appliedIdString === serviceIdString;
+                        });
+                        
+                        // Get service base cost if available
+                        const serviceBaseCost = service.baseCost || 0;
+                        
+                        // Calculate service discount
+                        let serviceDiscount = 0;
+                        if (serviceMatches && serviceBaseCost > 0 && discountCode) {
+                          if (discountCode.type === 'percent') {
+                            serviceDiscount = serviceBaseCost * (discountCode.value / 100);
+                          } else {
+                            serviceDiscount = discountCode.value;
+                          }
+                        }
+                        const serviceFinalPrice = Math.max(0, serviceBaseCost - serviceDiscount);
+                        
+                        // Check if this is the only service (must have at least 1 service)
+                        // @ts-ignore
+                        const isOnlyService = (inspectionDetails.services || []).length === 1;
+                        
+                        return (
+                          <div key={index} className="p-3 bg-card border rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="font-medium text-sm">{service.serviceName || 'Service'}</p>
+                              <div className="flex items-center gap-2">
+                                {serviceBaseCost > 0 && (
+                                  <div className="text-right text-xs">
+                                    <span className={serviceDiscount > 0 ? 'font-medium text-green-600' : 'text-muted-foreground'}>
+                                      ${serviceFinalPrice.toFixed(2)}
+                                    </span>
+                                    {serviceDiscount > 0 && (
+                                      <span className="ml-1 text-green-600 text-[10px]">(Discounted)</span>
+                                    )}
+                                  </div>
+                                )}
+                                {!isOnlyService && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setServiceToDelete({ serviceIndex: index, serviceName: service.serviceName || 'Service' })}
+                                    className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    title="Delete service"
+                                  >
+                                    <i className="fas fa-trash text-xs"></i>
+                                  </Button>
+                                )}
+                              </div>
                             </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground ml-4">No add-ons</p>
-                          )}
-                        </div>
-                      ))}
+                            {service.addOns && service.addOns.length > 0 ? (
+                              <div className="ml-4 space-y-1">
+                                <p className="text-xs text-muted-foreground mb-1">Add-ons:</p>
+                                {service.addOns.map((addon: any, addonIndex: number) => {
+                                  // Check if add-on matches discount
+                                  const addOnMatches = discountCode && appliesToAddOns.length > 0 && appliesToAddOns.some((appliedAddOn: any) => {
+                                    const appliedServiceId = appliedAddOn.service;
+                                    const appliedServiceIdString = typeof appliedServiceId === 'string'
+                                      ? appliedServiceId
+                                      : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                                    const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                                    
+                                    return appliedServiceIdString === serviceIdString &&
+                                      appliedAddOnName?.toLowerCase() === addon.name.toLowerCase();
+                                  });
+                                  
+                                  // Calculate add-on discount
+                                  const addOnFee = addon.addFee || 0;
+                                  let addOnDiscount = 0;
+                                  if (addOnMatches && addOnFee > 0 && discountCode) {
+                                    if (discountCode.type === 'percent') {
+                                      addOnDiscount = addOnFee * (discountCode.value / 100);
+                                    } else {
+                                      addOnDiscount = discountCode.value;
+                                    }
+                                  }
+                                  const addOnFinalPrice = Math.max(0, addOnFee - addOnDiscount);
+                                  
+                                  return (
+                                    <div key={addonIndex} className="flex items-center justify-between text-xs bg-muted/50 p-2 rounded">
+                                      <span>
+                                        {addon.name}
+                                        {addOnMatches && <span className="ml-2 text-green-600 text-[10px]">(Discounted)</span>}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        {addOnFee > 0 ? (
+                                          <span className={addOnDiscount > 0 ? 'font-medium text-green-600' : 'text-muted-foreground'}>
+                                            ${addOnFinalPrice.toFixed(2)}
+                                          </span>
+                                        ) : (
+                                          <span className="text-muted-foreground">—</span>
+                                        )}
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => setAddonToDelete({ 
+                                            serviceIndex: index, 
+                                            addonIndex, 
+                                            addonName: addon.name,
+                                            serviceName: service.serviceName || 'Service'
+                                          })}
+                                          className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          title="Delete add-on"
+                                        >
+                                          <i className="fas fa-trash text-[10px]"></i>
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground ml-4">No add-ons</p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-4">
@@ -2650,6 +2981,129 @@ export default function InspectionEditPage() {
                           </div>
                         ))}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Payments Section */}
+              <div className="p-4 border rounded-lg bg-muted/50">
+                <h3 className="font-semibold text-lg mb-4">Payments</h3>
+                
+                {loadingPayment ? (
+                  <div className="flex items-center justify-center py-8">
+                    <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
+                  </div>
+                ) : paymentInfo ? (
+                  <div className="space-y-3">
+                    {paymentInfo.subtotal > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Subtotal:</span>
+                        <span className="text-sm font-medium">{formatCurrency(paymentInfo.subtotal)}</span>
+                      </div>
+                    )}
+                    
+                    {paymentInfo.discountAmount > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">
+                          Discount
+                          {inspectionDetails.discountCodeId && (() => {
+                            const discountCode = discountCodes.find((code: any) => code._id === inspectionDetails.discountCodeId);
+                            return discountCode ? ` (${discountCode.code})` : '';
+                          })()}:
+                        </span>
+                        <span className="text-sm font-medium text-green-600">-{formatCurrency(paymentInfo.discountAmount)}</span>
+                      </div>
+                    )}
+                    
+                    <div className="pt-3 border-t">
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-semibold">Total Amount:</span>
+                        <span className="text-xl font-bold text-primary">{formatCurrency(paymentInfo.total)}</span>
+                      </div>
+                    </div>
+
+                    {paymentInfo.amountPaid > 0 && (
+                      <div className="pt-2 border-t">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Amount Paid:</span>
+                          <span className="text-sm font-medium text-green-600">{formatCurrency(paymentInfo.amountPaid)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentInfo.remainingBalance > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Remaining Balance:</span>
+                        <span className="text-sm font-medium text-orange-600">{formatCurrency(paymentInfo.remainingBalance)}</span>
+                      </div>
+                    )}
+                    
+                    <div className="pt-3 border-t">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">
+                            Paid {formatCurrency(paymentInfo.amountPaid)} of {formatCurrency(paymentInfo.total)} amount
+                          </p>
+                        </div>
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border">
+                          {paymentInfo.isPaid ? (
+                            <>
+                              <i className="fas fa-check-circle text-green-600"></i>
+                              <span className="text-green-700">Paid</span>
+                            </>
+                          ) : paymentInfo.amountPaid > 0 ? (
+                            <>
+                              <i className="fas fa-clock text-yellow-600"></i>
+                              <span className="text-yellow-700">Partially Paid</span>
+                            </>
+                          ) : (
+                            <>
+                              <i className="fas fa-clock text-orange-600"></i>
+                              <span className="text-orange-700">Unpaid</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Payment History */}
+                    {paymentInfo.paymentHistory && paymentInfo.paymentHistory.length > 0 && (
+                      <div className="pt-4 border-t mt-4">
+                        <h4 className="text-sm font-semibold mb-3">Payment History</h4>
+                        <div className="space-y-2">
+                          {paymentInfo.paymentHistory.map((payment, index) => (
+                            <div key={index} className="p-3 bg-card border rounded-lg text-sm">
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="font-medium">{formatCurrency(payment.amount)}</span>
+                                <span className="text-muted-foreground text-xs">
+                                  {new Date(payment.paidAt).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                              {payment.paymentMethod && (
+                                <div className="text-xs text-muted-foreground">
+                                  Method: {payment.paymentMethod}
+                                </div>
+                              )}
+                              {payment.stripePaymentIntentId && (
+                                <div className="text-xs text-muted-foreground font-mono">
+                                  ID: {payment.stripePaymentIntentId.slice(-12)}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-muted-foreground">Unable to load payment information</p>
                   </div>
                 )}
               </div>
@@ -3416,6 +3870,7 @@ export default function InspectionEditPage() {
         open={serviceDialogOpen}
         onOpenChange={setServiceDialogOpen}
         onSave={handleSaveServices}
+        existingServices={inspectionDetails.services || []}
       />
 
       {/* Delete Task Confirmation Dialog */}
@@ -3467,6 +3922,64 @@ export default function InspectionEditPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteClientNote} className="bg-destructive hover:bg-destructive/90">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Service Confirmation Dialog */}
+      <AlertDialog open={!!serviceToDelete} onOpenChange={(open) => !open && setServiceToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Service</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the service "{serviceToDelete?.serviceName}"? This will also delete all add-ons associated with this service. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingService}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteService} 
+              disabled={deletingService}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {deletingService ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Add-on Confirmation Dialog */}
+      <AlertDialog open={!!addonToDelete} onOpenChange={(open) => !open && setAddonToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Add-on</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the add-on "{addonToDelete?.addonName}" from the service "{addonToDelete?.serviceName}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAddon}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteAddon} 
+              disabled={deletingAddon}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {deletingAddon ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

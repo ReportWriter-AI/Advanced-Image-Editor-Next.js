@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +13,9 @@ import {
   detectTextInputPlaceholders,
 } from "@/src/utils/agreement-placeholders";
 import React from "react";
+import { loadStripe, StripeElementsOptions } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import jsPDF from "jspdf";
 
 interface InspectionData {
   id: string;
@@ -58,6 +61,81 @@ interface InspectionDataForPlaceholders {
   inspectorSignature?: string;
 }
 
+// Payment Form Component
+function PaymentForm({ 
+  clientSecret, 
+  paymentIntentId,
+  paymentTotal,
+  remainingBalance,
+  onSuccess,
+  onCancel 
+}: { 
+  clientSecret: string | null;
+  paymentIntentId: string | null;
+  paymentTotal: number | null;
+  remainingBalance: number;
+  onSuccess: (stripe: any, elements: any) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!stripe || !elements) {
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await onSuccess(stripe, elements);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (!clientSecret) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <PaymentElement />
+      <div className="flex gap-3 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isProcessing}
+          className="flex-1"
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          disabled={!stripe || isProcessing}
+          className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+        >
+          {isProcessing ? (
+            <>
+              <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+              Processing...
+            </>
+          ) : (
+            `Pay $${remainingBalance > 0 ? remainingBalance.toFixed(2) : (paymentTotal !== null ? paymentTotal.toFixed(2) : '0.00')}`
+          )}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export default function InspectionClientViewPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -81,6 +159,20 @@ export default function InspectionClientViewPage() {
   const [selectedAgreementsToSign, setSelectedAgreementsToSign] = useState<Set<string>>(new Set());
   const [signingAgreements, setSigningAgreements] = useState(false);
   const [agreementInputValues, setAgreementInputValues] = useState<Record<string, Record<string, string>>>({});
+  
+  // Payment state
+  const [paymentTotal, setPaymentTotal] = useState<number | null>(null);
+  const [paymentSubtotal, setPaymentSubtotal] = useState<number>(0);
+  const [paymentDiscount, setPaymentDiscount] = useState<number>(0);
+  const [amountPaid, setAmountPaid] = useState<number>(0);
+  const [remainingBalance, setRemainingBalance] = useState<number>(0);
+  const [isPaid, setIsPaid] = useState(false);
+  const [loadingPayment, setLoadingPayment] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const stripePromise = useRef(loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISH_KEY || "")).current;
 
   useEffect(() => {
     const fetchInspectionData = async () => {
@@ -173,6 +265,46 @@ export default function InspectionClientViewPage() {
     };
 
     fetchAgreements();
+  }, [inspectionId, token]);
+
+  // Fetch payment info
+  useEffect(() => {
+    const fetchPaymentInfo = async () => {
+      if (!inspectionId || !token) {
+        return;
+      }
+
+      setLoadingPayment(true);
+      try {
+        const response = await fetch(
+          `/api/inspections/${inspectionId}/client-view/payment?token=${encodeURIComponent(token)}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setPaymentTotal(data.total || 0);
+          setPaymentSubtotal(data.subtotal || 0);
+          setPaymentDiscount(data.discountAmount || 0);
+          setAmountPaid(data.amountPaid || 0);
+          setRemainingBalance(data.remainingBalance || 0);
+          setIsPaid(data.isPaid || false);
+        } else if (response.status === 401) {
+          // Edge case: Invalid token
+          setError("Invalid access token");
+        } else if (response.status === 404) {
+          // Edge case: Inspection not found
+          setError("Inspection not found");
+        }
+      } catch (err) {
+        // Edge case: Network errors
+        console.error("Error fetching payment info:", err);
+        // Don't set error state, just log it (payment is optional)
+      } finally {
+        setLoadingPayment(false);
+      }
+    };
+
+    fetchPaymentInfo();
   }, [inspectionId, token]);
 
   // Handle addon selection toggle
@@ -610,6 +742,464 @@ export default function InspectionClientViewPage() {
     setShowAgreementModal(true);
   };
 
+  // Handle opening payment modal
+  const handleOpenPaymentModal = async () => {
+    // Edge case: Already fully paid
+    if (isPaid || remainingBalance <= 0) {
+      toast.info('This inspection has already been fully paid');
+      return;
+    }
+
+    // Edge case: Zero amount
+    if (paymentTotal !== null && paymentTotal <= 0) {
+      toast.info('No payment required for this inspection');
+      return;
+    }
+
+    // Edge case: Missing required data
+    if (!inspectionId || !token) {
+      toast.error('Missing required information');
+      return;
+    }
+
+    setShowPaymentModal(true);
+    setProcessingPayment(false);
+
+    try {
+      // Create payment intent
+      const response = await fetch(
+        `/api/inspections/${inspectionId}/client-view/create-payment-intent?token=${encodeURIComponent(token)}`,
+        {
+          method: 'POST',
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Network error' }));
+        
+        // Edge case: Already paid (race condition)
+        if (response.status === 400 && (errorData.error?.includes('already been paid') || errorData.error?.includes('fully paid'))) {
+          toast.info('This inspection has already been fully paid');
+          setIsPaid(true);
+          setRemainingBalance(0);
+          setShowPaymentModal(false);
+          return;
+        }
+        
+        throw new Error(errorData.error || 'Failed to initialize payment');
+      }
+
+      const data = await response.json();
+      
+      // Edge case: Missing client secret
+      if (!data.clientSecret) {
+        throw new Error('Payment initialization incomplete');
+      }
+      
+      setStripeClientSecret(data.clientSecret);
+      setPaymentIntentId(data.paymentIntentId);
+    } catch (err: any) {
+      console.error("Error creating payment intent:", err);
+      
+      // Edge case: Network errors
+      if (err.message === 'Failed to fetch' || err.message === 'Network error') {
+        toast.error('Network error. Please check your connection and try again.');
+      } else {
+        toast.error(err.message || 'Failed to initialize payment');
+      }
+      
+      setShowPaymentModal(false);
+    }
+  };
+
+  // Handle invoice download
+  const handleDownloadInvoice = async () => {
+    if (!inspectionId || !token) {
+      toast.error('Missing required information');
+      return;
+    }
+
+    try {
+      // Fetch invoice data
+      const response = await fetch(
+        `/api/inspections/${inspectionId}/client-view/invoice?token=${encodeURIComponent(token)}`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to fetch invoice data' }));
+        throw new Error(errorData.error || 'Failed to fetch invoice data');
+      }
+
+      const invoiceData = await response.json();
+
+      // Create PDF
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      let yPos = margin;
+
+      // Header
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INVOICE', pageWidth - margin, yPos, { align: 'right' });
+      yPos += 10;
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Invoice #: ${invoiceData.invoiceNumber}`, pageWidth - margin, yPos, { align: 'right' });
+      yPos += 6;
+      doc.text(`Date: ${invoiceData.invoiceDate}`, pageWidth - margin, yPos, { align: 'right' });
+      yPos += 10;
+
+      // Company/Bill From
+      if (invoiceData.companyName) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Bill From:', margin, yPos);
+        yPos += 8;
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text(invoiceData.companyName, margin, yPos);
+        yPos += 6;
+      }
+
+      // Client/Bill To
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Bill To:', margin, yPos);
+      yPos += 8;
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      if (invoiceData.clientName) {
+        doc.text(invoiceData.clientName, margin, yPos);
+        yPos += 6;
+      }
+      if (invoiceData.address) {
+        const addressLines = doc.splitTextToSize(invoiceData.address, pageWidth - 2 * margin);
+        doc.text(addressLines, margin, yPos);
+        yPos += addressLines.length * 6;
+      }
+      yPos += 10;
+
+      // Inspection Date
+      if (invoiceData.inspectionDate) {
+        doc.setFontSize(10);
+        doc.text(`Inspection Date: ${invoiceData.inspectionDate}`, margin, yPos);
+        yPos += 8;
+      }
+
+      // Check if any items have discounts
+      const hasDiscounts = invoiceData.items.some((item: any) => item.discountCode);
+
+      // Items table header
+      yPos += 5;
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 8;
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      
+      // Calculate column positions dynamically based on page width
+      const availableWidth = pageWidth - 2 * margin;
+      const colSpacing = 10;
+      
+      let descWidth: number;
+      let discountCodeWidth: number = 0;
+      let priceWidth: number;
+      let discountedPriceWidth: number = 0;
+      
+      if (hasDiscounts) {
+        // With discounts: Give description 50% of space, then distribute rest
+        // Description: 50%, Discount Code: 20%, Price: 15%, Discounted Price: 15%
+        descWidth = availableWidth * 0.50;
+        discountCodeWidth = availableWidth * 0.20;
+        priceWidth = availableWidth * 0.15;
+        discountedPriceWidth = availableWidth * 0.15;
+      } else {
+        // Without discounts: Description gets 75%, Price gets 25%
+        descWidth = availableWidth * 0.75;
+        priceWidth = availableWidth * 0.25;
+      }
+      
+      let currentX = margin;
+      doc.text('Description', currentX, yPos);
+      currentX += descWidth + colSpacing;
+      
+      if (hasDiscounts) {
+        doc.text('Discount Code', currentX, yPos);
+        currentX += discountCodeWidth + colSpacing;
+      }
+      
+      doc.text('Price', currentX + priceWidth, yPos, { align: 'right' });
+      currentX += priceWidth + colSpacing;
+      
+      if (hasDiscounts) {
+        doc.text('Discounted Price', currentX + discountedPriceWidth, yPos, { align: 'right' });
+        currentX += discountedPriceWidth;
+      }
+      
+      yPos += 8;
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 5;
+
+      // Items
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      for (const item of invoiceData.items) {
+        // Check if we need a new page
+        if (yPos > doc.internal.pageSize.getHeight() - 80) {
+          doc.addPage();
+          yPos = margin;
+          // Redraw header on new page
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.line(margin, yPos, pageWidth - margin, yPos);
+          yPos += 8;
+          currentX = margin;
+          doc.text('Description', currentX, yPos);
+          currentX += descWidth + colSpacing;
+          if (hasDiscounts) {
+            doc.text('Discount Code', currentX, yPos);
+            currentX += discountCodeWidth + colSpacing;
+          }
+          doc.text('Price', currentX + priceWidth, yPos, { align: 'right' });
+          currentX += priceWidth + colSpacing;
+          if (hasDiscounts) {
+            doc.text('Discounted Price', currentX + discountedPriceWidth, yPos, { align: 'right' });
+          }
+          yPos += 8;
+          doc.line(margin, yPos, pageWidth - margin, yPos);
+          yPos += 5;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+        }
+
+        const descriptionLines = doc.splitTextToSize(item.description, descWidth - 5);
+        const maxLines = Math.max(descriptionLines.length, 1);
+        
+        currentX = margin;
+        doc.text(descriptionLines, currentX, yPos);
+        currentX += descWidth + colSpacing;
+        
+        if (hasDiscounts) {
+          const discountCodeText = item.discountCode || '-';
+          doc.text(discountCodeText, currentX, yPos);
+          currentX += discountCodeWidth + colSpacing;
+        }
+        
+        const priceText = `$${(item.realPrice || item.unitPrice || 0).toFixed(2)}`;
+        doc.text(priceText, currentX + priceWidth, yPos, { align: 'right' });
+        currentX += priceWidth + colSpacing;
+        
+        if (hasDiscounts) {
+          const discountedPrice = item.discountedPrice !== undefined 
+            ? item.discountedPrice 
+            : (item.total || item.unitPrice || 0);
+          const discountedPriceText = `$${discountedPrice.toFixed(2)}`;
+          doc.text(discountedPriceText, currentX + discountedPriceWidth, yPos, { align: 'right' });
+          currentX += discountedPriceWidth;
+        }
+        
+        yPos += Math.max(maxLines * 5.5, 9);
+      }
+
+      yPos += 5;
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 10;
+
+      // Totals
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Subtotal:', pageWidth - margin - 50, yPos, { align: 'right' });
+      doc.text(`$${invoiceData.subtotal.toFixed(2)}`, pageWidth - margin, yPos, { align: 'right' });
+      yPos += 8;
+
+      if (invoiceData.discountAmount > 0) {
+        doc.text(`Discount${invoiceData.discountCode ? ` (${invoiceData.discountCode})` : ''}:`, pageWidth - margin - 50, yPos, { align: 'right' });
+        doc.text(`-$${invoiceData.discountAmount.toFixed(2)}`, pageWidth - margin, yPos, { align: 'right' });
+        yPos += 8;
+      }
+
+      // Total price - more prominent
+      yPos += 5;
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
+      yPos += 10;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text('Total Price:', pageWidth - margin - 50, yPos, { align: 'right' });
+      doc.text(`$${invoiceData.total.toFixed(2)}`, pageWidth - margin, yPos, { align: 'right' });
+      yPos += 10;
+
+      // Payment status
+      if (invoiceData.isPaid) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(0, 128, 0);
+        doc.text('PAID', pageWidth - margin, yPos, { align: 'right' });
+        doc.setTextColor(0, 0, 0);
+      }
+
+      // Footer
+      const totalPages = (doc as any).internal.pages.length;
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(128, 128, 128);
+        doc.text(
+          `Page ${i} of ${totalPages}`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: 'center' }
+        );
+        doc.setTextColor(0, 0, 0);
+      }
+
+      // Save PDF
+      doc.save(`Invoice-${invoiceData.invoiceNumber}.pdf`);
+      toast.success('Invoice downloaded successfully!');
+    } catch (err: any) {
+      console.error("Error generating invoice:", err);
+      toast.error(err.message || 'Failed to generate invoice');
+    }
+  };
+
+  // Handle payment submission
+  const handlePaymentSubmit = async (stripe: any, elements: any) => {
+    // Edge case: Missing Stripe or elements
+    if (!stripe || !elements) {
+      toast.error('Payment system not ready. Please refresh the page.');
+      return;
+    }
+
+    // Edge case: Missing payment intent ID
+    if (!paymentIntentId) {
+      toast.error('Payment session expired. Please try again.');
+      setShowPaymentModal(false);
+      return;
+    }
+
+    setProcessingPayment(true);
+
+    try {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          return_url: `${window.location.origin}/inspection/${inspectionId}?token=${encodeURIComponent(token || '')}`,
+        },
+        redirect: 'if_required',
+      });
+
+      // Edge case: Stripe payment error
+      if (error) {
+        // Handle specific error types
+        if (error.type === 'card_error' || error.type === 'validation_error') {
+          toast.error(error.message || 'Payment failed. Please check your card details.');
+        } else {
+          toast.error(error.message || 'Payment failed. Please try again.');
+        }
+        setProcessingPayment(false);
+        return;
+      }
+
+      // Edge case: Payment intent not found or invalid status
+      if (!paymentIntent) {
+        toast.error('Payment session expired. Please try again.');
+        setProcessingPayment(false);
+        setShowPaymentModal(false);
+        return;
+      }
+
+      // Edge case: Payment succeeded
+      if (paymentIntent.status === 'succeeded') {
+        // Confirm payment on backend (handles race conditions)
+        const confirmResponse = await fetch(
+          `/api/inspections/${inspectionId}/client-view/confirm-payment?token=${encodeURIComponent(token || '')}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ paymentIntentId }),
+          }
+        );
+
+        if (confirmResponse.ok) {
+          toast.success('Payment successful!');
+          setIsPaid(true);
+          setShowPaymentModal(false);
+          
+          // Refresh payment info to get latest status
+          try {
+            const paymentResponse = await fetch(
+              `/api/inspections/${inspectionId}/client-view/payment?token=${encodeURIComponent(token || '')}`
+            );
+            if (paymentResponse.ok) {
+              const paymentData = await paymentResponse.json();
+              setPaymentTotal(paymentData.total || 0);
+              setPaymentSubtotal(paymentData.subtotal || 0);
+              setPaymentDiscount(paymentData.discountAmount || 0);
+              setAmountPaid(paymentData.amountPaid || 0);
+              setRemainingBalance(paymentData.remainingBalance || 0);
+              setIsPaid(paymentData.isPaid || false);
+            }
+          } catch (refreshErr) {
+            console.error("Error refreshing payment info:", refreshErr);
+            // Don't show error to user, payment was successful
+          }
+        } else {
+          const errorData = await confirmResponse.json().catch(() => ({ error: 'Network error' }));
+          
+          // Edge case: Already paid (webhook processed it first)
+          if (errorData.error?.includes('already been paid') || errorData.error?.includes('already paid') || errorData.error?.includes('already confirmed')) {
+            toast.success('Payment successful!');
+            setIsPaid(true);
+            setRemainingBalance(0);
+            setShowPaymentModal(false);
+            // Refresh payment info
+            try {
+              const paymentResponse = await fetch(
+                `/api/inspections/${inspectionId}/client-view/payment?token=${encodeURIComponent(token || '')}`
+              );
+              if (paymentResponse.ok) {
+                const paymentData = await paymentResponse.json();
+                setAmountPaid(paymentData.amountPaid || 0);
+                setRemainingBalance(paymentData.remainingBalance || 0);
+                setIsPaid(paymentData.isPaid || false);
+              }
+            } catch (refreshErr) {
+              console.error("Error refreshing payment info:", refreshErr);
+            }
+            return;
+          }
+          
+          throw new Error(errorData.error || 'Failed to confirm payment');
+        }
+      } else if (paymentIntent.status === 'requires_action') {
+        // Edge case: 3D Secure or other action required
+        toast.info('Additional authentication required. Please complete the verification.');
+      } else if (paymentIntent.status === 'processing') {
+        // Edge case: Payment is processing
+        toast.info('Payment is being processed. Please wait...');
+      } else {
+        // Edge case: Other payment statuses
+        toast.error(`Payment status: ${paymentIntent.status}. Please contact support if this persists.`);
+      }
+    } catch (err: any) {
+      console.error("Error processing payment:", err);
+      
+      // Edge case: Network errors
+      if (err.message === 'Failed to fetch' || err.message === 'Network error') {
+        toast.error('Network error. Please check your connection and try again.');
+      } else {
+        toast.error(err.message || 'Payment processing failed. Please try again.');
+      }
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
@@ -795,6 +1385,120 @@ export default function InspectionClientViewPage() {
                   {formatDateTime()}
                 </p>
               </div>
+
+              {/* Payment Section */}
+              {!loadingPayment && paymentTotal !== null && (
+                <div className="mt-8 pt-8 border-t">
+                  <div className="flex items-center mb-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center mr-3">
+                      <svg
+                        className="w-5 h-5 text-indigo-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                        />
+                      </svg>
+                    </div>
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      Payment
+                    </h2>
+                  </div>
+                  <div className="ml-13 pl-2 space-y-2">
+                    {amountPaid > 0 && (
+                      <div className="flex justify-between text-sm text-gray-600">
+                        <span>Amount Paid:</span>
+                        <span className="font-medium text-green-600">${amountPaid.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {remainingBalance > 0 && (
+                      <div className="flex justify-between text-sm text-gray-600">
+                        <span>Remaining Balance:</span>
+                        <span className="font-medium text-orange-600">${remainingBalance.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-xl font-bold text-gray-900 pt-2 border-t">
+                      <span>Total Amount:</span>
+                      <span className="text-indigo-600">${paymentTotal.toFixed(2)}</span>
+                    </div>
+                  
+                      {isPaid || remainingBalance <= 0 ? (
+                        <div className="flex-1 flex items-center justify-center">
+                          <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-lg">
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                            <span className="font-semibold">Paid</span>
+                          </div>
+                        </div>
+                      ) : remainingBalance > 0 ? (
+                      <Button
+                        onClick={handleOpenPaymentModal}
+                        disabled={loadingPayment || processingPayment}
+                        className="mt-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg
+                          className="w-5 h-5 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                          />
+                        </svg>
+                        {amountPaid > 0 ? `Pay Remaining Balance ($${remainingBalance.toFixed(2)})` : 'Pay Now'}
+                      </Button>
+                      ) : null}
+
+                    <div className="mt-4 flex gap-3">
+                      <Button
+                        onClick={handleDownloadInvoice}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        <svg
+                          className="w-5 h-5 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        Download Invoice
+                      </Button>
+                    </div>
+                    {!isPaid && remainingBalance === 0 && paymentTotal === 0 ? (
+                      <div className="mt-4 text-sm text-gray-500">
+                        No payment required
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
 
               {/* Agreements Section */}
               {!loadingAgreements && totalAgreements > 0 && (
@@ -1133,6 +1837,80 @@ export default function InspectionClientViewPage() {
               </Button>
             </div>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Modal */}
+      <Dialog open={showPaymentModal} onOpenChange={(open) => {
+        if (!open && !processingPayment) {
+          setShowPaymentModal(false);
+          setStripeClientSecret(null);
+          setPaymentIntentId(null);
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-900">
+              Complete Payment
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Enter your payment details to complete the payment for your inspection.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {paymentTotal !== null && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 font-medium">Total Amount:</span>
+                  <span className="text-2xl font-bold text-gray-900">${paymentTotal.toFixed(2)}</span>
+                </div>
+                {amountPaid > 0 && (
+                  <div className="flex justify-between items-center pt-2 border-t">
+                    <span className="text-gray-600 text-sm">Amount Paid:</span>
+                    <span className="text-lg font-semibold text-green-600">${amountPaid.toFixed(2)}</span>
+                  </div>
+                )}
+                {remainingBalance > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600 text-sm">Remaining Balance:</span>
+                    <span className="text-lg font-semibold text-orange-600">${remainingBalance.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {stripeClientSecret && stripePromise ? (
+              <Elements
+                stripe={stripePromise}
+                options={{
+                  clientSecret: stripeClientSecret,
+                  appearance: {
+                    theme: 'stripe',
+                  },
+                } as StripeElementsOptions}
+              >
+                <PaymentForm
+                  clientSecret={stripeClientSecret}
+                  paymentIntentId={paymentIntentId}
+                  paymentTotal={paymentTotal}
+                  remainingBalance={remainingBalance}
+                  onSuccess={handlePaymentSubmit}
+                  onCancel={() => {
+                    if (!processingPayment) {
+                      setShowPaymentModal(false);
+                      setStripeClientSecret(null);
+                      setPaymentIntentId(null);
+                    }
+                  }}
+                />
+              </Elements>
+            ) : (
+              <div className="flex items-center justify-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -2518,20 +2518,59 @@ export default function CreateInspectionPage() {
                             <h4 className="font-medium text-sm">Services</h4>
                             {selectedServices.map((selectedService, index) => {
                               const service = selectedService.service;
+                              const discount = selectedDiscountCode?.discountCode;
+                              const appliesToServices = discount?.appliesToServices || [];
+                              const appliesToAddOns = discount?.appliesToAddOns || [];
+                              
+                              const serviceId = selectedService.serviceId;
+                              const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+                              
+                              // Check if service matches discount
+                              const serviceMatches = discount && appliesToServices.length > 0 && appliesToServices.some((appliedServiceId: any) => {
+                                const appliedIdString = typeof appliedServiceId === 'string' 
+                                  ? appliedServiceId 
+                                  : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                                return appliedIdString === serviceIdString;
+                              });
+                              
                               return (
                                 <div key={index} className="text-sm">
                                   <div className="flex justify-between">
-                                    <span>{service.name}</span>
+                                    <span>
+                                      {service.name}
+                                      {serviceMatches && (
+                                        <span className="ml-2 text-xs text-green-600">(Discounted)</span>
+                                      )}
+                                    </span>
                                     <span>${service.baseCost || 0}</span>
                                   </div>
                                   {selectedService.addOns.length > 0 && (
                                     <div className="ml-4 mt-1 space-y-1">
-                                      {selectedService.addOns.map((addOn, addOnIndex) => (
-                                        <div key={addOnIndex} className="flex justify-between text-xs text-muted-foreground">
-                                          <span>+ {addOn.name}</span>
-                                          <span>${addOn.addFee || 0}</span>
-                                        </div>
-                                      ))}
+                                      {selectedService.addOns.map((addOn, addOnIndex) => {
+                                        // Check if add-on matches discount
+                                        const addOnMatches = discount && appliesToAddOns.length > 0 && appliesToAddOns.some((appliedAddOn: any) => {
+                                          const appliedServiceId = appliedAddOn.service;
+                                          const appliedServiceIdString = typeof appliedServiceId === 'string'
+                                            ? appliedServiceId
+                                            : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                                          const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                                          
+                                          return appliedServiceIdString === serviceIdString &&
+                                            appliedAddOnName?.toLowerCase() === addOn.name.toLowerCase();
+                                        });
+                                        
+                                        return (
+                                          <div key={addOnIndex} className="flex justify-between text-xs text-muted-foreground">
+                                            <span>
+                                              + {addOn.name}
+                                              {addOnMatches && (
+                                                <span className="ml-2 text-green-600">(Discounted)</span>
+                                              )}
+                                            </span>
+                                            <span>${addOn.addFee || 0}</span>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
@@ -2551,12 +2590,65 @@ export default function CreateInspectionPage() {
                             
                             if (selectedDiscountCode?.discountCode) {
                               const discount = selectedDiscountCode.discountCode;
-                              if (discount.type === 'percent') {
-                                discountAmount = subtotal * (discount.value / 100);
-                                discountLabel = `${discount.code} (${discount.value}%)`;
-                              } else {
-                                discountAmount = discount.value;
-                                discountLabel = `${discount.code} ($${discount.value})`;
+                              const appliesToServices = discount.appliesToServices || [];
+                              const appliesToAddOns = discount.appliesToAddOns || [];
+                              
+                              // Only apply discount if there are services or add-ons configured
+                              if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
+                                // Calculate discount for matching services
+                                selectedServices.forEach((selectedService) => {
+                                  const serviceId = selectedService.serviceId;
+                                  const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+                                  
+                                  // Check if this service matches
+                                  const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
+                                    const appliedIdString = typeof appliedServiceId === 'string' 
+                                      ? appliedServiceId 
+                                      : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                                    return appliedIdString === serviceIdString;
+                                  });
+                                  
+                                  if (serviceMatches) {
+                                    const serviceCost = selectedService.service.baseCost || 0;
+                                    if (discount.type === 'percent') {
+                                      discountAmount += serviceCost * (discount.value / 100);
+                                    } else {
+                                      // Amount type: apply full amount per matching service
+                                      discountAmount += discount.value;
+                                    }
+                                  }
+                                  
+                                  // Calculate discount for matching add-ons
+                                  selectedService.addOns.forEach((addOn) => {
+                                    const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+                                      const appliedServiceId = appliedAddOn.service;
+                                      const appliedServiceIdString = typeof appliedServiceId === 'string'
+                                        ? appliedServiceId
+                                        : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                                      const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                                      
+                                      return appliedServiceIdString === serviceIdString &&
+                                        appliedAddOnName?.toLowerCase() === addOn.name.toLowerCase();
+                                    });
+                                    
+                                    if (addOnMatches) {
+                                      const addOnFee = addOn.addFee || 0;
+                                      if (discount.type === 'percent') {
+                                        discountAmount += addOnFee * (discount.value / 100);
+                                      } else {
+                                        // Amount type: apply full amount per matching add-on
+                                        discountAmount += discount.value;
+                                      }
+                                    }
+                                  });
+                                });
+                                
+                                // Build discount label
+                                if (discount.type === 'percent') {
+                                  discountLabel = `${discount.code} (${discount.value}%)`;
+                                } else {
+                                  discountLabel = `${discount.code} ($${discount.value})`;
+                                }
                               }
                             }
                             
@@ -2571,7 +2663,7 @@ export default function CreateInspectionPage() {
                                   </div>
                                 </div>
                                 
-                                {selectedDiscountCode?.discountCode && (
+                                {selectedDiscountCode?.discountCode && discountAmount > 0 && (
                                   <div className="pt-2">
                                     <div className="flex justify-between text-sm text-green-600">
                                       <span>Discount: {discountLabel}</span>

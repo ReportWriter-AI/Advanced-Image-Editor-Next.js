@@ -27,18 +27,40 @@ interface ServiceSelectionDialogProps {
 		serviceName: string;
 		addOns: Array<{ name: string; addFee?: number; addHours?: number }>;
 	}>) => void;
+	existingServices?: Array<{
+		serviceId: string;
+		serviceName: string;
+		addOns?: Array<{ name: string; addFee?: number; addHours?: number }>;
+	}>;
 }
 
 export default function ServiceSelectionDialog({
 	open,
 	onOpenChange,
 	onSave,
+	existingServices = [],
 }: ServiceSelectionDialogProps) {
 	const [services, setServices] = useState<Service[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
 	const [selectedAddons, setSelectedAddons] = useState<Map<string, Set<string>>>(new Map());
+	
+	// Get existing service IDs
+	const existingServiceIds = new Set(
+		existingServices.map(s => {
+			const id = typeof s.serviceId === 'string' ? s.serviceId : String(s.serviceId);
+			return id;
+		})
+	);
+	
+	// Get existing addons for each service
+	const existingAddonsMap = new Map<string, Set<string>>();
+	existingServices.forEach(s => {
+		const serviceId = typeof s.serviceId === 'string' ? s.serviceId : String(s.serviceId);
+		const addonNames = new Set((s.addOns || []).map(a => a.name.toLowerCase()));
+		existingAddonsMap.set(serviceId, addonNames);
+	});
 
 	useEffect(() => {
 		if (open) {
@@ -101,35 +123,91 @@ export default function ServiceSelectionDialog({
 
 		setSelectedAddons(newSelectedAddons);
 	};
+	
+	// Check if service already exists
+	const isServiceExisting = (serviceId: string) => {
+		return existingServiceIds.has(serviceId);
+	};
+	
+	// Check if addon already exists for a service
+	const isAddonExisting = (serviceId: string, addonName: string) => {
+		const existingAddons = existingAddonsMap.get(serviceId);
+		if (!existingAddons) return false;
+		return existingAddons.has(addonName.toLowerCase());
+	};
 
 	const handleSave = () => {
-		const selectedServicesData = Array.from(selectedServices).map(serviceId => {
-			const service = services.find(s => s._id === serviceId);
-			if (!service) return null;
-
-			const serviceAddonNames = selectedAddons.get(serviceId) || new Set<string>();
-			const addOns = Array.from(serviceAddonNames).map(addonName => {
-				const addon = service.addOns.find(a => a.name === addonName);
-				if (!addon) return null;
-				return {
-					name: addon.name,
-					addFee: addon.baseCost,
-					addHours: addon.baseDurationHours,
-				};
-			}).filter(Boolean) as Array<{ name: string; addFee?: number; addHours?: number }>;
-
-			return {
-				serviceId: service._id,
-				serviceName: service.name,
-				addOns,
-			};
-		}).filter(Boolean) as Array<{
+		// Get addons for existing services (services that are not newly selected)
+		const existingServicesAddons: Array<{
 			serviceId: string;
 			serviceName: string;
 			addOns: Array<{ name: string; addFee?: number; addHours?: number }>;
-		}>;
+		}> = [];
+		
+		existingServices.forEach(existingService => {
+			const serviceId = typeof existingService.serviceId === 'string' 
+				? existingService.serviceId 
+				: String(existingService.serviceId);
+			
+			// Only process if this service has selected addons
+			const serviceAddonNames = selectedAddons.get(serviceId);
+			if (serviceAddonNames && serviceAddonNames.size > 0) {
+				const service = services.find(s => s._id === serviceId);
+				if (!service) return;
+				
+				const addOns = Array.from(serviceAddonNames).map(addonName => {
+					const addon = service.addOns.find(a => a.name === addonName);
+					if (!addon) return null;
+					return {
+						name: addon.name,
+						addFee: addon.baseCost,
+						addHours: addon.baseDurationHours,
+					};
+				}).filter(Boolean) as Array<{ name: string; addFee?: number; addHours?: number }>;
+				
+				if (addOns.length > 0) {
+					existingServicesAddons.push({
+						serviceId: service._id,
+						serviceName: service.name,
+						addOns,
+					});
+				}
+			}
+		});
+		
+		// Get newly selected services (not existing)
+		const newServicesData = Array.from(selectedServices)
+			.filter(serviceId => !existingServiceIds.has(serviceId))
+			.map(serviceId => {
+				const service = services.find(s => s._id === serviceId);
+				if (!service) return null;
 
-		onSave(selectedServicesData);
+				const serviceAddonNames = selectedAddons.get(serviceId) || new Set<string>();
+				const addOns = Array.from(serviceAddonNames).map(addonName => {
+					const addon = service.addOns.find(a => a.name === addonName);
+					if (!addon) return null;
+					return {
+						name: addon.name,
+						addFee: addon.baseCost,
+						addHours: addon.baseDurationHours,
+					};
+				}).filter(Boolean) as Array<{ name: string; addFee?: number; addHours?: number }>;
+
+				return {
+					serviceId: service._id,
+					serviceName: service.name,
+					addOns,
+				};
+			}).filter(Boolean) as Array<{
+				serviceId: string;
+				serviceName: string;
+				addOns: Array<{ name: string; addFee?: number; addHours?: number }>;
+			}>;
+
+		// Combine existing services with addons and new services
+		const allServicesData = [...existingServicesAddons, ...newServicesData];
+		
+		onSave(allServicesData);
 		onOpenChange(false);
 	};
 
@@ -165,22 +243,27 @@ export default function ServiceSelectionDialog({
 							{services.map((service) => {
 								const isServiceSelected = selectedServices.has(service._id);
 								const serviceAddonNames = selectedAddons.get(service._id) || new Set<string>();
+								const serviceExists = isServiceExisting(service._id);
 
 								return (
-									<div key={service._id} className="border rounded-lg p-4 space-y-3">
+									<div key={service._id} className={`border rounded-lg p-4 space-y-3 ${serviceExists ? 'bg-muted/30' : ''}`}>
 										{/* Service Checkbox */}
 										<div className="flex items-start gap-3">
 											<Checkbox
 												id={`service-${service._id}`}
 												checked={isServiceSelected}
+												disabled={serviceExists}
 												onCheckedChange={(checked) => handleServiceToggle(service._id, checked as boolean)}
 											/>
 											<div className="flex-1">
 												<Label
 													htmlFor={`service-${service._id}`}
-													className="font-semibold text-base cursor-pointer"
+													className={`font-semibold text-base ${serviceExists ? 'cursor-not-allowed text-muted-foreground' : 'cursor-pointer'}`}
 												>
 													{service.name}
+													{serviceExists && (
+														<span className="ml-2 text-xs text-muted-foreground">(Already added)</span>
+													)}
 												</Label>
 												{service.addOns.length > 0 && (
 													<div className="text-xs text-muted-foreground mt-1">
@@ -196,12 +279,16 @@ export default function ServiceSelectionDialog({
 												<p className="text-xs font-medium text-muted-foreground mb-2">Add-ons:</p>
 												{service.addOns.map((addon) => {
 													const isAddonChecked = serviceAddonNames.has(addon.name);
+													const addonExists = isAddonExisting(service._id, addon.name);
+													// Enable addons if service exists OR if service is selected
+													const canSelectAddon = serviceExists || isServiceSelected;
+													
 													return (
 														<div key={addon.name} className="flex items-start gap-3">
 															<Checkbox
 																id={`addon-${service._id}-${addon.name}`}
 																checked={isAddonChecked}
-																disabled={!isServiceSelected}
+																disabled={!canSelectAddon || addonExists}
 																onCheckedChange={(checked) =>
 																	handleAddonToggle(service._id, addon.name, checked as boolean)
 																}
@@ -209,9 +296,12 @@ export default function ServiceSelectionDialog({
 															<div className="flex-1">
 																<Label
 																	htmlFor={`addon-${service._id}-${addon.name}`}
-																	className={`text-sm cursor-pointer ${!isServiceSelected ? 'text-muted-foreground' : ''}`}
+																	className={`text-sm ${!canSelectAddon || addonExists ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
 																>
 																	{addon.name}
+																	{addonExists && (
+																		<span className="ml-2 text-xs text-muted-foreground">(Already added)</span>
+																	)}
 																</Label>
 															</div>
 														</div>
@@ -232,9 +322,20 @@ export default function ServiceSelectionDialog({
 					</Button>
 					<Button
 						onClick={handleSave}
-						disabled={selectedServices.size === 0 || loading}
+						disabled={(selectedServices.size === 0 && Array.from(selectedAddons.values()).every(set => set.size === 0)) || loading}
 					>
-						Save Services ({selectedServices.size})
+						{(() => {
+							const newServicesCount = Array.from(selectedServices).filter(id => !existingServiceIds.has(id)).length;
+							const addonsCount = Array.from(selectedAddons.values()).reduce((sum, set) => sum + set.size, 0);
+							if (newServicesCount > 0 && addonsCount > 0) {
+								return `Save (${newServicesCount} service${newServicesCount > 1 ? 's' : ''}, ${addonsCount} addon${addonsCount > 1 ? 's' : ''})`;
+							} else if (newServicesCount > 0) {
+								return `Save Services (${newServicesCount})`;
+							} else if (addonsCount > 0) {
+								return `Save Addons (${addonsCount})`;
+							}
+							return 'Save';
+						})()}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

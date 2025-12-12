@@ -55,7 +55,7 @@ export async function GET(
       .populate('agreements.agreementId', 'name content')
       .populate('services.serviceId', 'name baseCost')
       .populate('clients', 'firstName lastName companyName isCompany')
-      .populate('discountCode', 'code type value active')
+      .populate('discountCode', 'code type value active appliesToServices appliesToAddOns')
       .populate('companyId', 'website')
       .populate('inspector', 'signatureImageUrl')
       .lean();
@@ -86,16 +86,71 @@ export async function GET(
       }
     }
 
-    // Calculate discount
+    // Calculate discount based on appliesToServices and appliesToAddOns
     let discountAmount = 0;
     const discountCode = inspection.discountCode;
     if (discountCode && typeof discountCode === 'object' && '_id' in discountCode) {
       const discount = discountCode as any;
       if (discount.active) {
-        if (discount.type === 'percent') {
-          discountAmount = subtotal * (discount.value / 100);
-        } else {
-          discountAmount = discount.value;
+        const appliesToServices = discount.appliesToServices || [];
+        const appliesToAddOns = discount.appliesToAddOns || [];
+        
+        // Only apply discount if there are services or add-ons configured
+        if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
+          // Calculate discount for matching services
+          if (inspection.services && Array.isArray(inspection.services)) {
+            for (const serviceEntry of inspection.services) {
+              const service = serviceEntry.serviceId;
+              if (service && typeof service === 'object' && '_id' in service) {
+                const serviceId = service._id?.toString() || '';
+                const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+                
+                // Check if this service matches
+                const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
+                  const appliedIdString = typeof appliedServiceId === 'string'
+                    ? appliedServiceId
+                    : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                  return appliedIdString === serviceIdString;
+                });
+                
+                if (serviceMatches) {
+                  const serviceCost = (service as any).baseCost || 0;
+                  if (discount.type === 'percent') {
+                    discountAmount += serviceCost * (discount.value / 100);
+                  } else {
+                    // Amount type: apply full amount per matching service
+                    discountAmount += discount.value;
+                  }
+                }
+                
+                // Calculate discount for matching add-ons
+                if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
+                  serviceEntry.addOns.forEach((addOn: any) => {
+                    const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+                      const appliedServiceId = appliedAddOn.service;
+                      const appliedServiceIdString = typeof appliedServiceId === 'string'
+                        ? appliedServiceId
+                        : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                      const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                      
+                      return appliedServiceIdString === serviceIdString &&
+                        appliedAddOnName?.toLowerCase() === addOn.name?.toLowerCase();
+                    });
+                    
+                    if (addOnMatches) {
+                      const addOnFee = addOn.addFee || 0;
+                      if (discount.type === 'percent') {
+                        discountAmount += addOnFee * (discount.value / 100);
+                      } else {
+                        // Amount type: apply full amount per matching add-on
+                        discountAmount += discount.value;
+                      }
+                    }
+                  });
+                }
+              }
+            }
+          }
         }
       }
     }
