@@ -767,17 +767,83 @@ export default function SchedulePage() {
     }, 0);
 
     let discountAmount = 0;
+    let discountLabel = '';
+    
     if (discountDetails) {
-      if (discountDetails.type === 'percent') {
-        discountAmount = subtotal * (discountDetails.value / 100);
+      const appliesToServices = discountDetails.appliesToServices || [];
+      const appliesToAddOns = discountDetails.appliesToAddOns || [];
+      
+      // Only apply discount if there are services or add-ons configured
+      // If empty arrays, apply to entire subtotal (backward compatible)
+      if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
+        // Calculate discount for matching services
+        selectedServices.forEach((selectedService) => {
+          const serviceId = selectedService.serviceId;
+          const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+          
+          // Check if this service matches
+          const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
+            const appliedIdString = typeof appliedServiceId === 'string' 
+              ? appliedServiceId 
+              : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+            return appliedIdString === serviceIdString;
+          });
+          
+          if (serviceMatches) {
+            const serviceCost = selectedService.service.baseCost || 0;
+            if (discountDetails.type === 'percent') {
+              discountAmount += serviceCost * (discountDetails.value / 100);
+            } else {
+              // Amount type: apply full amount per matching service
+              discountAmount += discountDetails.value;
+            }
+          }
+          
+          // Calculate discount for matching add-ons
+          selectedService.addOns.forEach((addOn) => {
+            const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+              const appliedServiceId = appliedAddOn.service;
+              const appliedServiceIdString = typeof appliedServiceId === 'string'
+                ? appliedServiceId
+                : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+              const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+              
+              return appliedServiceIdString === serviceIdString &&
+                appliedAddOnName?.toLowerCase() === addOn.name.toLowerCase();
+            });
+            
+            if (addOnMatches) {
+              const addOnFee = addOn.addFee || 0;
+              if (discountDetails.type === 'percent') {
+                discountAmount += addOnFee * (discountDetails.value / 100);
+              } else {
+                // Amount type: apply full amount per matching add-on
+                discountAmount += discountDetails.value;
+              }
+            }
+          });
+        });
+        
+        // Build discount label
+        if (discountDetails.type === 'percent') {
+          discountLabel = `${discountDetails.code} (${discountDetails.value}%)`;
+        } else {
+          discountLabel = `${discountDetails.code} ($${discountDetails.value})`;
+        }
       } else {
-        discountAmount = discountDetails.value;
+        // Backward compatible: apply discount to entire subtotal if no specific services/add-ons configured
+        if (discountDetails.type === 'percent') {
+          discountAmount = subtotal * (discountDetails.value / 100);
+        } else {
+          discountAmount = discountDetails.value;
+        }
+        discountLabel = discountDetails.code;
       }
     }
 
     const total = Math.max(0, subtotal - discountAmount);
 
-    return { subtotal, discountAmount, total };
+    return { subtotal, discountAmount, total, discountLabel };
   };
 
   const handleScheduleInspection = async () => {
@@ -1944,20 +2010,59 @@ export default function SchedulePage() {
                     <div className="space-y-3">
                       {selectedServices.map((selectedService, index) => {
                         const service = selectedService.service;
+                        const discount = discountDetails;
+                        const appliesToServices = discount?.appliesToServices || [];
+                        const appliesToAddOns = discount?.appliesToAddOns || [];
+                        
+                        const serviceId = selectedService.serviceId;
+                        const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+                        
+                        // Check if service matches discount
+                        const serviceMatches = discount && appliesToServices.length > 0 && appliesToServices.some((appliedServiceId: any) => {
+                          const appliedIdString = typeof appliedServiceId === 'string' 
+                            ? appliedServiceId 
+                            : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                          return appliedIdString === serviceIdString;
+                        });
+                        
                         return (
                           <div key={index}>
                             <div className={hidePricing ? "text-sm" : "flex justify-between text-sm"}>
-                              <span>{service.name}</span>
+                              <span>
+                                {service.name}
+                                {serviceMatches && !hidePricing && (
+                                  <span className="ml-2 text-xs text-green-600">(Discounted)</span>
+                                )}
+                              </span>
                               {!hidePricing && <span>${service.baseCost || 0}</span>}
                             </div>
                             {selectedService.addOns.length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
-                                {selectedService.addOns.map((addOn, addOnIndex) => (
-                                  <div key={addOnIndex} className={hidePricing ? "text-xs text-muted-foreground" : "flex justify-between text-xs text-muted-foreground"}>
-                                    <span>+ {addOn.name}</span>
-                                    {!hidePricing && <span>${addOn.addFee || 0}</span>}
-                                  </div>
-                                ))}
+                                {selectedService.addOns.map((addOn, addOnIndex) => {
+                                  // Check if add-on matches discount
+                                  const addOnMatches = discount && appliesToAddOns.length > 0 && appliesToAddOns.some((appliedAddOn: any) => {
+                                    const appliedServiceId = appliedAddOn.service;
+                                    const appliedServiceIdString = typeof appliedServiceId === 'string'
+                                      ? appliedServiceId
+                                      : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                                    const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                                    
+                                    return appliedServiceIdString === serviceIdString &&
+                                      appliedAddOnName?.toLowerCase() === addOn.name.toLowerCase();
+                                  });
+                                  
+                                  return (
+                                    <div key={addOnIndex} className={hidePricing ? "text-xs text-muted-foreground" : "flex justify-between text-xs text-muted-foreground"}>
+                                      <span>
+                                        + {addOn.name}
+                                        {addOnMatches && !hidePricing && (
+                                          <span className="ml-2 text-green-600">(Discounted)</span>
+                                        )}
+                                      </span>
+                                      {!hidePricing && <span>${addOn.addFee || 0}</span>}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -1969,9 +2074,9 @@ export default function SchedulePage() {
                             <span>Subtotal</span>
                             <span>${calculateTotal().subtotal.toFixed(2)}</span>
                           </div>
-                          {discountDetails && (
+                          {discountDetails && calculateTotal().discountAmount > 0 && (
                             <div className="flex justify-between text-sm text-green-600 mt-1">
-                              <span>Discount ({discountDetails.code})</span>
+                              <span>Discount: {calculateTotal().discountLabel || discountDetails.code}</span>
                               <span>-${calculateTotal().discountAmount.toFixed(2)}</span>
                             </div>
                           )}
