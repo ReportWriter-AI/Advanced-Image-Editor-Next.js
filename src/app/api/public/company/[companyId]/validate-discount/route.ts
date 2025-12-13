@@ -70,14 +70,6 @@ export async function GET(request: NextRequest, context: RouteParams) {
         type: discountCode.type,
         value: discountCode.value,
         description: discountCode.description,
-        appliesToServices: (discountCode.appliesToServices || []).map((id: any) => 
-          typeof id === 'string' ? id : id.toString()
-        ),
-        appliesToAddOns: (discountCode.appliesToAddOns || []).map((addOn: any) => ({
-          service: typeof addOn.service === 'string' ? addOn.service : addOn.service.toString(),
-          addOnName: addOn.addOnName,
-          addonName: addOn.addOnName, // Support both naming conventions
-        })),
       },
     });
   } catch (error: any) {
