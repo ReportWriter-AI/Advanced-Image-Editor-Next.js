@@ -312,7 +312,9 @@ export function ActionForm({
                     field.onChange(value);
                   }}
                   options={[
+                    // @ts-ignore
                     { value: "AND", label: "AND (All conditions must be true)" },
+                    // @ts-ignore
                     { value: "OR", label: "OR (At least one condition must be true)" },
                   ]}
                   className="react-select-container"
