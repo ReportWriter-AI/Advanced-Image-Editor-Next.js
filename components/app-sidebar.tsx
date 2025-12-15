@@ -24,6 +24,7 @@ import {
 	CalendarCheck,
 	Contact,
 	ListChecks,
+	Zap,
 } from "lucide-react";
 
 import {
@@ -95,6 +96,11 @@ const data = {
 					title: "Availability",
 					url: "/availability",
 					icon: CalendarClock,
+				},
+				{
+					title: "Automations",
+					url: "/automations",
+					icon: Zap,
 				},
 			],
 		},
