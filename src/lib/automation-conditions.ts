@@ -21,6 +21,14 @@ export const CONDITION_TYPES: ConditionTypeOption[] = [
   { value: 'CLIENT_CATEGORY', label: 'Client Category' },
   { value: 'CLIENT_AGENT_CATEGORY', label: 'Client Agent Category' },
   { value: 'LISTING_AGENT_CATEGORY', label: 'Listing Agent Category' },
+  { value: 'ALL_REPORTS', label: 'All Reports' },
+  { value: 'ANY_REPORTS', label: 'Any Reports' },
+  { value: 'YEAR_BUILD', label: 'Year Build' },
+  { value: 'FOUNDATION', label: 'Foundation' },
+  { value: 'SQUARE_FEET', label: 'Square Feet' },
+  { value: 'ZIP_CODE', label: 'Zip Code' },
+  { value: 'CITY', label: 'City' },
+  { value: 'STATE', label: 'State' },
 ];
 
 export const INSPECTION_OPERATORS: OperatorOption[] = [
@@ -60,6 +68,46 @@ export const CATEGORY_OPERATORS: OperatorOption[] = [
   { value: 'Is Not', label: 'Is Not' },
 ];
 
+export const ALL_REPORTS_OPERATORS: OperatorOption[] = [
+  { value: 'Are Published', label: 'Are Published' },
+  { value: 'Are Not Published', label: 'Are Not Published' },
+];
+
+export const ANY_REPORTS_OPERATORS: OperatorOption[] = [
+  { value: 'Are Published', label: 'Are Published' },
+  { value: 'Are Not Published', label: 'Are Not Published' },
+];
+
+export const YEAR_BUILD_OPERATORS: OperatorOption[] = [
+  { value: 'Is Or Is After', label: 'Is Or Is After' },
+  { value: 'Is Before', label: 'Is Before' },
+];
+
+export const FOUNDATION_OPERATORS: OperatorOption[] = [
+  { value: 'Is', label: 'Is' },
+  { value: 'Is Not', label: 'Is Not' },
+];
+
+export const SQUARE_FEET_OPERATORS: OperatorOption[] = [
+  { value: 'Is Greater Than Or Equal To', label: 'Is Greater Than Or Equal To' },
+  { value: 'Is Less Than', label: 'Is Less Than' },
+];
+
+export const ZIP_CODE_OPERATORS: OperatorOption[] = [
+  { value: 'Is', label: 'Is' },
+  { value: 'Is Not', label: 'Is Not' },
+];
+
+export const CITY_OPERATORS: OperatorOption[] = [
+  { value: 'Is', label: 'Is' },
+  { value: 'Is Not', label: 'Is Not' },
+];
+
+export const STATE_OPERATORS: OperatorOption[] = [
+  { value: 'Is', label: 'Is' },
+  { value: 'Is Not', label: 'Is Not' },
+];
+
 export function getOperatorsForConditionType(type: ConditionType): OperatorOption[] {
   switch (type) {
     case 'INSPECTION':
@@ -78,6 +126,22 @@ export function getOperatorsForConditionType(type: ConditionType): OperatorOptio
     case 'CLIENT_AGENT_CATEGORY':
     case 'LISTING_AGENT_CATEGORY':
       return CATEGORY_OPERATORS;
+    case 'ALL_REPORTS':
+      return ALL_REPORTS_OPERATORS;
+    case 'ANY_REPORTS':
+      return ANY_REPORTS_OPERATORS;
+    case 'YEAR_BUILD':
+      return YEAR_BUILD_OPERATORS;
+    case 'FOUNDATION':
+      return FOUNDATION_OPERATORS;
+    case 'SQUARE_FEET':
+      return SQUARE_FEET_OPERATORS;
+    case 'ZIP_CODE':
+      return ZIP_CODE_OPERATORS;
+    case 'CITY':
+      return CITY_OPERATORS;
+    case 'STATE':
+      return STATE_OPERATORS;
     default:
       return [];
   }
@@ -102,6 +166,12 @@ export function validateCondition(condition: {
   addonName?: string;
   serviceCategory?: string;
   categoryId?: string;
+  yearBuild?: number;
+  foundation?: string;
+  squareFeet?: number;
+  zipCode?: string;
+  city?: string;
+  state?: string;
 }): { valid: boolean; error?: string } {
   const operators = getOperatorsForConditionType(condition.type);
   const validOperator = operators.some((op) => op.value === condition.operator);
@@ -113,6 +183,8 @@ export function validateCondition(condition: {
   switch (condition.type) {
     case 'INSPECTION':
     case 'AGREEMENT':
+    case 'ALL_REPORTS':
+    case 'ANY_REPORTS':
       // No additional fields required
       break;
 
@@ -153,8 +225,52 @@ export function validateCondition(condition: {
         return { valid: false, error: 'Category is required' };
       }
       break;
+
+    case 'YEAR_BUILD':
+      if (condition.yearBuild === undefined || condition.yearBuild === null) {
+        return { valid: false, error: 'Year build is required' };
+      }
+      if (!Number.isInteger(condition.yearBuild) || condition.yearBuild <= 0) {
+        return { valid: false, error: 'Year build must be a positive integer' };
+      }
+      break;
+
+    case 'FOUNDATION':
+      if (!condition.foundation || !condition.foundation.trim()) {
+        return { valid: false, error: 'Foundation is required' };
+      }
+      break;
+
+    case 'SQUARE_FEET':
+      if (condition.squareFeet === undefined || condition.squareFeet === null) {
+        return { valid: false, error: 'Square feet is required' };
+      }
+      if (typeof condition.squareFeet !== 'number' || condition.squareFeet < 0) {
+        return { valid: false, error: 'Square feet must be a positive number' };
+      }
+      break;
+
+    case 'ZIP_CODE':
+      if (!condition.zipCode || !condition.zipCode.trim()) {
+        return { valid: false, error: 'Zip code is required' };
+      }
+      break;
+
+    case 'CITY':
+      if (!condition.city || !condition.city.trim()) {
+        return { valid: false, error: 'City is required' };
+      }
+      break;
+
+    case 'STATE':
+      if (!condition.state || !condition.state.trim()) {
+        return { valid: false, error: 'State is required' };
+      }
+      break;
   }
 
   return { valid: true };
 }
+
+
 

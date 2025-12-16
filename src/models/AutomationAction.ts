@@ -9,7 +9,15 @@ export type ConditionType =
   | 'SERVICE_CATEGORY'
   | 'CLIENT_CATEGORY'
   | 'CLIENT_AGENT_CATEGORY'
-  | 'LISTING_AGENT_CATEGORY';
+  | 'LISTING_AGENT_CATEGORY'
+  | 'ALL_REPORTS'
+  | 'ANY_REPORTS'
+  | 'YEAR_BUILD'
+  | 'FOUNDATION'
+  | 'SQUARE_FEET'
+  | 'ZIP_CODE'
+  | 'CITY'
+  | 'STATE';
 
 export interface IAutomationCondition {
   type: ConditionType;
@@ -19,6 +27,12 @@ export interface IAutomationCondition {
   addonName?: string; // For ADDONS
   serviceCategory?: string; // For SERVICE_CATEGORY
   categoryId?: mongoose.Types.ObjectId; // For CLIENT_CATEGORY, CLIENT_AGENT_CATEGORY, LISTING_AGENT_CATEGORY
+  yearBuild?: number; // For YEAR_BUILD
+  foundation?: string; // For FOUNDATION
+  squareFeet?: number; // For SQUARE_FEET
+  zipCode?: string; // For ZIP_CODE
+  city?: string; // For CITY
+  state?: string; // For STATE
 }
 
 export interface IAutomationAction extends Document {
@@ -28,6 +42,21 @@ export interface IAutomationAction extends Document {
   isActive: boolean;
   conditions?: IAutomationCondition[];
   conditionLogic?: 'AND' | 'OR';
+  communicationType?: 'EMAIL' | 'TEXT';
+  sendTiming?: 'AFTER' | 'BEFORE';
+  sendDelay?: number;
+  sendDelayUnit?: 'MINUTES' | 'HOURS' | 'DAYS' | 'WEEKS' | 'MONTHS';
+  onlyTriggerOnce?: boolean;
+  alsoSendOnRecurringInspections?: boolean;
+  sendEvenWhenNotificationsDisabled?: boolean;
+  sendDuringCertainHoursOnly?: boolean;
+  doNotSendOnWeekends?: boolean;
+  emailTo?: string[];
+  emailCc?: string[];
+  emailBcc?: string[];
+  emailFrom?: 'COMPANY' | 'INSPECTOR';
+  emailSubject?: string;
+  emailBody?: string;
   company: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -49,6 +78,14 @@ const AutomationConditionSchema = new Schema<IAutomationCondition>(
         'CLIENT_CATEGORY',
         'CLIENT_AGENT_CATEGORY',
         'LISTING_AGENT_CATEGORY',
+        'ALL_REPORTS',
+        'ANY_REPORTS',
+        'YEAR_BUILD',
+        'FOUNDATION',
+        'SQUARE_FEET',
+        'ZIP_CODE',
+        'CITY',
+        'STATE',
       ],
     },
     operator: {
@@ -74,6 +111,28 @@ const AutomationConditionSchema = new Schema<IAutomationCondition>(
     categoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
+    },
+    yearBuild: {
+      type: Number,
+    },
+    foundation: {
+      type: String,
+      trim: true,
+    },
+    squareFeet: {
+      type: Number,
+    },
+    zipCode: {
+      type: String,
+      trim: true,
+    },
+    city: {
+      type: String,
+      trim: true,
+    },
+    state: {
+      type: String,
+      trim: true,
     },
   },
   { _id: false }
@@ -107,6 +166,66 @@ const AutomationActionSchema = new Schema<IAutomationAction>(
       type: String,
       enum: ['AND', 'OR'],
       default: 'AND',
+    },
+    communicationType: {
+      type: String,
+      enum: ['EMAIL', 'TEXT'],
+    },
+    sendTiming: {
+      type: String,
+      enum: ['AFTER', 'BEFORE'],
+      default: 'AFTER',
+    },
+    sendDelay: {
+      type: Number,
+      min: 0,
+    },
+    sendDelayUnit: {
+      type: String,
+      enum: ['MINUTES', 'HOURS', 'DAYS', 'WEEKS', 'MONTHS'],
+    },
+    onlyTriggerOnce: {
+      type: Boolean,
+      default: false,
+    },
+    alsoSendOnRecurringInspections: {
+      type: Boolean,
+      default: false,
+    },
+    sendEvenWhenNotificationsDisabled: {
+      type: Boolean,
+      default: false,
+    },
+    sendDuringCertainHoursOnly: {
+      type: Boolean,
+      default: false,
+    },
+    doNotSendOnWeekends: {
+      type: Boolean,
+      default: false,
+    },
+    emailTo: {
+      type: [String],
+      default: [],
+    },
+    emailCc: {
+      type: [String],
+      default: [],
+    },
+    emailBcc: {
+      type: [String],
+      default: [],
+    },
+    emailFrom: {
+      type: String,
+      enum: ['COMPANY', 'INSPECTOR'],
+    },
+    emailSubject: {
+      type: String,
+      trim: true,
+    },
+    emailBody: {
+      type: String,
     },
     company: {
       type: mongoose.Schema.Types.ObjectId,

@@ -19,17 +19,19 @@ const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
 
 const stripHtml = (value: string) => value.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
 
-type PlaceholderItem = {
+export type PlaceholderItem = {
   token: string;
   description: string;
+  input?: boolean;
+  required?: boolean;
 };
 
-type PlaceholderSection = {
+export type PlaceholderSection = {
   title: string;
   placeholders: PlaceholderItem[];
 };
 
-const PLACEHOLDER_SECTIONS: PlaceholderSection[] = [
+export const PLACEHOLDER_SECTIONS: PlaceholderSection[] = [
   {
     title: "Inspection Property Details",
     placeholders: [
@@ -50,9 +52,9 @@ const PLACEHOLDER_SECTIONS: PlaceholderSection[] = [
   {
     title: "Client Information",
     placeholders: [
-      { token: "[CLIENT_NAME]", description: "Client’s full name." },
-      { token: "[CUSTOMER_INITIALS]", description: "Blank space to capture initials." },
-      { token: "[REQUIRED_CUSTOMER_INITIALS]", description: "Required customer initials." },
+      { token: "[CLIENT_NAME]", description: "Client's full name." },
+      { token: "[CUSTOMER_INITIALS]", description: "Blank space to capture initials.", input: true, required: false },
+      { token: "[REQUIRED_CUSTOMER_INITIALS]", description: "Required customer initials.", input: true, required: true },
     ],
   },
   {

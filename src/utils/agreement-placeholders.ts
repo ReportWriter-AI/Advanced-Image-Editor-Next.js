@@ -2,11 +2,76 @@
  * Replaces placeholders in agreement content with actual data from inspection and company
  */
 
-// List of placeholders that should be rendered as text inputs
-const TEXT_INPUT_PLACEHOLDERS = [
-  '[CUSTOMER_INITIALS]',
-  '[REQUIRED_CUSTOMER_INITIALS]',
-];
+import { PLACEHOLDER_SECTIONS, PlaceholderItem } from "@/src/app/(authenticated)/agreements/_components/AgreementForm";
+
+/**
+ * Gets all placeholder tokens that are marked as input placeholders
+ * @returns Array of placeholder tokens that have input: true
+ */
+export function getInputPlaceholders(): string[] {
+  const inputPlaceholders: string[] = [];
+  
+  PLACEHOLDER_SECTIONS.forEach(section => {
+    section.placeholders.forEach(placeholder => {
+      if (placeholder.input === true) {
+        inputPlaceholders.push(placeholder.token);
+      }
+    });
+  });
+  
+  return inputPlaceholders;
+}
+
+/**
+ * Gets all placeholder tokens that are marked as required input placeholders
+ * @returns Array of placeholder tokens that have input: true and required: true
+ */
+export function getRequiredInputPlaceholders(): string[] {
+  const requiredPlaceholders: string[] = [];
+  
+  PLACEHOLDER_SECTIONS.forEach(section => {
+    section.placeholders.forEach(placeholder => {
+      if (placeholder.input === true && placeholder.required === true) {
+        requiredPlaceholders.push(placeholder.token);
+      }
+    });
+  });
+  
+  return requiredPlaceholders;
+}
+
+/**
+ * Checks if a placeholder token is an input placeholder
+ * @param token - The placeholder token to check
+ * @returns true if the token is an input placeholder
+ */
+export function isInputPlaceholder(token: string): boolean {
+  return getInputPlaceholders().includes(token);
+}
+
+/**
+ * Checks if a placeholder token is a required input placeholder
+ * @param token - The placeholder token to check
+ * @returns true if the token is a required input placeholder
+ */
+export function isRequiredInputPlaceholder(token: string): boolean {
+  return getRequiredInputPlaceholders().includes(token);
+}
+
+/**
+ * Gets placeholder metadata for a given token
+ * @param token - The placeholder token to look up
+ * @returns PlaceholderItem if found, undefined otherwise
+ */
+function getPlaceholderMetadata(token: string): PlaceholderItem | undefined {
+  for (const section of PLACEHOLDER_SECTIONS) {
+    const placeholder = section.placeholders.find(p => p.token === token);
+    if (placeholder) {
+      return placeholder;
+    }
+  }
+  return undefined;
+}
 
 /**
  * Detects all text input placeholders in the content
@@ -15,8 +80,9 @@ const TEXT_INPUT_PLACEHOLDERS = [
  */
 export function detectTextInputPlaceholders(content: string): string[] {
   const foundPlaceholders: string[] = [];
+  const inputPlaceholders = getInputPlaceholders();
   
-  TEXT_INPUT_PLACEHOLDERS.forEach(placeholder => {
+  inputPlaceholders.forEach(placeholder => {
     if (content.includes(placeholder)) {
       foundPlaceholders.push(placeholder);
     }
@@ -38,10 +104,13 @@ export function replaceTextInputPlaceholders(
   isReadOnly: boolean = false
 ): string {
   let replacedContent = content;
+  const inputPlaceholders = getInputPlaceholders();
   
-  TEXT_INPUT_PLACEHOLDERS.forEach(placeholder => {
+  inputPlaceholders.forEach(placeholder => {
     const value = inputValues[placeholder] || '';
     const placeholderKey = placeholder.replace(/[\[\]]/g, ''); // Remove brackets for ID
+    const metadata = getPlaceholderMetadata(placeholder);
+    const isRequired = metadata?.required === true;
     
     if (isReadOnly) {
       // Show saved value as text
@@ -50,7 +119,6 @@ export function replaceTextInputPlaceholders(
       replacedContent = replacedContent.replace(regex, inputHtml);
     } else {
       // Show input field
-      const isRequired = placeholder.includes('REQUIRED');
       const inputHtml = `<input 
         type="text" 
         id="agreement-input-${placeholderKey}" 

@@ -54,7 +54,29 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, category, automationTrigger, isActive, conditions, conditionLogic } = body;
+    const {
+      name,
+      category,
+      automationTrigger,
+      isActive,
+      conditions,
+      conditionLogic,
+      communicationType,
+      sendTiming,
+      sendDelay,
+      sendDelayUnit,
+      onlyTriggerOnce,
+      alsoSendOnRecurringInspections,
+      sendEvenWhenNotificationsDisabled,
+      sendDuringCertainHoursOnly,
+      doNotSendOnWeekends,
+      emailTo,
+      emailCc,
+      emailBcc,
+      emailFrom,
+      emailSubject,
+      emailBody,
+    } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json(
@@ -193,6 +215,128 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Validate communication fields if provided
+    if (communicationType !== undefined) {
+      if (communicationType !== 'EMAIL' && communicationType !== 'TEXT') {
+        return NextResponse.json(
+          { error: 'Invalid communication type. Must be EMAIL or TEXT' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate email fields if communicationType is EMAIL
+    if (communicationType === 'EMAIL') {
+      // Validate emailTo
+      if (emailTo !== undefined) {
+        if (!Array.isArray(emailTo)) {
+          return NextResponse.json(
+            { error: 'emailTo must be an array' },
+            { status: 400 }
+          );
+        }
+        // Validate each entry is a string
+        for (const recipient of emailTo) {
+          if (typeof recipient !== 'string') {
+            return NextResponse.json(
+              { error: 'All emailTo entries must be strings' },
+              { status: 400 }
+            );
+          }
+        }
+      }
+
+      // Validate emailCc
+      if (emailCc !== undefined) {
+        if (!Array.isArray(emailCc)) {
+          return NextResponse.json(
+            { error: 'emailCc must be an array' },
+            { status: 400 }
+          );
+        }
+        for (const email of emailCc) {
+          if (typeof email !== 'string') {
+            return NextResponse.json(
+              { error: 'All emailCc entries must be strings' },
+              { status: 400 }
+            );
+          }
+        }
+      }
+
+      // Validate emailBcc
+      if (emailBcc !== undefined) {
+        if (!Array.isArray(emailBcc)) {
+          return NextResponse.json(
+            { error: 'emailBcc must be an array' },
+            { status: 400 }
+          );
+        }
+        for (const email of emailBcc) {
+          if (typeof email !== 'string') {
+            return NextResponse.json(
+              { error: 'All emailBcc entries must be strings' },
+              { status: 400 }
+            );
+          }
+        }
+      }
+
+      // Validate emailFrom
+      if (emailFrom !== undefined) {
+        if (emailFrom !== 'COMPANY' && emailFrom !== 'INSPECTOR') {
+          return NextResponse.json(
+            { error: 'emailFrom must be either COMPANY or INSPECTOR' },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Validate emailSubject
+      if (emailSubject !== undefined && typeof emailSubject !== 'string') {
+        return NextResponse.json(
+          { error: 'emailSubject must be a string' },
+          { status: 400 }
+        );
+      }
+
+      // Validate emailBody
+      if (emailBody !== undefined && typeof emailBody !== 'string') {
+        return NextResponse.json(
+          { error: 'emailBody must be a string' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (sendTiming !== undefined) {
+      if (sendTiming !== 'AFTER' && sendTiming !== 'BEFORE') {
+        return NextResponse.json(
+          { error: 'Invalid send timing. Must be AFTER or BEFORE' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (sendDelay !== undefined) {
+      if (typeof sendDelay !== 'number' || sendDelay < 0) {
+        return NextResponse.json(
+          { error: 'Send delay must be a positive number' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (sendDelayUnit !== undefined) {
+      const validUnits = ['MINUTES', 'HOURS', 'DAYS', 'WEEKS', 'MONTHS'];
+      if (!validUnits.includes(sendDelayUnit)) {
+        return NextResponse.json(
+          { error: 'Invalid send delay unit. Must be one of: MINUTES, HOURS, DAYS, WEEKS, MONTHS' },
+          { status: 400 }
+        );
+      }
+    }
+
     const actionData: any = {
       name: name.trim(),
       category: new mongoose.Types.ObjectId(category),
@@ -211,6 +355,12 @@ export async function POST(request: NextRequest) {
         addonName: cond.addonName?.trim(),
         serviceCategory: cond.serviceCategory,
         categoryId: cond.categoryId ? new mongoose.Types.ObjectId(cond.categoryId) : undefined,
+        yearBuild: cond.yearBuild ? Number(cond.yearBuild) : undefined,
+        foundation: cond.foundation?.trim(),
+        squareFeet: cond.squareFeet ? Number(cond.squareFeet) : undefined,
+        zipCode: cond.zipCode?.trim(),
+        city: cond.city?.trim(),
+        state: cond.state?.trim(),
       }));
       
       // Set conditionLogic if conditions exist and conditionLogic is provided
@@ -219,6 +369,57 @@ export async function POST(request: NextRequest) {
       } else if (conditions.length > 1) {
         // Default to AND if multiple conditions but no logic specified
         actionData.conditionLogic = 'AND';
+      }
+    }
+
+    // Add communication fields if provided
+    if (communicationType !== undefined) {
+      actionData.communicationType = communicationType;
+    }
+    if (sendTiming !== undefined) {
+      actionData.sendTiming = sendTiming;
+    }
+    if (sendDelay !== undefined) {
+      actionData.sendDelay = Number(sendDelay);
+    }
+    if (sendDelayUnit !== undefined) {
+      actionData.sendDelayUnit = sendDelayUnit;
+    }
+    if (onlyTriggerOnce !== undefined) {
+      actionData.onlyTriggerOnce = Boolean(onlyTriggerOnce);
+    }
+    if (alsoSendOnRecurringInspections !== undefined) {
+      actionData.alsoSendOnRecurringInspections = Boolean(alsoSendOnRecurringInspections);
+    }
+    if (sendEvenWhenNotificationsDisabled !== undefined) {
+      actionData.sendEvenWhenNotificationsDisabled = Boolean(sendEvenWhenNotificationsDisabled);
+    }
+    if (sendDuringCertainHoursOnly !== undefined) {
+      actionData.sendDuringCertainHoursOnly = Boolean(sendDuringCertainHoursOnly);
+    }
+    if (doNotSendOnWeekends !== undefined) {
+      actionData.doNotSendOnWeekends = Boolean(doNotSendOnWeekends);
+    }
+
+    // Add email fields if provided
+    if (communicationType === 'EMAIL') {
+      if (emailTo !== undefined) {
+        actionData.emailTo = emailTo.map((item: string) => item.trim()).filter((item: string) => item.length > 0);
+      }
+      if (emailCc !== undefined) {
+        actionData.emailCc = emailCc.map((item: string) => item.trim().toLowerCase()).filter((item: string) => item.length > 0);
+      }
+      if (emailBcc !== undefined) {
+        actionData.emailBcc = emailBcc.map((item: string) => item.trim().toLowerCase()).filter((item: string) => item.length > 0);
+      }
+      if (emailFrom !== undefined) {
+        actionData.emailFrom = emailFrom;
+      }
+      if (emailSubject !== undefined) {
+        actionData.emailSubject = emailSubject.trim();
+      }
+      if (emailBody !== undefined) {
+        actionData.emailBody = emailBody;
       }
     }
 

@@ -12,6 +12,7 @@ import {
   getServiceCategoryOptions,
 } from "@/src/lib/automation-conditions";
 import { ConditionType } from "@/src/models/AutomationAction";
+import { splitCommaSeparated } from "@/lib/utils";
 
 interface Service {
   _id: string;
@@ -34,6 +35,12 @@ export interface ConditionFormData {
   addonName?: string;
   serviceCategory?: string;
   categoryId?: string;
+  yearBuild?: number;
+  foundation?: string;
+  squareFeet?: number;
+  zipCode?: string;
+  city?: string;
+  state?: string;
 }
 
 interface ConditionFormProps {
@@ -46,8 +53,10 @@ interface ConditionFormProps {
 export function ConditionForm({ condition, index, onChange, onRemove }: ConditionFormProps) {
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [foundationOptions, setFoundationOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingFoundation, setLoadingFoundation] = useState(false);
 
   const conditionType = condition.type;
   const serviceId = condition.serviceId;
@@ -62,6 +71,9 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
       conditionType === "LISTING_AGENT_CATEGORY"
     ) {
       fetchCategories();
+    }
+    if (conditionType === "FOUNDATION") {
+      fetchFoundationOptions();
     }
   }, [conditionType]);
 
@@ -99,6 +111,29 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
     }
   };
 
+  const fetchFoundationOptions = async () => {
+    try {
+      setLoadingFoundation(true);
+      const response = await fetch("/api/reusable-dropdowns", {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const foundationString = data.foundation || "";
+        const foundationValues = splitCommaSeparated(foundationString);
+        const options = foundationValues.map((value) => ({
+          value: value.trim(),
+          label: value.trim(),
+        })).filter((opt) => opt.value.length > 0);
+        setFoundationOptions(options);
+      }
+    } catch (error) {
+      console.error("Error fetching foundation options:", error);
+    } finally {
+      setLoadingFoundation(false);
+    }
+  };
+
   const handleChange = (field: keyof ConditionFormData, value: any) => {
     const updated = { ...condition, [field]: value };
     
@@ -110,6 +145,12 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
       updated.addonName = undefined;
       updated.serviceCategory = undefined;
       updated.categoryId = undefined;
+      updated.yearBuild = undefined;
+      updated.foundation = undefined;
+      updated.squareFeet = undefined;
+      updated.zipCode = undefined;
+      updated.city = undefined;
+      updated.state = undefined;
     } else if (field === "serviceId") {
       updated.addonName = undefined;
     }
@@ -155,6 +196,10 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
 
   const selectedCategory = categoryOptions.find(
     (opt) => opt.value === condition.categoryId
+  );
+
+  const selectedFoundation = foundationOptions.find(
+    (opt) => opt.value === condition.foundation
   );
 
   return (
@@ -285,6 +330,100 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
               placeholder="Select a category"
               className="react-select-container"
               classNamePrefix="react-select"
+            />
+          </div>
+        )}
+
+        {/* All Reports - no additional field */}
+        {conditionType === "ALL_REPORTS" && null}
+
+        {/* Any Reports - no additional field */}
+        {conditionType === "ANY_REPORTS" && null}
+
+        {/* Year Build - yearBuild field */}
+        {conditionType === "YEAR_BUILD" && (
+          <div className="space-y-2 md:col-span-2">
+            <Label>Year</Label>
+            <Input
+              type="number"
+              value={condition.yearBuild || ""}
+              onChange={(e) => {
+                const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
+                handleChange("yearBuild", isNaN(value as number) ? undefined : value);
+              }}
+              placeholder="Enter year (e.g., 2024)"
+              min="1900"
+              max="2100"
+            />
+          </div>
+        )}
+
+        {/* Foundation - foundation field */}
+        {conditionType === "FOUNDATION" && (
+          <div className="space-y-2 md:col-span-2">
+            <Label>Foundation</Label>
+            <ReactSelect
+              value={selectedFoundation || null}
+              onChange={(option) => handleChange("foundation", option?.value || "")}
+              options={foundationOptions}
+              isLoading={loadingFoundation}
+              placeholder="Select a foundation"
+              className="react-select-container"
+              classNamePrefix="react-select"
+            />
+          </div>
+        )}
+
+        {/* Square Feet - squareFeet field */}
+        {conditionType === "SQUARE_FEET" && (
+          <div className="space-y-2 md:col-span-2">
+            <Label>Square Feet</Label>
+            <Input
+              type="number"
+              value={condition.squareFeet || ""}
+              onChange={(e) => {
+                const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                handleChange("squareFeet", isNaN(value as number) ? undefined : value);
+              }}
+              placeholder="Enter square feet"
+              min="0"
+              step="1"
+            />
+          </div>
+        )}
+
+        {/* Zip Code - zipCode field */}
+        {conditionType === "ZIP_CODE" && (
+          <div className="space-y-2 md:col-span-2">
+            <Label>Zip Code</Label>
+            <Input
+              value={condition.zipCode || ""}
+              onChange={(e) => handleChange("zipCode", e.target.value)}
+              placeholder="Enter zip code"
+            />
+          </div>
+        )}
+
+        {/* City - city field */}
+        {conditionType === "CITY" && (
+          <div className="space-y-2 md:col-span-2">
+            <Label>City</Label>
+            <Input
+              value={condition.city || ""}
+              onChange={(e) => handleChange("city", e.target.value)}
+              placeholder="Enter city"
+            />
+          </div>
+        )}
+
+        {/* State - state field */}
+        {conditionType === "STATE" && (
+          <div className="space-y-2 md:col-span-2">
+            <Label>State</Label>
+            <Input
+              value={condition.state || ""}
+              onChange={(e) => handleChange("state", e.target.value)}
+              placeholder="Enter state"
             />
           </div>
         )}

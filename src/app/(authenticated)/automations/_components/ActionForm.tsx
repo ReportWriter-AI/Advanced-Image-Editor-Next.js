@@ -8,10 +8,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import ReactSelect from "react-select";
-import { Loader2, Plus } from "lucide-react";
+import CreatableSelect from "react-select/creatable";
+import { Loader2, Plus, X } from "lucide-react";
 import { getGroupedTriggerOptions } from "@/src/lib/automation-triggers";
 import { ConditionForm, ConditionFormData } from "./ConditionForm";
+import dynamic from "next/dynamic";
+
+const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
+import "react-quill-new/dist/quill.snow.css";
 
 interface Category {
   _id: string;
@@ -30,6 +43,14 @@ const conditionSchema = z.object({
     "CLIENT_CATEGORY",
     "CLIENT_AGENT_CATEGORY",
     "LISTING_AGENT_CATEGORY",
+    "ALL_REPORTS",
+    "ANY_REPORTS",
+    "YEAR_BUILD",
+    "FOUNDATION",
+    "SQUARE_FEET",
+    "ZIP_CODE",
+    "CITY",
+    "STATE",
   ]),
   operator: z.string().min(1, "Operator is required"),
   value: z.string().optional(),
@@ -37,6 +58,12 @@ const conditionSchema = z.object({
   addonName: z.string().optional(),
   serviceCategory: z.string().optional(),
   categoryId: z.string().optional(),
+  yearBuild: z.number().int().positive().optional(),
+  foundation: z.string().optional(),
+  squareFeet: z.number().positive().optional(),
+  zipCode: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
 });
 
 const actionFormSchema = z.object({
@@ -46,7 +73,41 @@ const actionFormSchema = z.object({
   isActive: z.boolean(),
   conditions: z.array(conditionSchema).optional(),
   conditionLogic: z.enum(["AND", "OR"]).optional(),
-});
+  communicationType: z.enum(["EMAIL", "TEXT"]).optional(),
+  sendTiming: z.enum(["AFTER", "BEFORE"]).optional(),
+  sendDelay: z.number().min(0).optional(),
+  sendDelayUnit: z.enum(["MINUTES", "HOURS", "DAYS", "WEEKS", "MONTHS"]).optional(),
+  onlyTriggerOnce: z.boolean().optional(),
+  alsoSendOnRecurringInspections: z.boolean().optional(),
+  sendEvenWhenNotificationsDisabled: z.boolean().optional(),
+  sendDuringCertainHoursOnly: z.boolean().optional(),
+  doNotSendOnWeekends: z.boolean().optional(),
+  emailTo: z.array(z.string()).optional(),
+  emailCc: z.array(z.string()).optional(),
+  emailBcc: z.array(z.string()).optional(),
+  emailFrom: z.enum(["COMPANY", "INSPECTOR"]).optional(),
+  emailSubject: z.string().optional(),
+  emailBody: z.string().optional(),
+}).refine(
+  (data) => {
+    if (data.communicationType === "EMAIL") {
+      if (!data.emailSubject || data.emailSubject.trim().length === 0) {
+        return false;
+      }
+      if (!data.emailBody || data.emailBody.trim().length === 0) {
+        return false;
+      }
+      if (!data.emailTo || data.emailTo.length === 0) {
+        return false;
+      }
+    }
+    return true;
+  },
+  {
+    message: "Email subject, body, and at least one recipient are required when communication type is EMAIL",
+    path: ["emailSubject"],
+  }
+);
 
 export type ActionFormValues = z.infer<typeof actionFormSchema>;
 
@@ -57,6 +118,21 @@ export type ActionFormNormalizedValues = {
   isActive: boolean;
   conditions?: ConditionFormData[];
   conditionLogic?: "AND" | "OR";
+  communicationType?: "EMAIL" | "TEXT";
+  sendTiming?: "AFTER" | "BEFORE";
+  sendDelay?: number;
+  sendDelayUnit?: "MINUTES" | "HOURS" | "DAYS" | "WEEKS" | "MONTHS";
+  onlyTriggerOnce?: boolean;
+  alsoSendOnRecurringInspections?: boolean;
+  sendEvenWhenNotificationsDisabled?: boolean;
+  sendDuringCertainHoursOnly?: boolean;
+  doNotSendOnWeekends?: boolean;
+  emailTo?: string[];
+  emailCc?: string[];
+  emailBcc?: string[];
+  emailFrom?: "COMPANY" | "INSPECTOR";
+  emailSubject?: string;
+  emailBody?: string;
 };
 
 interface ActionFormProps {
@@ -76,6 +152,17 @@ export function ActionForm({
 }: ActionFormProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
+  const [companyOwnerEmail, setCompanyOwnerEmail] = useState<string | null>(null);
+
+  // Shared recipient options for To, CC, and BCC fields
+  const recipientOptions = [
+    { value: "CLIENTS", label: "Clients" },
+    { value: "CLIENTS_AGENTS", label: "Client's Agents" },
+    { value: "LISTING_AGENTS", label: "Listing Agents" },
+    { value: "INSPECTORS", label: "Inspectors" },
+  ];
 
   const [conditions, setConditions] = useState<ConditionFormData[]>(() => {
     if (!initialValues?.conditions) return [];
@@ -87,6 +174,12 @@ export function ActionForm({
       addonName: c.addonName,
       serviceCategory: c.serviceCategory,
       categoryId: typeof c.categoryId === 'object' ? c.categoryId?.toString() : c.categoryId,
+      yearBuild: c.yearBuild,
+      foundation: c.foundation,
+      squareFeet: c.squareFeet,
+      zipCode: c.zipCode,
+      city: c.city,
+      state: c.state,
     }));
   });
 
@@ -106,12 +199,81 @@ export function ActionForm({
       isActive: initialValues?.isActive !== undefined ? initialValues.isActive : true,
       conditions: conditions,
       conditionLogic: conditionLogic,
+      communicationType: initialValues?.communicationType,
+      sendTiming: initialValues?.sendTiming || "AFTER",
+      sendDelay: initialValues?.sendDelay,
+      sendDelayUnit: initialValues?.sendDelayUnit,
+      onlyTriggerOnce: initialValues?.onlyTriggerOnce || false,
+      alsoSendOnRecurringInspections: initialValues?.alsoSendOnRecurringInspections || false,
+      sendEvenWhenNotificationsDisabled: initialValues?.sendEvenWhenNotificationsDisabled || false,
+      sendDuringCertainHoursOnly: initialValues?.sendDuringCertainHoursOnly || false,
+      doNotSendOnWeekends: initialValues?.doNotSendOnWeekends || false,
+      emailTo: initialValues?.emailTo || [],
+      emailCc: initialValues?.emailCc || [],
+      emailBcc: initialValues?.emailBcc || [],
+      emailFrom: initialValues?.emailFrom,
+      emailSubject: initialValues?.emailSubject || "",
+      emailBody: initialValues?.emailBody || "",
     },
   });
 
+  // Initialize CC/BCC visibility based on initial values
+  useEffect(() => {
+    if (initialValues?.emailCc && initialValues.emailCc.length > 0) {
+      setShowCc(true);
+    }
+    if (initialValues?.emailBcc && initialValues.emailBcc.length > 0) {
+      setShowBcc(true);
+    }
+  }, [initialValues]);
+
   useEffect(() => {
     fetchCategories();
+    fetchCompanyOwnerEmail();
   }, []);
+
+  // Reset form when initialValues change (for edit mode)
+  useEffect(() => {
+    if (initialValues) {
+      form.reset({
+        name: initialValues.name || "",
+        category: initialValues.category || "",
+        automationTrigger: initialValues.automationTrigger || "",
+        isActive: initialValues.isActive !== undefined ? initialValues.isActive : true,
+        conditions: conditions,
+        conditionLogic: conditionLogic,
+        communicationType: initialValues.communicationType,
+        sendTiming: initialValues.sendTiming || "AFTER",
+        sendDelay: initialValues.sendDelay,
+        sendDelayUnit: initialValues.sendDelayUnit,
+        onlyTriggerOnce: initialValues.onlyTriggerOnce || false,
+        alsoSendOnRecurringInspections: initialValues.alsoSendOnRecurringInspections || false,
+        sendEvenWhenNotificationsDisabled: initialValues.sendEvenWhenNotificationsDisabled || false,
+        sendDuringCertainHoursOnly: initialValues.sendDuringCertainHoursOnly || false,
+        doNotSendOnWeekends: initialValues.doNotSendOnWeekends || false,
+        emailTo: initialValues.emailTo || [],
+        emailCc: initialValues.emailCc || [],
+        emailBcc: initialValues.emailBcc || [],
+        emailFrom: initialValues.emailFrom,
+        emailSubject: initialValues.emailSubject || "",
+        emailBody: initialValues.emailBody || "",
+      });
+    }
+  }, [initialValues, form, conditions, conditionLogic]);
+
+  const fetchCompanyOwnerEmail = async () => {
+    try {
+      const response = await fetch("/api/automations/company-owner-email", {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCompanyOwnerEmail(data.email || null);
+      }
+    } catch (error) {
+      console.error("Error fetching company owner email:", error);
+    }
+  };
 
   // Sync conditionLogic with form when it changes
   useEffect(() => {
@@ -143,6 +305,21 @@ export function ActionForm({
       isActive: values.isActive,
       conditions: conditions.length > 0 ? conditions : undefined,
       conditionLogic: conditions.length > 1 ? conditionLogic : undefined,
+      communicationType: values.communicationType,
+      sendTiming: values.communicationType ? (values.sendTiming || "AFTER") : undefined,
+      sendDelay: values.communicationType && values.sendDelay ? values.sendDelay : undefined,
+      sendDelayUnit: values.communicationType && values.sendDelayUnit ? values.sendDelayUnit : undefined,
+      onlyTriggerOnce: values.communicationType ? (values.onlyTriggerOnce || false) : undefined,
+      alsoSendOnRecurringInspections: values.communicationType ? (values.alsoSendOnRecurringInspections || false) : undefined,
+      sendEvenWhenNotificationsDisabled: values.communicationType ? (values.sendEvenWhenNotificationsDisabled || false) : undefined,
+      sendDuringCertainHoursOnly: values.communicationType ? (values.sendDuringCertainHoursOnly || false) : undefined,
+      doNotSendOnWeekends: values.communicationType ? (values.doNotSendOnWeekends || false) : undefined,
+      emailTo: values.communicationType === "EMAIL" && values.emailTo && values.emailTo.length > 0 ? values.emailTo : undefined,
+      emailCc: values.communicationType === "EMAIL" && values.emailCc && values.emailCc.length > 0 ? values.emailCc : undefined,
+      emailBcc: values.communicationType === "EMAIL" && values.emailBcc && values.emailBcc.length > 0 ? values.emailBcc : undefined,
+      emailFrom: values.communicationType === "EMAIL" ? values.emailFrom : undefined,
+      emailSubject: values.communicationType === "EMAIL" && values.emailSubject ? values.emailSubject.trim() : undefined,
+      emailBody: values.communicationType === "EMAIL" && values.emailBody ? values.emailBody : undefined,
     };
     await onSubmit(normalized);
   };
@@ -281,6 +458,503 @@ export function ActionForm({
             Active
           </Label>
         </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="communicationType">Communication Type</Label>
+          <Controller
+            name="communicationType"
+            control={form.control}
+            render={({ field }) => (
+              <ReactSelect
+                value={
+                  field.value
+                    ? { value: field.value, label: field.value === "EMAIL" ? "Email" : "Text" }
+                    : null
+                }
+                onChange={(option) => field.onChange(option?.value || undefined)}
+                options={[
+                  { value: "EMAIL", label: "Email" },
+                  { value: "TEXT", label: "Text" },
+                ]}
+                placeholder="Select communication type"
+                isClearable
+                className="react-select-container"
+                classNamePrefix="react-select"
+              />
+            )}
+          />
+        </div>
+
+        {form.watch("communicationType") === "EMAIL" && (
+          <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
+            {/* Email To Field */}
+            <div className="space-y-2">
+              <Label htmlFor="emailTo">
+                To <span className="text-destructive">*</span>
+              </Label>
+              <Controller
+                name="emailTo"
+                control={form.control}
+                render={({ field }) => {
+                  const selectedValues = field.value?.map((val) => ({
+                    value: val,
+                    label: recipientOptions.find((opt) => opt.value === val)?.label || val,
+                  })) || [];
+
+                  return (
+                    <CreatableSelect
+                      isMulti
+                      value={selectedValues}
+                      onChange={(options) => {
+                        const values = options ? options.map((opt) => opt.value) : [];
+                        field.onChange(values);
+                      }}
+                      options={recipientOptions}
+                      placeholder="Select recipients or type to add"
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                      createOptionPosition="first"
+                    />
+                  );
+                }}
+              />
+            </div>
+
+            {/* CC Field */}
+            <div className="space-y-2">
+              {!showCc ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowCc(true);
+                    if (companyOwnerEmail && form.watch("emailBcc")?.length === 0) {
+                      // Don't pre-populate CC with owner email
+                    }
+                  }}
+                >
+                  + CC
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="emailCc">CC</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowCc(false);
+                        form.setValue("emailCc", []);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Controller
+                    name="emailCc"
+                    control={form.control}
+                    render={({ field }) => {
+                      const selectedValues = field.value?.map((val) => ({
+                        value: val,
+                        label: recipientOptions.find((opt) => opt.value === val)?.label || val,
+                      })) || [];
+
+                      return (
+                        <CreatableSelect
+                          isMulti
+                          value={selectedValues}
+                          onChange={(options) => {
+                            const values = options ? options.map((opt) => opt.value) : [];
+                            field.onChange(values);
+                          }}
+                          options={recipientOptions}
+                          placeholder="Select recipients or type to add"
+                          className="react-select-container"
+                          classNamePrefix="react-select"
+                          formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                          createOptionPosition="first"
+                        />
+                      );
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* BCC Field */}
+            <div className="space-y-2">
+              {!showBcc ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowBcc(true);
+                    if (companyOwnerEmail && form.watch("emailBcc")?.length === 0) {
+                      form.setValue("emailBcc", [companyOwnerEmail]);
+                    }
+                  }}
+                >
+                  + BCC
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="emailBcc">BCC</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowBcc(false);
+                        form.setValue("emailBcc", []);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Controller
+                    name="emailBcc"
+                    control={form.control}
+                    render={({ field }) => {
+                      const selectedValues = field.value?.map((val) => ({
+                        value: val,
+                        label: recipientOptions.find((opt) => opt.value === val)?.label || val,
+                      })) || [];
+
+                      return (
+                        <CreatableSelect
+                          isMulti
+                          value={selectedValues}
+                          onChange={(options) => {
+                            const values = options ? options.map((opt) => opt.value) : [];
+                            field.onChange(values);
+                          }}
+                          options={recipientOptions}
+                          placeholder="Select recipients or type to add"
+                          className="react-select-container"
+                          classNamePrefix="react-select"
+                          formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                          createOptionPosition="first"
+                        />
+                      );
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* From Field */}
+            <div className="space-y-2">
+              <Label htmlFor="emailFrom">From</Label>
+              <Controller
+                name="emailFrom"
+                control={form.control}
+                render={({ field }) => (
+                  <ReactSelect
+                    value={
+                      field.value
+                        ? { value: field.value, label: field.value === "COMPANY" ? "Company" : "Inspector" }
+                        : null
+                    }
+                    onChange={(option) => field.onChange(option?.value || undefined)}
+                    options={[
+                      { value: "COMPANY", label: "Company" },
+                      { value: "INSPECTOR", label: "Inspector" },
+                    ]}
+                    placeholder="Select sender"
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                  />
+                )}
+              />
+            </div>
+
+            {/* Subject Field */}
+            <div className="space-y-2">
+              <Label htmlFor="emailSubject">
+                Subject <span className="text-destructive">*</span>
+              </Label>
+              <Controller
+                name="emailSubject"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <div>
+                    <Input
+                      id="emailSubject"
+                      {...field}
+                      placeholder="Enter email subject"
+                      className={fieldState.error ? "border-destructive" : ""}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                        }
+                      }}
+                    />
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-destructive">{fieldState.error.message}</p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
+
+            {/* Body Field */}
+            <div className="space-y-2">
+              <Label htmlFor="emailBody">
+                Body <span className="text-destructive">*</span>
+              </Label>
+              <Controller
+                name="emailBody"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <div>
+                    <div className="border rounded-md">
+                      <ReactQuill
+                        theme="snow"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        modules={{
+                          toolbar: [
+                            [{ header: [1, 2, 3, false] }],
+                            ["bold", "italic", "underline", "strike"],
+                            [{ list: "ordered" }, { list: "bullet" }],
+                            ["link"],
+                            ["clean"],
+                          ],
+                        }}
+                        formats={["header", "bold", "italic", "underline", "strike", "list", "link"]}
+                        placeholder="Enter email body"
+                      />
+                    </div>
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-destructive">{fieldState.error.message}</p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
+          </div>
+        )}
+
+        {form.watch("communicationType") && (
+          <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
+            <div className="space-y-2">
+              <Label>When should this be sent?</Label>
+              <Controller
+                name="sendTiming"
+                control={form.control}
+                render={({ field }) => (
+                  <div className="flex items-center space-x-3">
+                    <span
+                      className={`text-sm font-medium ${
+                        field.value === "AFTER" ? "text-foreground" : "text-muted-foreground"
+                      }`}
+                    >
+                      After
+                    </span>
+                    <Switch
+                      checked={field.value === "BEFORE"}
+                      onCheckedChange={(checked) => field.onChange(checked ? "BEFORE" : "AFTER")}
+                    />
+                    <span
+                      className={`text-sm font-medium ${
+                        field.value === "BEFORE" ? "text-foreground" : "text-muted-foreground"
+                      }`}
+                    >
+                      Before
+                    </span>
+                  </div>
+                )}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Send communication after</Label>
+              <div className="flex items-center gap-2">
+                <Controller
+                  name="sendDelay"
+                  control={form.control}
+                  render={({ field }) => (
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={field.value || ""}
+                      onChange={(e) =>
+                        field.onChange(e.target.value === "" ? undefined : Number(e.target.value))
+                      }
+                      placeholder="0"
+                      className="w-24"
+                    />
+                  )}
+                />
+                <Controller
+                  name="sendDelayUnit"
+                  control={form.control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || ""}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MINUTES">Minutes</SelectItem>
+                        <SelectItem value="HOURS">Hours</SelectItem>
+                        <SelectItem value="DAYS">Days</SelectItem>
+                        <SelectItem value="WEEKS">Weeks</SelectItem>
+                        <SelectItem value="MONTHS">Months</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-base font-medium">Additional settings</Label>
+              
+              <div className="space-y-3">
+                <div className="flex items-start space-x-2">
+                  <Controller
+                    name="onlyTriggerOnce"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Checkbox
+                        id="onlyTriggerOnce"
+                        checked={field.value || false}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                        className="mt-1"
+                      />
+                    )}
+                  />
+                  <div className="flex-1">
+                    <Label
+                      htmlFor="onlyTriggerOnce"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Only trigger once
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Enable to run the automation only once per unique trigger, avoiding duplicates.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-2">
+                  <Controller
+                    name="alsoSendOnRecurringInspections"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Checkbox
+                        id="alsoSendOnRecurringInspections"
+                        checked={field.value || false}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                        className="mt-1"
+                      />
+                    )}
+                  />
+                  <div className="flex-1">
+                    <Label
+                      htmlFor="alsoSendOnRecurringInspections"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Also send on recurring inspections
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Enable to trigger this automation for recurring scheduled inspections.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-2">
+                  <Controller
+                    name="sendEvenWhenNotificationsDisabled"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Checkbox
+                        id="sendEvenWhenNotificationsDisabled"
+                        checked={field.value || false}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                        className="mt-1"
+                      />
+                    )}
+                  />
+                  <div className="flex-1">
+                    <Label
+                      htmlFor="sendEvenWhenNotificationsDisabled"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Send even when notifications disabled
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Triggers automation and sends actions even with notifications off.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-2">
+                  <Controller
+                    name="sendDuringCertainHoursOnly"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Checkbox
+                        id="sendDuringCertainHoursOnly"
+                        checked={field.value || false}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                        className="mt-1"
+                      />
+                    )}
+                  />
+                  <div className="flex-1">
+                    <Label
+                      htmlFor="sendDuringCertainHoursOnly"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Send during certain hours only
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Limits automation to trigger only within the specified time frame.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-2">
+                  <Controller
+                    name="doNotSendOnWeekends"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Checkbox
+                        id="doNotSendOnWeekends"
+                        checked={field.value || false}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                        className="mt-1"
+                      />
+                    )}
+                  />
+                  <div className="flex-1">
+                    <Label
+                      htmlFor="doNotSendOnWeekends"
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      Do not send on weekends
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Stops automation from triggering on weekends, ensuring weekday actions only.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">

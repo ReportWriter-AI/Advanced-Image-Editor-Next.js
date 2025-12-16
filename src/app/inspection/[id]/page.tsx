@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { 
   replaceAgreementPlaceholders, 
   detectTextInputPlaceholders,
+  getInputPlaceholders,
+  getRequiredInputPlaceholders,
 } from "@/src/utils/agreement-placeholders";
 import React from "react";
 import { loadStripe, StripeElementsOptions } from "@stripe/stripe-js";
@@ -399,8 +401,9 @@ export default function InspectionClientViewPage() {
     }
 
     const inputValues = collectInputValues(agreementId);
-    const requiredPlaceholders = detectTextInputPlaceholders(agreement.content)
-      .filter(p => p.includes('REQUIRED'));
+    const allInputPlaceholders = detectTextInputPlaceholders(agreement.content);
+    const requiredPlaceholdersList = getRequiredInputPlaceholders();
+    const requiredPlaceholders = allInputPlaceholders.filter(p => requiredPlaceholdersList.includes(p));
     
     const missingFields: string[] = [];
     for (const placeholder of requiredPlaceholders) {
@@ -481,10 +484,7 @@ export default function InspectionClientViewPage() {
       : content;
 
     // Split content by text input placeholders
-    const TEXT_INPUT_PLACEHOLDERS = [
-      '[CUSTOMER_INITIALS]',
-      '[REQUIRED_CUSTOMER_INITIALS]',
-    ];
+    const TEXT_INPUT_PLACEHOLDERS = getInputPlaceholders();
 
     const parts: Array<{ type: 'html' | 'input'; content?: string; placeholder?: string; value?: string; required?: boolean }> = [];
     let remaining = processedContent;
@@ -515,7 +515,8 @@ export default function InspectionClientViewPage() {
       }
 
       // Add input placeholder
-      const isRequired = placeholder.includes('REQUIRED');
+      const requiredPlaceholders = getRequiredInputPlaceholders();
+      const isRequired = requiredPlaceholders.includes(placeholder);
       parts.push({
         type: 'input',
         placeholder,
@@ -632,8 +633,9 @@ export default function InspectionClientViewPage() {
       if (!agreement) continue;
 
       const inputValues = collectInputValues(agreementId);
-      const requiredPlaceholders = detectTextInputPlaceholders(agreement.content)
-        .filter(p => p.includes('REQUIRED'));
+      const allInputPlaceholders = detectTextInputPlaceholders(agreement.content);
+      const requiredPlaceholdersList = getRequiredInputPlaceholders();
+      const requiredPlaceholders = allInputPlaceholders.filter(p => requiredPlaceholdersList.includes(p));
       
       for (const placeholder of requiredPlaceholders) {
         if (!inputValues[placeholder] || inputValues[placeholder].trim() === '') {

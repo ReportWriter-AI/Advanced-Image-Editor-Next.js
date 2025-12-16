@@ -38,8 +38,29 @@ interface Action {
     addonName?: string;
     serviceCategory?: string;
     categoryId?: string;
+    yearBuild?: number;
+    foundation?: string;
+    squareFeet?: number;
+    zipCode?: string;
+    city?: string;
+    state?: string;
   }>;
   conditionLogic?: "AND" | "OR";
+  communicationType?: "EMAIL" | "TEXT";
+  sendTiming?: "AFTER" | "BEFORE";
+  sendDelay?: number;
+  sendDelayUnit?: "MINUTES" | "HOURS" | "DAYS" | "WEEKS" | "MONTHS";
+  onlyTriggerOnce?: boolean;
+  alsoSendOnRecurringInspections?: boolean;
+  sendEvenWhenNotificationsDisabled?: boolean;
+  sendDuringCertainHoursOnly?: boolean;
+  doNotSendOnWeekends?: boolean;
+  emailTo?: string[];
+  emailCc?: string[];
+  emailBcc?: string[];
+  emailFrom?: "COMPANY" | "INSPECTOR";
+  emailSubject?: string;
+  emailBody?: string;
 }
 
 const mapAction = (item: any): Action => {
@@ -52,6 +73,21 @@ const mapAction = (item: any): Action => {
     isActive: item?.isActive !== undefined ? item.isActive : true,
     conditions: item?.conditions || [],
     conditionLogic: item?.conditionLogic || "AND",
+    communicationType: item?.communicationType,
+    sendTiming: item?.sendTiming,
+    sendDelay: item?.sendDelay,
+    sendDelayUnit: item?.sendDelayUnit,
+    onlyTriggerOnce: item?.onlyTriggerOnce,
+    alsoSendOnRecurringInspections: item?.alsoSendOnRecurringInspections,
+    sendEvenWhenNotificationsDisabled: item?.sendEvenWhenNotificationsDisabled,
+    sendDuringCertainHoursOnly: item?.sendDuringCertainHoursOnly,
+    doNotSendOnWeekends: item?.doNotSendOnWeekends,
+    emailTo: item?.emailTo || [],
+    emailCc: item?.emailCc || [],
+    emailBcc: item?.emailBcc || [],
+    emailFrom: item?.emailFrom,
+    emailSubject: item?.emailSubject || "",
+    emailBody: item?.emailBody || "",
   };
 };
 
@@ -322,8 +358,29 @@ export default function ActionsList() {
                       serviceCategory: cond.serviceCategory,
                       // @ts-ignore 
                       categoryId: cond.categoryId ? (typeof cond.categoryId === 'string' ? cond.categoryId : cond.categoryId.toString()) : undefined,
+                      yearBuild: cond.yearBuild,
+                      foundation: cond.foundation,
+                      squareFeet: cond.squareFeet,
+                      zipCode: cond.zipCode,
+                      city: cond.city,
+                      state: cond.state,
                     })),
                     conditionLogic: editingAction.conditionLogic || "AND",
+                    communicationType: editingAction.communicationType,
+                    sendTiming: editingAction.sendTiming,
+                    sendDelay: editingAction.sendDelay,
+                    sendDelayUnit: editingAction.sendDelayUnit,
+                    onlyTriggerOnce: editingAction.onlyTriggerOnce,
+                    alsoSendOnRecurringInspections: editingAction.alsoSendOnRecurringInspections,
+                    sendEvenWhenNotificationsDisabled: editingAction.sendEvenWhenNotificationsDisabled,
+                    sendDuringCertainHoursOnly: editingAction.sendDuringCertainHoursOnly,
+                    doNotSendOnWeekends: editingAction.doNotSendOnWeekends,
+                    emailTo: editingAction.emailTo || [],
+                    emailCc: editingAction.emailCc || [],
+                    emailBcc: editingAction.emailBcc || [],
+                    emailFrom: editingAction.emailFrom,
+                    emailSubject: editingAction.emailSubject || "",
+                    emailBody: editingAction.emailBody || "",
                   }
                 : undefined
             }

@@ -81,7 +81,29 @@ export async function PUT(request: NextRequest, context: RouteParams) {
     }
 
     const body = await request.json();
-    const { name, category, automationTrigger, isActive, conditions, conditionLogic } = body;
+    const {
+      name,
+      category,
+      automationTrigger,
+      isActive,
+      conditions,
+      conditionLogic,
+      communicationType,
+      sendTiming,
+      sendDelay,
+      sendDelayUnit,
+      onlyTriggerOnce,
+      alsoSendOnRecurringInspections,
+      sendEvenWhenNotificationsDisabled,
+      sendDuringCertainHoursOnly,
+      doNotSendOnWeekends,
+      emailTo,
+      emailCc,
+      emailBcc,
+      emailFrom,
+      emailSubject,
+      emailBody,
+    } = body;
 
     if (name !== undefined) {
       if (!name || !name.trim()) {
@@ -241,6 +263,12 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         addonName: cond.addonName?.trim(),
         serviceCategory: cond.serviceCategory,
         categoryId: cond.categoryId ? new mongoose.Types.ObjectId(cond.categoryId) : undefined,
+        yearBuild: cond.yearBuild ? Number(cond.yearBuild) : undefined,
+        foundation: cond.foundation?.trim(),
+        squareFeet: cond.squareFeet ? Number(cond.squareFeet) : undefined,
+        zipCode: cond.zipCode?.trim(),
+        city: cond.city?.trim(),
+        state: cond.state?.trim(),
       }));
       
       // Set conditionLogic if conditions exist
@@ -253,11 +281,176 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         // Clear conditionLogic if no conditions
         action.conditionLogic = undefined;
       }
-    } else if (conditions === undefined && conditionLogic !== undefined) {
+      } else if (conditions === undefined && conditionLogic !== undefined) {
       // Allow updating conditionLogic even if conditions aren't being updated
       if (conditionLogic === 'AND' || conditionLogic === 'OR') {
         action.conditionLogic = conditionLogic;
       }
+    }
+
+    // Handle communication fields
+    if (communicationType !== undefined) {
+      if (communicationType !== 'EMAIL' && communicationType !== 'TEXT') {
+        return NextResponse.json(
+          { error: 'Invalid communication type. Must be EMAIL or TEXT' },
+          { status: 400 }
+        );
+      }
+      action.communicationType = communicationType;
+    }
+
+    if (sendTiming !== undefined) {
+      if (sendTiming !== 'AFTER' && sendTiming !== 'BEFORE') {
+        return NextResponse.json(
+          { error: 'Invalid send timing. Must be AFTER or BEFORE' },
+          { status: 400 }
+        );
+      }
+      action.sendTiming = sendTiming;
+    }
+
+    if (sendDelay !== undefined) {
+      if (typeof sendDelay !== 'number' || sendDelay < 0) {
+        return NextResponse.json(
+          { error: 'Send delay must be a positive number' },
+          { status: 400 }
+        );
+      }
+      action.sendDelay = Number(sendDelay);
+    }
+
+    if (sendDelayUnit !== undefined) {
+      const validUnits = ['MINUTES', 'HOURS', 'DAYS', 'WEEKS', 'MONTHS'];
+      if (!validUnits.includes(sendDelayUnit)) {
+        return NextResponse.json(
+          { error: 'Invalid send delay unit. Must be one of: MINUTES, HOURS, DAYS, WEEKS, MONTHS' },
+          { status: 400 }
+        );
+      }
+      action.sendDelayUnit = sendDelayUnit;
+    }
+
+    if (onlyTriggerOnce !== undefined) {
+      action.onlyTriggerOnce = Boolean(onlyTriggerOnce);
+    }
+
+    if (alsoSendOnRecurringInspections !== undefined) {
+      action.alsoSendOnRecurringInspections = Boolean(alsoSendOnRecurringInspections);
+    }
+
+    if (sendEvenWhenNotificationsDisabled !== undefined) {
+      action.sendEvenWhenNotificationsDisabled = Boolean(sendEvenWhenNotificationsDisabled);
+    }
+
+    if (sendDuringCertainHoursOnly !== undefined) {
+      action.sendDuringCertainHoursOnly = Boolean(sendDuringCertainHoursOnly);
+    }
+
+    if (doNotSendOnWeekends !== undefined) {
+      action.doNotSendOnWeekends = Boolean(doNotSendOnWeekends);
+    }
+
+    // Handle email fields - validate and update if communicationType is EMAIL or being set to EMAIL
+    const isEmailType = communicationType === 'EMAIL' || (communicationType === undefined && action.communicationType === 'EMAIL');
+    
+    if (isEmailType) {
+      // Validate emailTo
+      if (emailTo !== undefined) {
+        if (!Array.isArray(emailTo)) {
+          return NextResponse.json(
+            { error: 'emailTo must be an array' },
+            { status: 400 }
+          );
+        }
+        for (const recipient of emailTo) {
+          if (typeof recipient !== 'string') {
+            return NextResponse.json(
+              { error: 'All emailTo entries must be strings' },
+              { status: 400 }
+            );
+          }
+        }
+        action.emailTo = emailTo.map((item: string) => item.trim()).filter((item: string) => item.length > 0);
+      }
+
+      // Validate emailCc
+      if (emailCc !== undefined) {
+        if (!Array.isArray(emailCc)) {
+          return NextResponse.json(
+            { error: 'emailCc must be an array' },
+            { status: 400 }
+          );
+        }
+        for (const email of emailCc) {
+          if (typeof email !== 'string') {
+            return NextResponse.json(
+              { error: 'All emailCc entries must be strings' },
+              { status: 400 }
+            );
+          }
+        }
+        action.emailCc = emailCc.map((item: string) => item.trim().toLowerCase()).filter((item: string) => item.length > 0);
+      }
+
+      // Validate emailBcc
+      if (emailBcc !== undefined) {
+        if (!Array.isArray(emailBcc)) {
+          return NextResponse.json(
+            { error: 'emailBcc must be an array' },
+            { status: 400 }
+          );
+        }
+        for (const email of emailBcc) {
+          if (typeof email !== 'string') {
+            return NextResponse.json(
+              { error: 'All emailBcc entries must be strings' },
+              { status: 400 }
+            );
+          }
+        }
+        action.emailBcc = emailBcc.map((item: string) => item.trim().toLowerCase()).filter((item: string) => item.length > 0);
+      }
+
+      // Validate emailFrom
+      if (emailFrom !== undefined) {
+        if (emailFrom !== 'COMPANY' && emailFrom !== 'INSPECTOR') {
+          return NextResponse.json(
+            { error: 'emailFrom must be either COMPANY or INSPECTOR' },
+            { status: 400 }
+          );
+        }
+        action.emailFrom = emailFrom;
+      }
+
+      // Validate emailSubject
+      if (emailSubject !== undefined) {
+        if (typeof emailSubject !== 'string') {
+          return NextResponse.json(
+            { error: 'emailSubject must be a string' },
+            { status: 400 }
+          );
+        }
+        action.emailSubject = emailSubject.trim();
+      }
+
+      // Validate emailBody
+      if (emailBody !== undefined) {
+        if (typeof emailBody !== 'string') {
+          return NextResponse.json(
+            { error: 'emailBody must be a string' },
+            { status: 400 }
+          );
+        }
+        action.emailBody = emailBody;
+      }
+    } else if (communicationType === 'TEXT') {
+      // Clear email fields if switching to TEXT
+      if (emailTo !== undefined) action.emailTo = undefined;
+      if (emailCc !== undefined) action.emailCc = undefined;
+      if (emailBcc !== undefined) action.emailBcc = undefined;
+      if (emailFrom !== undefined) action.emailFrom = undefined;
+      if (emailSubject !== undefined) action.emailSubject = undefined;
+      if (emailBody !== undefined) action.emailBody = undefined;
     }
 
     const updatedAction = await action.save();
