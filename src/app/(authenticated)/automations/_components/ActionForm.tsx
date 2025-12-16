@@ -3,7 +3,7 @@
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ import { Loader2, Plus, X } from "lucide-react";
 import { getGroupedTriggerOptions } from "@/src/lib/automation-triggers";
 import { ConditionForm, ConditionFormData } from "./ConditionForm";
 import dynamic from "next/dynamic";
+import { PLACEHOLDER_SECTIONS, PlaceholderItem } from "@/src/app/(authenticated)/agreements/_components/AgreementForm";
 
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
 import "react-quill-new/dist/quill.snow.css";
@@ -155,6 +156,8 @@ export function ActionForm({
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [companyOwnerEmail, setCompanyOwnerEmail] = useState<string | null>(null);
+  const [placeholderTargetField, setPlaceholderTargetField] = useState<"subject" | "body" | null>(null);
+  const quillRef = useRef<any>(null);
 
   // Shared recipient options for To, CC, and BCC fields
   const recipientOptions = [
@@ -189,6 +192,56 @@ export function ActionForm({
     }
     return "AND";
   });
+
+  // Helper function to filter non-input placeholders
+  const getNonInputPlaceholders = (): PlaceholderItem[] => {
+    return PLACEHOLDER_SECTIONS.flatMap(section => 
+      section.placeholders.filter(p => !p.input)
+    );
+  };
+
+  // Insert placeholder into subject field
+  const insertPlaceholderIntoSubject = (token: string) => {
+    const currentValue = form.getValues("emailSubject") || "";
+    const input = document.getElementById("emailSubject") as HTMLInputElement;
+    if (input) {
+      const start = input.selectionStart || currentValue.length;
+      const end = input.selectionEnd || currentValue.length;
+      const newValue = currentValue.slice(0, start) + ` ${token} ` + currentValue.slice(end);
+      form.setValue("emailSubject", newValue);
+      // Set cursor position after inserted placeholder
+      setTimeout(() => {
+        input.focus();
+        const newCursorPos = start + token.length + 2;
+        input.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    } else {
+      // Fallback: append to end
+      form.setValue("emailSubject", currentValue + ` ${token} `);
+    }
+  };
+
+  // Insert placeholder into body field (ReactQuill)
+  const insertPlaceholderIntoBody = (token: string) => {
+    const editor = quillRef.current?.getEditor?.();
+    if (!editor) {
+      return;
+    }
+    const selection = editor.getSelection(true);
+    const index = selection ? selection.index : editor.getLength();
+    editor.insertText(index, ` ${token} `);
+    editor.setSelection(index + token.length + 2, 0);
+  };
+
+  // Handle placeholder selection
+  const handlePlaceholderSelect = (token: string) => {
+    if (placeholderTargetField === "subject") {
+      insertPlaceholderIntoSubject(token);
+    } else if (placeholderTargetField === "body") {
+      insertPlaceholderIntoBody(token);
+    }
+    setPlaceholderTargetField(null);
+  };
 
   const form = useForm<ActionFormValues>({
     resolver: zodResolver(actionFormSchema),
@@ -360,6 +413,135 @@ export function ActionForm({
   const selectedTrigger = triggerOptions
     .flatMap((group) => group.options)
     .find((option) => option.value === form.watch("automationTrigger"));
+
+  // PlaceholderSelector component - reusable for both subject and body
+  const PlaceholderSelector = ({ targetField }: { targetField: "subject" | "body" }) => {
+    const [open, setOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const cleanupRef = useRef<(() => void) | null>(null);
+
+    // Filter placeholders based on search query
+    const filteredSections = PLACEHOLDER_SECTIONS.map((section) => ({
+      ...section,
+      placeholders: section.placeholders.filter(
+        (p) => !p.input && p.token.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    })).filter((section) => section.placeholders.length > 0);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+      if (!open) {
+        // Clean up any existing listener when closing
+        if (cleanupRef.current) {
+          cleanupRef.current();
+          cleanupRef.current = null;
+        }
+        return;
+      }
+
+      // Add a small delay to prevent immediate closure when opening
+      const timeoutId = setTimeout(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+          if (
+            dropdownRef.current &&
+            !dropdownRef.current.contains(event.target as Node) &&
+            buttonRef.current &&
+            !buttonRef.current.contains(event.target as Node)
+          ) {
+            setOpen(false);
+            setSearchQuery("");
+          }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        
+        // Store cleanup function
+        cleanupRef.current = () => {
+          document.removeEventListener("mousedown", handleClickOutside);
+        };
+      }, 100);
+
+      return () => {
+        clearTimeout(timeoutId);
+        if (cleanupRef.current) {
+          cleanupRef.current();
+          cleanupRef.current = null;
+        }
+      };
+    }, [open]);
+
+    return (
+      <div className="relative">
+        <Button
+          ref={buttonRef}
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setPlaceholderTargetField(targetField);
+            setOpen((prev) => !prev);
+          }}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Placeholder
+        </Button>
+
+        {open && (
+          <div
+            ref={dropdownRef}
+            className="absolute right-0 top-full mt-1 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg z-50"
+            style={{ maxHeight: "300px", display: "flex", flexDirection: "column" }}
+          >
+            {/* Search Input */}
+            <div className="p-2 border-b border-gray-200">
+              <Input
+                type="text"
+                placeholder="Search placeholders..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full"
+                autoFocus
+              />
+            </div>
+
+            {/* Scrollable List */}
+            <div className="overflow-y-auto overflow-x-hidden" style={{ maxHeight: "250px" }}>
+              {filteredSections.length === 0 ? (
+                <div className="p-4 text-center text-sm text-gray-500">
+                  No placeholders found.
+                </div>
+              ) : (
+                filteredSections.map((section) => (
+                  <div key={section.title} className="py-1">
+                    <div className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-50">
+                      {section.title}
+                    </div>
+                    {section.placeholders.map((placeholder) => (
+                      <button
+                        key={placeholder.token}
+                        type="button"
+                        onClick={() => {
+                          handlePlaceholderSelect(placeholder.token);
+                          setOpen(false);
+                          setSearchQuery("");
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-gray-100 cursor-pointer focus:bg-gray-100 focus:outline-none"
+                      >
+                        {placeholder.token}
+                      </button>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
@@ -677,9 +859,12 @@ export function ActionForm({
 
             {/* Subject Field */}
             <div className="space-y-2">
-              <Label htmlFor="emailSubject">
-                Subject <span className="text-destructive">*</span>
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="emailSubject">
+                  Subject <span className="text-destructive">*</span>
+                </Label>
+                <PlaceholderSelector targetField="subject" />
+              </div>
               <Controller
                 name="emailSubject"
                 control={form.control}
@@ -706,9 +891,12 @@ export function ActionForm({
 
             {/* Body Field */}
             <div className="space-y-2">
-              <Label htmlFor="emailBody">
-                Body <span className="text-destructive">*</span>
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="emailBody">
+                  Body <span className="text-destructive">*</span>
+                </Label>
+                <PlaceholderSelector targetField="body" />
+              </div>
               <Controller
                 name="emailBody"
                 control={form.control}
@@ -716,6 +904,8 @@ export function ActionForm({
                   <div>
                     <div className="border rounded-md">
                       <ReactQuill
+                        //@ts-ignore
+                        ref={quillRef}
                         theme="snow"
                         value={field.value || ""}
                         onChange={field.onChange}
