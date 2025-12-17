@@ -28,6 +28,7 @@ import { splitCommaSeparated } from '@/lib/utils';
 import TaskDialog from '../_components/TaskDialog';
 import TaskCommentsDialog from '../_components/TaskCommentsDialog';
 import ServiceSelectionDialog from './_components/ServiceSelectionDialog';
+import PricingModal from './_components/PricingModal';
 import EventsManager from '@/components/EventsManager';
 
 const InformationSections = dynamic(() => import('../../../../../../components/InformationSections'), { 
@@ -137,12 +138,28 @@ export default function InspectionEditPage() {
     customData?: Record<string, any>;
     internalNotes?: string;
     clientNote?: string;
+    requestedAddons?: any[];
     services?: Array<{
       serviceId: string;
       serviceName: string;
-      addOns?: Array<{ name: string; addFee?: number; addHours?: number }>;
+      baseCost: number;
+      addOns?: Array<{
+        name: string;
+        addFee: number;
+        addHours?: number;
+      }>;
     }>;
-    requestedAddons?: any[];
+    pricing?: {
+      items: Array<{
+        type: 'service' | 'addon' | 'additional';
+        serviceId?: string;
+        addonName?: string;
+        name: string;
+        price: number;
+        originalPrice?: number;
+        hours?: number;
+      }>;
+    } | null;
     closingDate?: {
       date?: string;
       lastModifiedBy?: {
@@ -222,8 +239,8 @@ export default function InspectionEditPage() {
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
   const [officeNoteToDelete, setOfficeNoteToDelete] = useState<string | null>(null);
   const [clientNoteToDelete, setClientNoteToDelete] = useState<boolean>(false);
-  const [serviceToDelete, setServiceToDelete] = useState<{ serviceIndex: number; serviceName: string } | null>(null);
-  const [addonToDelete, setAddonToDelete] = useState<{ serviceIndex: number; addonIndex: number; addonName: string; serviceName: string } | null>(null);
+  const [serviceToDelete, setServiceToDelete] = useState<{ serviceIndex: number; serviceName: string; serviceId: string | number } | null>(null);
+  const [addonToDelete, setAddonToDelete] = useState<{ serviceIndex: number; addonIndex: number; addonName: string; serviceName: string; serviceId: string | number } | null>(null);
   const [deletingService, setDeletingService] = useState(false);
   const [deletingAddon, setDeletingAddon] = useState(false);
 
@@ -241,6 +258,7 @@ export default function InspectionEditPage() {
 
   // Service selection dialog state
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+  const [pricingModalOpen, setPricingModalOpen] = useState(false);
 
   // Payment state
   const [paymentInfo, setPaymentInfo] = useState<{
@@ -1433,18 +1451,21 @@ export default function InspectionEditPage() {
         return;
       }
 
-      // Find the service in the inspection
-      // @ts-ignore
-      const serviceIndex = inspectionDetails.services?.findIndex(
-        (s: any) => s.serviceId?.toString() === request.serviceId?.toString()
+      // Check if service exists in pricing.items
+      const pricing = inspectionDetails.pricing;
+      const pricingItems = pricing?.items || [];
+      const serviceExists = pricingItems.some((item: any) => 
+        item.type === 'service' && 
+        (typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId)) === 
+        (typeof request.serviceId === 'string' ? request.serviceId : String(request.serviceId))
       );
 
-      if (serviceIndex === -1 || serviceIndex === undefined) {
+      if (!serviceExists) {
         toast.error('Service not found in inspection');
         return;
       }
 
-      // Update the request status and add addon to service
+      // Update the request status
       // @ts-ignore
       const updatedRequestedAddons = [...(inspectionDetails.requestedAddons || [])];
       const actualRequestIndex = updatedRequestedAddons.findIndex(
@@ -1464,18 +1485,29 @@ export default function InspectionEditPage() {
         processedAt: new Date().toISOString(),
       };
 
-      // Add addon to service
-      // @ts-ignore
-      const updatedServices = [...(inspectionDetails.services || [])];
-      if (!updatedServices[serviceIndex].addOns) {
-        updatedServices[serviceIndex].addOns = [];
-      }
+      // Add addon to pricing.items
+      const updatedPricingItems = [...pricingItems];
+      
+      // Check if addon already exists in pricing.items
+      const addonExists = updatedPricingItems.some((item: any) => 
+        item.type === 'addon' &&
+        (typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId)) === 
+        (typeof request.serviceId === 'string' ? request.serviceId : String(request.serviceId)) &&
+        item.addonName?.toLowerCase() === request.addonName.toLowerCase()
+      );
 
-      updatedServices[serviceIndex].addOns.push({
-        name: request.addonName,
-        addFee: request.addFee,
-        addHours: request.addHours,
-      });
+      if (!addonExists) {
+        // Add new addon item to pricing
+        updatedPricingItems.push({
+          type: 'addon',
+          serviceId: request.serviceId,
+          addonName: request.addonName,
+          name: request.addonName,
+          price: request.addFee || 0,
+          originalPrice: request.addFee || 0,
+          hours: request.addHours || undefined,
+        });
+      }
 
       // Update in database
       const response = await fetch(`/api/inspections/${inspectionId}`, {
@@ -1483,7 +1515,9 @@ export default function InspectionEditPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestedAddons: updatedRequestedAddons,
-          services: updatedServices,
+          pricing: {
+            items: updatedPricingItems,
+          },
         }),
       });
 
@@ -1491,11 +1525,13 @@ export default function InspectionEditPage() {
         setInspectionDetails(prev => ({
           ...prev,
           requestedAddons: updatedRequestedAddons,
-          services: updatedServices,
+          pricing: {
+            items: updatedPricingItems,
+          },
         }));
         // Refresh payment info
         await fetchPaymentInfo();
-        toast.success('Add-on approved and added to service');
+        toast.success('Add-on approved and added to pricing');
       } else {
         const errorData = await response.json();
         toast.error(`Failed to approve: ${errorData.error || 'Unknown error'}`);
@@ -1569,53 +1605,102 @@ export default function InspectionEditPage() {
     addOns: Array<{ name: string; addFee?: number; addHours?: number }>;
   }>) => {
     try {
-      // @ts-ignore
-      const existingServices = [...(inspectionDetails.services || [])];
-      const updatedServices = [...existingServices];
+      // Get existing pricing items
+      const existingPricing = inspectionDetails.pricing;
+      const existingPricingItems = existingPricing?.items || [];
       
-      selectedServices.forEach(selectedService => {
+      // Get existing service IDs from pricing.items
+      const existingServiceIds = new Set(
+        existingPricingItems
+          .filter((item: any) => item.type === 'service')
+          .map((item: any) => {
+            const serviceId = item.serviceId;
+            return typeof serviceId === 'string' ? serviceId : String(serviceId);
+          })
+      );
+      
+      // Build new pricing items
+      const newPricingItems: Array<{
+        type: 'service' | 'addon' | 'additional';
+        serviceId?: string;
+        addonName?: string;
+        name: string;
+        price: number;
+        originalPrice?: number;
+        hours?: number;
+      }> = [...existingPricingItems];
+      
+      // Track which services and addons we're adding
+      const newServiceIds = new Set<string>();
+      const newAddonKeys = new Set<string>();
+      
+      // Use for...of loop to properly await async operations
+      for (const selectedService of selectedServices) {
         const serviceIdString = typeof selectedService.serviceId === 'string' 
           ? selectedService.serviceId 
           : String(selectedService.serviceId);
         
-        // Find if this service already exists
-        const existingServiceIndex = updatedServices.findIndex(s => {
-          const existingId = typeof s.serviceId === 'string' 
-            ? s.serviceId 
-            : String(s.serviceId);
-          return existingId === serviceIdString;
-        });
+        const isNewService = !existingServiceIds.has(serviceIdString);
         
-        if (existingServiceIndex >= 0) {
-          // Service exists - merge addons
-          const existingService = updatedServices[existingServiceIndex];
-          const existingAddons = existingService.addOns || [];
-          const existingAddonNames = new Set(
-            existingAddons.map((a: any) => a.name.toLowerCase())
-          );
-          
-          // Add only new addons that don't already exist
-          const newAddons = selectedService.addOns.filter(addon => 
-            !existingAddonNames.has(addon.name.toLowerCase())
-          );
-          
-          if (newAddons.length > 0) {
-            updatedServices[existingServiceIndex] = {
-              ...existingService,
-              addOns: [...existingAddons, ...newAddons]
-            };
+        if (isNewService) {
+          // Add new service to pricing items
+          // First, fetch the service to get baseCost and baseDurationHours
+          const serviceResponse = await fetch(`/api/services/${serviceIdString}`, { credentials: 'include' });
+          if (serviceResponse.ok) {
+            const serviceData = await serviceResponse.json();
+            const service = serviceData.service;
+            const baseCost = service?.baseCost || 0;
+            const baseHours = service?.baseDurationHours || 0;
+            
+            newPricingItems.push({
+              type: 'service',
+              serviceId: serviceIdString,
+              name: selectedService.serviceName || service?.name || 'Service',
+              price: baseCost,
+              originalPrice: baseCost,
+              hours: baseHours > 0 ? baseHours : undefined,
+            });
+            
+            newServiceIds.add(serviceIdString);
           }
-        } else {
-          // New service - add it
-          updatedServices.push(selectedService);
         }
-      });
+        
+        // Add addons for this service
+        for (const addon of selectedService.addOns) {
+          const addonKey = `${serviceIdString}_${addon.name.toLowerCase()}`;
+          
+          // Check if addon already exists in pricing.items
+          const addonExists = existingPricingItems.some((item: any) => 
+            item.type === 'addon' &&
+            (typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId)) === serviceIdString &&
+            item.addonName?.toLowerCase() === addon.name.toLowerCase()
+          );
+          
+          if (!addonExists) {
+            newPricingItems.push({
+              type: 'addon',
+              serviceId: serviceIdString,
+              addonName: addon.name,
+              name: addon.name,
+              price: addon.addFee || 0,
+              originalPrice: addon.addFee || 0,
+              hours: addon.addHours || undefined,
+            });
+            
+            newAddonKeys.add(addonKey);
+          }
+        }
+      }
       
       // Update in database
       const response = await fetch(`/api/inspections/${inspectionId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ services: updatedServices }),
+        body: JSON.stringify({ 
+          pricing: {
+            items: newPricingItems,
+          },
+        }),
       });
       
       if (!response.ok) {
@@ -1626,23 +1711,16 @@ export default function InspectionEditPage() {
       // Update local state
       setInspectionDetails(prev => ({
         ...prev,
-        services: updatedServices
+        pricing: {
+          items: newPricingItems,
+        },
       }));
       
       // Refresh payment info
       await fetchPaymentInfo();
       
-      const newServicesCount = selectedServices.filter(s => {
-        const serviceIdString = typeof s.serviceId === 'string' ? s.serviceId : String(s.serviceId);
-        return !existingServices.some(existing => {
-          const existingId = typeof existing.serviceId === 'string' 
-            ? existing.serviceId 
-            : String(existing.serviceId);
-          return existingId === serviceIdString;
-        });
-      }).length;
-      
-      const addonsCount = selectedServices.reduce((sum, s) => sum + s.addOns.length, 0);
+      const newServicesCount = newServiceIds.size;
+      const addonsCount = newAddonKeys.size;
       
       if (newServicesCount > 0 && addonsCount > 0) {
         toast.success(`${newServicesCount} service${newServicesCount > 1 ? 's' : ''} and ${addonsCount} addon${addonsCount > 1 ? 's' : ''} added successfully`);
@@ -1662,11 +1740,14 @@ export default function InspectionEditPage() {
   const handleDeleteService = async () => {
     if (!serviceToDelete) return;
 
-    // @ts-ignore
-    const currentServices = inspectionDetails.services || [];
+    const pricing = inspectionDetails.pricing;
+    const pricingItems = pricing?.items || [];
+    
+    // Count services in pricing.items
+    const serviceItems = pricingItems.filter((item: any) => item.type === 'service');
     
     // Validation: An inspection must have at least 1 service
-    if (currentServices.length <= 1) {
+    if (serviceItems.length <= 1) {
       toast.error('An inspection must have at least one service. Cannot delete the last service.');
       setServiceToDelete(null);
       return;
@@ -1674,19 +1755,39 @@ export default function InspectionEditPage() {
 
     setDeletingService(true);
     try {
-      // @ts-ignore
-      const updatedServices = [...(inspectionDetails.services || [])];
-      updatedServices.splice(serviceToDelete.serviceIndex, 1);
+      // Find the service to delete
+      const serviceToDeleteId = typeof serviceToDelete.serviceId === 'string' 
+        ? serviceToDelete.serviceId 
+        : String(serviceToDelete.serviceId);
+      
+      // Remove service and all its addons from pricing.items
+      const updatedPricingItems = pricingItems.filter((item: any) => {
+        if (item.type === 'service') {
+          const itemServiceId = typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId);
+          return itemServiceId !== serviceToDeleteId;
+        } else if (item.type === 'addon') {
+          const itemServiceId = typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId);
+          // Keep addon if it belongs to a different service
+          return itemServiceId !== serviceToDeleteId;
+        }
+        // Keep additional items
+        return true;
+      });
 
       // Double-check validation before sending to API
-      if (updatedServices.length === 0) {
+      const remainingServices = updatedPricingItems.filter((item: any) => item.type === 'service');
+      if (remainingServices.length === 0) {
         throw new Error('An inspection must have at least one service');
       }
 
       const response = await fetch(`/api/inspections/${inspectionId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ services: updatedServices }),
+        body: JSON.stringify({ 
+          pricing: {
+            items: updatedPricingItems,
+          },
+        }),
       });
 
       if (!response.ok) {
@@ -1696,7 +1797,9 @@ export default function InspectionEditPage() {
 
       setInspectionDetails(prev => ({
         ...prev,
-        services: updatedServices
+        pricing: {
+          items: updatedPricingItems,
+        },
       }));
 
       // Refresh payment info
@@ -1717,23 +1820,34 @@ export default function InspectionEditPage() {
 
     setDeletingAddon(true);
     try {
-      // @ts-ignore
-      const updatedServices = [...(inspectionDetails.services || [])];
-      const service = updatedServices[addonToDelete.serviceIndex];
+      const pricing = inspectionDetails.pricing;
+      const pricingItems = pricing?.items || [];
       
-      if (service && service.addOns) {
-        const updatedAddons = [...service.addOns];
-        updatedAddons.splice(addonToDelete.addonIndex, 1);
-        updatedServices[addonToDelete.serviceIndex] = {
-          ...service,
-          addOns: updatedAddons
-        };
-      }
+      // Find and remove the addon from pricing.items
+      const serviceId = typeof addonToDelete.serviceId === 'string' 
+        ? addonToDelete.serviceId 
+        : String(addonToDelete.serviceId);
+      const addonName = addonToDelete.addonName?.toLowerCase();
+      
+      const updatedPricingItems = pricingItems.filter((item: any) => {
+        if (item.type === 'addon') {
+          const itemServiceId = typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId);
+          const itemAddonName = item.addonName?.toLowerCase();
+          // Remove if it matches both serviceId and addonName
+          return !(itemServiceId === serviceId && itemAddonName === addonName);
+        }
+        // Keep all other items
+        return true;
+      });
 
       const response = await fetch(`/api/inspections/${inspectionId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ services: updatedServices }),
+        body: JSON.stringify({ 
+          pricing: {
+            items: updatedPricingItems,
+          },
+        }),
       });
 
       if (!response.ok) {
@@ -1743,7 +1857,9 @@ export default function InspectionEditPage() {
 
       setInspectionDetails(prev => ({
         ...prev,
-        services: updatedServices
+        pricing: {
+          items: updatedPricingItems,
+        },
       }));
 
       // Refresh payment info
@@ -2946,20 +3062,55 @@ export default function InspectionEditPage() {
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="font-medium text-md">Current Services</h4>
-                    <Button
-                      size="sm"
-                      onClick={() => setServiceDialogOpen(true)}
-                      className="gap-2"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Services
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPricingModalOpen(true)}
+                        className="gap-2"
+                      >
+                        Edit Prices
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setServiceDialogOpen(true)}
+                        className="gap-2"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Services
+                      </Button>
+                    </div>
                   </div>
-                  {/* @ts-ignore */}
-                  {inspectionDetails.services && inspectionDetails.services.length > 0 ? (
-                    <div className="space-y-3">
-                      {/* @ts-ignore */}
-                      {inspectionDetails.services.map((service: any, index: number) => {
+                  {(() => {
+                    // Build services list from pricing.items
+                    const pricing = inspectionDetails.pricing;
+                    const pricingItems = pricing?.items || [];
+                    const serviceItems = pricingItems.filter((item: any) => item.type === 'service');
+                    const addonItems = pricingItems.filter((item: any) => item.type === 'addon');
+                    
+                    // Group addons by serviceId
+                    const addonsByService = new Map<string, any[]>();
+                    addonItems.forEach((addon: any) => {
+                      const serviceId = typeof addon.serviceId === 'string' ? addon.serviceId : String(addon.serviceId);
+                      if (!addonsByService.has(serviceId)) {
+                        addonsByService.set(serviceId, []);
+                      }
+                      addonsByService.get(serviceId)!.push(addon);
+                    });
+                    
+                    return serviceItems.length > 0 ? (
+                      <div className="space-y-3">
+                        {serviceItems.map((serviceItem: any, index: number) => {
+                          const service: any = {
+                            serviceId: serviceItem.serviceId,
+                            serviceName: serviceItem.name,
+                            baseCost: serviceItem.price,
+                            addOns: (addonsByService.get(typeof serviceItem.serviceId === 'string' ? serviceItem.serviceId : String(serviceItem.serviceId)) || []).map((addonItem: any) => ({
+                              name: addonItem.name,
+                              addFee: addonItem.price,
+                              addHours: addonItem.hours,
+                            })),
+                          };
                         // Find discount code if available
                         const discountCode = inspectionDetails.discountCodeId 
                           ? discountCodes.find((code: any) => code._id === inspectionDetails.discountCodeId)
@@ -2979,30 +3130,42 @@ export default function InspectionEditPage() {
                           return appliedIdString === serviceIdString;
                         });
                         
-                        // Get service base cost if available
-                        const serviceBaseCost = service.baseCost || 0;
+                        // Get service price from pricing.items if available, otherwise use baseCost
+                        const pricing = inspectionDetails.pricing;
+                        let servicePrice = service.baseCost || 0;
+                        let serviceOriginalPrice = service.baseCost || 0;
                         
-                        // Calculate service discount
+                        if (pricing && pricing.items && Array.isArray(pricing.items)) {
+                          const pricingItem = pricing.items.find(
+                            (item: any) => item.type === 'service' && 
+                            (typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId)) === serviceIdString
+                          );
+                          if (pricingItem) {
+                            servicePrice = pricingItem.price || 0;
+                            serviceOriginalPrice = pricingItem.originalPrice || pricingItem.price || 0;
+                          }
+                        }
+                        
+                        // Calculate service discount (applied to original price)
                         let serviceDiscount = 0;
-                        if (serviceMatches && serviceBaseCost > 0 && discountCode) {
+                        if (serviceMatches && serviceOriginalPrice > 0 && discountCode) {
                           if (discountCode.type === 'percent') {
-                            serviceDiscount = serviceBaseCost * (discountCode.value / 100);
+                            serviceDiscount = serviceOriginalPrice * (discountCode.value / 100);
                           } else {
                             serviceDiscount = discountCode.value;
                           }
                         }
-                        const serviceFinalPrice = Math.max(0, serviceBaseCost - serviceDiscount);
+                        const serviceFinalPrice = Math.max(0, servicePrice - serviceDiscount);
                         
                         // Check if this is the only service (must have at least 1 service)
-                        // @ts-ignore
-                        const isOnlyService = (inspectionDetails.services || []).length === 1;
+                        const isOnlyService = serviceItems.length === 1;
                         
                         return (
                           <div key={index} className="p-3 bg-card border rounded-lg">
                             <div className="flex items-center justify-between mb-2">
                               <p className="font-medium text-sm">{service.serviceName || 'Service'}</p>
                               <div className="flex items-center gap-2">
-                                {serviceBaseCost > 0 && (
+                                {servicePrice > 0 && (
                                   <div className="text-right text-xs">
                                     <span className={serviceDiscount > 0 ? 'font-medium text-green-600' : 'text-muted-foreground'}>
                                       ${serviceFinalPrice.toFixed(2)}
@@ -3016,7 +3179,7 @@ export default function InspectionEditPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => setServiceToDelete({ serviceIndex: index, serviceName: service.serviceName || 'Service' })}
+                                    onClick={() => setServiceToDelete({ serviceIndex: index, serviceName: service.serviceName || 'Service', serviceId: serviceItem.serviceId })}
                                     className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                     title="Delete service"
                                   >
@@ -3041,17 +3204,33 @@ export default function InspectionEditPage() {
                                       appliedAddOnName?.toLowerCase() === addon.name.toLowerCase();
                                   });
                                   
-                                  // Calculate add-on discount
-                                  const addOnFee = addon.addFee || 0;
+                                  // Get addon price from pricing.items if available, otherwise use addFee
+                                  const pricing = inspectionDetails.pricing;
+                                  let addOnPrice = addon.addFee || 0;
+                                  let addOnOriginalPrice = addon.addFee || 0;
+                                  
+                                  if (pricing && pricing.items && Array.isArray(pricing.items)) {
+                                    const pricingItem = pricing.items.find(
+                                      (item: any) => item.type === 'addon' && 
+                                      (typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId)) === serviceIdString &&
+                                      item.addonName?.toLowerCase() === addon.name.toLowerCase()
+                                    );
+                                    if (pricingItem) {
+                                      addOnPrice = pricingItem.price || 0;
+                                      addOnOriginalPrice = pricingItem.originalPrice || pricingItem.price || 0;
+                                    }
+                                  }
+                                  
+                                  // Calculate add-on discount (applied to original price)
                                   let addOnDiscount = 0;
-                                  if (addOnMatches && addOnFee > 0 && discountCode) {
+                                  if (addOnMatches && addOnOriginalPrice > 0 && discountCode) {
                                     if (discountCode.type === 'percent') {
-                                      addOnDiscount = addOnFee * (discountCode.value / 100);
+                                      addOnDiscount = addOnOriginalPrice * (discountCode.value / 100);
                                     } else {
                                       addOnDiscount = discountCode.value;
                                     }
                                   }
-                                  const addOnFinalPrice = Math.max(0, addOnFee - addOnDiscount);
+                                  const addOnFinalPrice = Math.max(0, addOnPrice - addOnDiscount);
                                   
                                   return (
                                     <div key={addonIndex} className="flex items-center justify-between text-xs bg-muted/50 p-2 rounded">
@@ -3060,7 +3239,7 @@ export default function InspectionEditPage() {
                                         {addOnMatches && <span className="ml-2 text-green-600 text-[10px]">(Discounted)</span>}
                                       </span>
                                       <div className="flex items-center gap-2">
-                                        {addOnFee > 0 ? (
+                                        {addOnPrice > 0 ? (
                                           <span className={addOnDiscount > 0 ? 'font-medium text-green-600' : 'text-muted-foreground'}>
                                             ${addOnFinalPrice.toFixed(2)}
                                           </span>
@@ -3074,7 +3253,8 @@ export default function InspectionEditPage() {
                                             serviceIndex: index, 
                                             addonIndex, 
                                             addonName: addon.name,
-                                            serviceName: service.serviceName || 'Service'
+                                            serviceName: service.serviceName || 'Service',
+                                            serviceId: serviceItem.serviceId
                                           })}
                                           className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                           title="Delete add-on"
@@ -3097,7 +3277,8 @@ export default function InspectionEditPage() {
                     <div className="text-center py-4">
                       <p className="text-sm text-muted-foreground">No services</p>
                     </div>
-                  )}
+                  );
+                  })()}
                 </div>
 
                 {/* Pending Add-on Requests */}
@@ -3154,6 +3335,38 @@ export default function InspectionEditPage() {
                   )}
                 </div>
 
+                {/* Additional Items from Pricing */}
+                {inspectionDetails.pricing && inspectionDetails.pricing.items && Array.isArray(inspectionDetails.pricing.items) && (
+                  (() => {
+                    const additionalItems = inspectionDetails.pricing.items.filter(
+                      (item: any) => item.type === 'additional'
+                    );
+                    return additionalItems.length > 0 ? (
+                      <div className="mt-6 pt-4 border-t">
+                        <h4 className="font-medium text-md mb-3">Additional Items</h4>
+                        <div className="space-y-2">
+                          {additionalItems.map((item: any, index: number) => (
+                            <div key={index} className="p-3 bg-card border rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <p className="font-medium text-sm">{item.name}</p>
+                                <div className="flex items-center gap-2">
+                                  {item.price > 0 && (
+                                    <div className="text-right text-xs">
+                                      <span className="text-muted-foreground">
+                                        ${item.price.toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()
+                )}
+
                 {/* Processed Requests */}
                 {/* @ts-ignore */}
                 {inspectionDetails.requestedAddons && inspectionDetails.requestedAddons.filter((req: any) => req.status !== 'pending').length > 0 && (
@@ -3201,6 +3414,66 @@ export default function InspectionEditPage() {
                   </div>
                 ) : paymentInfo ? (
                   <div className="space-y-3">
+                    {/* Pricing Breakdown */}
+                    {inspectionDetails.pricing && inspectionDetails.pricing.items && Array.isArray(inspectionDetails.pricing.items) && inspectionDetails.pricing.items.length > 0 && (
+                      <div className="mb-4 pb-4 border-b">
+                        <h4 className="text-sm font-semibold mb-2">Pricing Breakdown</h4>
+                        <div className="space-y-1 text-xs">
+                          {(() => {
+                            const pricing = inspectionDetails.pricing;
+                            const services = pricing.items.filter((item: any) => item.type === 'service');
+                            const addons = pricing.items.filter((item: any) => item.type === 'addon');
+                            const additional = pricing.items.filter((item: any) => item.type === 'additional');
+                            
+                            // Group addons by serviceId
+                            const addonMap = new Map<string, any[]>();
+                            addons.forEach((addon: any) => {
+                              const serviceId = typeof addon.serviceId === 'string' ? addon.serviceId : String(addon.serviceId);
+                              if (!addonMap.has(serviceId)) {
+                                addonMap.set(serviceId, []);
+                              }
+                              addonMap.get(serviceId)!.push(addon);
+                            });
+                            
+                            return (
+                              <>
+                                {services.map((item: any, idx: number) => {
+                                  const service = inspectionDetails.services?.find((s: any) => {
+                                    const serviceId = typeof s.serviceId === 'string' ? s.serviceId : String(s.serviceId);
+                                    const itemServiceId = typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId);
+                                    return serviceId === itemServiceId;
+                                  });
+                                  const serviceId = typeof item.serviceId === 'string' ? item.serviceId : String(item.serviceId);
+                                  const serviceAddons = addonMap.get(serviceId) || [];
+                                  
+                                  return (
+                                    <div key={idx}>
+                                      <div className="flex justify-between text-muted-foreground">
+                                        <span className="pl-2 font-medium">{service?.serviceName || item.name}:</span>
+                                        <span className="font-medium">{formatCurrency(item.price)}</span>
+                                      </div>
+                                      {serviceAddons.map((addon: any, addonIdx: number) => (
+                                        <div key={addonIdx} className="flex justify-between text-muted-foreground">
+                                          <span className="pl-6">+ {addon.name}:</span>
+                                          <span>{formatCurrency(addon.price)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })}
+                                {additional.map((item: any, idx: number) => (
+                                  <div key={idx} className="flex justify-between text-muted-foreground">
+                                    <span className="pl-2">{item.name}:</span>
+                                    <span>{formatCurrency(item.price)}</span>
+                                  </div>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                    
                     {paymentInfo.subtotal > 0 && (
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Subtotal:</span>
@@ -4077,6 +4350,19 @@ export default function InspectionEditPage() {
         onOpenChange={setServiceDialogOpen}
         onSave={handleSaveServices}
         existingServices={inspectionDetails.services || []}
+      />
+
+      {/* Pricing Modal */}
+      <PricingModal
+        open={pricingModalOpen}
+        onOpenChange={setPricingModalOpen}
+        inspectionId={inspectionId}
+        services={inspectionDetails.services || []}
+        pricing={inspectionDetails.pricing}
+        onPricingUpdated={() => {
+          fetchInspectionDetails();
+          fetchPaymentInfo();
+        }}
       />
 
       {/* Delete Task Confirmation Dialog */}

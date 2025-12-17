@@ -53,7 +53,6 @@ export async function GET(
       token: token,
     })
       .populate('agreements.agreementId', 'name content')
-      .populate('services.serviceId', 'name baseCost')
       .populate('clients', 'firstName lastName companyName isCompany')
       .populate('discountCode', 'code type value active appliesToServices appliesToAddOns')
       .populate('companyId', 'website')
@@ -68,20 +67,13 @@ export async function GET(
       );
     }
 
-    // Calculate total price
+    // Calculate total price from pricing.items
     let subtotal = 0;
-    if (inspection.services && Array.isArray(inspection.services)) {
-      for (const serviceEntry of inspection.services) {
-        const service = serviceEntry.serviceId;
-        if (service && typeof service === 'object' && '_id' in service) {
-          const serviceCost = (service as any).baseCost || 0;
-          subtotal += serviceCost;
-
-          // Add add-ons cost
-          if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-            const addOnsCost = serviceEntry.addOns.reduce((sum, addOn) => sum + (addOn.addFee || 0), 0);
-            subtotal += addOnsCost;
-          }
+    const pricing = (inspection as any).pricing;
+    if (pricing && pricing.items && Array.isArray(pricing.items)) {
+      for (const item of pricing.items) {
+        if (item.type === 'service' || item.type === 'addon' || item.type === 'additional') {
+          subtotal += item.price || 0;
         }
       }
     }
@@ -97,15 +89,14 @@ export async function GET(
         
         // Only apply discount if there are services or add-ons configured
         if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
-          // Calculate discount for matching services
-          if (inspection.services && Array.isArray(inspection.services)) {
-            for (const serviceEntry of inspection.services) {
-              const service = serviceEntry.serviceId;
-              if (service && typeof service === 'object' && '_id' in service) {
-                const serviceId = service._id?.toString() || '';
-                const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+          // Calculate discount from pricing.items
+          if (pricing && pricing.items && Array.isArray(pricing.items)) {
+            for (const item of pricing.items) {
+              if (item.type === 'service' && item.serviceId) {
+                const serviceIdString = typeof item.serviceId === 'object' 
+                  ? item.serviceId._id?.toString() || item.serviceId.toString()
+                  : item.serviceId.toString();
                 
-                // Check if this service matches
                 const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
                   const appliedIdString = typeof appliedServiceId === 'string'
                     ? appliedServiceId
@@ -114,39 +105,36 @@ export async function GET(
                 });
                 
                 if (serviceMatches) {
-                  const serviceCost = (service as any).baseCost || 0;
+                  const originalPrice = item.originalPrice || item.price || 0;
                   if (discount.type === 'percent') {
-                    discountAmount += serviceCost * (discount.value / 100);
+                    discountAmount += originalPrice * (discount.value / 100);
                   } else {
-                    // Amount type: apply full amount per matching service
                     discountAmount += discount.value;
                   }
                 }
+              } else if (item.type === 'addon' && item.serviceId && item.addonName) {
+                const serviceIdString = typeof item.serviceId === 'object'
+                  ? item.serviceId._id?.toString() || item.serviceId.toString()
+                  : item.serviceId.toString();
                 
-                // Calculate discount for matching add-ons
-                if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-                  serviceEntry.addOns.forEach((addOn: any) => {
-                    const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
-                      const appliedServiceId = appliedAddOn.service;
-                      const appliedServiceIdString = typeof appliedServiceId === 'string'
-                        ? appliedServiceId
-                        : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
-                      const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
-                      
-                      return appliedServiceIdString === serviceIdString &&
-                        appliedAddOnName?.toLowerCase() === addOn.name?.toLowerCase();
-                    });
-                    
-                    if (addOnMatches) {
-                      const addOnFee = addOn.addFee || 0;
-                      if (discount.type === 'percent') {
-                        discountAmount += addOnFee * (discount.value / 100);
-                      } else {
-                        // Amount type: apply full amount per matching add-on
-                        discountAmount += discount.value;
-                      }
-                    }
-                  });
+                const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+                  const appliedServiceId = appliedAddOn.service;
+                  const appliedServiceIdString = typeof appliedServiceId === 'string'
+                    ? appliedServiceId
+                    : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                  const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                  
+                  return appliedServiceIdString === serviceIdString &&
+                    appliedAddOnName?.toLowerCase() === item.addonName?.toLowerCase();
+                });
+                
+                if (addOnMatches) {
+                  const originalPrice = item.originalPrice || item.price || 0;
+                  if (discount.type === 'percent') {
+                    discountAmount += originalPrice * (discount.value / 100);
+                  } else {
+                    discountAmount += discount.value;
+                  }
                 }
               }
             }
@@ -157,36 +145,24 @@ export async function GET(
 
     const total = Math.max(0, subtotal - discountAmount);
 
-    // Format services list
+    // Format services list from pricing.items
     const servicesList: string[] = [];
-    if (inspection.services && Array.isArray(inspection.services)) {
-      inspection.services.forEach((serviceEntry: any) => {
-        const service = serviceEntry.serviceId;
-        if (service && typeof service === 'object' && '_id' in service) {
-          servicesList.push((service as any).name || '');
+    if (pricing && pricing.items && Array.isArray(pricing.items)) {
+      const serviceItems = pricing.items.filter((item: any) => item.type === 'service');
+      serviceItems.forEach((item: any) => {
+        if (item.name) {
+          servicesList.push(item.name);
         }
       });
     }
 
-    // Format fees list (services with costs)
+    // Format fees list (services and addons with costs) from pricing.items
     const feesList: string[] = [];
-    if (inspection.services && Array.isArray(inspection.services)) {
-      inspection.services.forEach((serviceEntry: any) => {
-        const service = serviceEntry.serviceId;
-        if (service && typeof service === 'object' && '_id' in service) {
-          const serviceName = (service as any).name || '';
-          const serviceCost = (service as any).baseCost || 0;
-          if (serviceCost > 0) {
-            feesList.push(`${serviceName}: $${serviceCost.toFixed(2)}`);
-          }
-
-          // Add add-ons fees
-          if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-            serviceEntry.addOns.forEach((addOn: any) => {
-              if (addOn.addFee && addOn.addFee > 0) {
-                feesList.push(`${addOn.name}: $${addOn.addFee.toFixed(2)}`);
-              }
-            });
+    if (pricing && pricing.items && Array.isArray(pricing.items)) {
+      pricing.items.forEach((item: any) => {
+        if (item.price > 0) {
+          if (item.type === 'service' || item.type === 'addon' || item.type === 'additional') {
+            feesList.push(`${item.name}: $${item.price.toFixed(2)}`);
           }
         }
       });

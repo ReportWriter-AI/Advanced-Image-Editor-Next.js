@@ -47,7 +47,6 @@ export async function GET(
       _id: new mongoose.Types.ObjectId(inspectionId),
       token: token,
     })
-      .populate('services.serviceId', 'name baseCost')
       .populate('discountCode', 'code type value active appliesToServices appliesToAddOns')
       .populate('clients', 'firstName lastName companyName isCompany')
       .populate('companyId', 'name website')
@@ -86,82 +85,72 @@ export async function GET(
       addOnName?: string;
     }> = [];
 
-    // Add services and their addons
-    if (inspection.services && Array.isArray(inspection.services)) {
-      for (const serviceEntry of inspection.services) {
-        const service = serviceEntry.serviceId;
-        if (service && typeof service === 'object' && '_id' in service) {
-          const serviceName = (service as any).name || '';
-          const serviceCost = (service as any).baseCost || 0;
-          const serviceId = service._id?.toString() || '';
-          const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+    const pricing = (inspection as any).pricing;
+    
+    // Use pricing.items if available, otherwise fall back to services
+    if (pricing && pricing.items && Array.isArray(pricing.items) && pricing.items.length > 0) {
+      // Build invoice items from pricing items
+      for (const item of pricing.items) {
+        if (item.price > 0) {
+          const serviceIdString = item.serviceId 
+            ? (typeof item.serviceId === 'object' 
+                ? item.serviceId._id?.toString() || item.serviceId.toString()
+                : item.serviceId.toString())
+            : '';
           
-          if (serviceCost > 0) {
+          let itemDiscount = 0;
+          let matchesDiscount = false;
+          
+          if (item.type === 'service' && item.serviceId) {
             // Check if service matches discount
-            const serviceMatches = hasDiscount && appliesToServices.some((appliedServiceId: any) => {
+            matchesDiscount = hasDiscount && appliesToServices.some((appliedServiceId: any) => {
               const appliedIdString = typeof appliedServiceId === 'string'
                 ? appliedServiceId
                 : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
               return appliedIdString === serviceIdString;
             });
             
-            let itemDiscount = 0;
-            if (serviceMatches && discountObj) {
+            if (matchesDiscount && discountObj) {
+              const originalPrice = item.originalPrice || item.price;
               if (discountObj.type === 'percent') {
-                itemDiscount = serviceCost * (discountObj.value / 100);
+                itemDiscount = originalPrice * (discountObj.value / 100);
               } else {
                 itemDiscount = discountObj.value;
               }
             }
+          } else if (item.type === 'addon' && item.serviceId && item.addonName) {
+            // Check if add-on matches discount
+            matchesDiscount = hasDiscount && appliesToAddOns.some((appliedAddOn: any) => {
+              const appliedServiceId = appliedAddOn.service;
+              const appliedServiceIdString = typeof appliedServiceId === 'string'
+                ? appliedServiceId
+                : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+              const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+              
+              return appliedServiceIdString === serviceIdString &&
+                appliedAddOnName?.toLowerCase() === item.addonName?.toLowerCase();
+            });
             
-            invoiceItems.push({
-              description: serviceName,
-              quantity: 1,
-              realPrice: serviceCost,
-              discountedPrice: Math.max(0, serviceCost - itemDiscount),
-              discountCode: serviceMatches ? discountCode : undefined,
-              serviceId: serviceIdString,
-            });
-          }
-
-          // Add add-ons
-          if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-            serviceEntry.addOns.forEach((addOn: any) => {
-              if (addOn.addFee && addOn.addFee > 0) {
-                // Check if add-on matches discount
-                const addOnMatches = hasDiscount && appliesToAddOns.some((appliedAddOn: any) => {
-                  const appliedServiceId = appliedAddOn.service;
-                  const appliedServiceIdString = typeof appliedServiceId === 'string'
-                    ? appliedServiceId
-                    : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
-                  const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
-                  
-                  return appliedServiceIdString === serviceIdString &&
-                    appliedAddOnName?.toLowerCase() === addOn.name?.toLowerCase();
-                });
-                
-                let itemDiscount = 0;
-                if (addOnMatches && discountObj) {
-                  if (discountObj.type === 'percent') {
-                    itemDiscount = addOn.addFee * (discountObj.value / 100);
-                  } else {
-                    itemDiscount = discountObj.value;
-                  }
-                }
-                
-                invoiceItems.push({
-                  description: addOn.name,
-                  quantity: 1,
-                  realPrice: addOn.addFee,
-                  discountedPrice: Math.max(0, addOn.addFee - itemDiscount),
-                  discountCode: addOnMatches ? discountCode : undefined,
-                  serviceId: serviceIdString,
-                  isAddOn: true,
-                  addOnName: addOn.name,
-                });
+            if (matchesDiscount && discountObj) {
+              const originalPrice = item.originalPrice || item.price;
+              if (discountObj.type === 'percent') {
+                itemDiscount = originalPrice * (discountObj.value / 100);
+              } else {
+                itemDiscount = discountObj.value;
               }
-            });
+            }
           }
+          
+          invoiceItems.push({
+            description: item.name,
+            quantity: 1,
+            realPrice: item.price, // Use inspection-specific price
+            discountedPrice: Math.max(0, item.price - itemDiscount), // Apply discount to original price but subtract from inspection price
+            discountCode: matchesDiscount ? discountCode : undefined,
+            serviceId: serviceIdString,
+            isAddOn: item.type === 'addon',
+            addOnName: item.type === 'addon' ? item.addonName : undefined,
+          });
         }
       }
     }

@@ -70,6 +70,8 @@ export async function GET(request: NextRequest, context: RouteParams) {
         type: discountCode.type,
         value: discountCode.value,
         description: discountCode.description,
+        appliesToServices: discountCode.appliesToServices || [],
+        appliesToAddOns: discountCode.appliesToAddOns || [],
       },
     });
   } catch (error: any) {

@@ -77,7 +77,6 @@ export async function POST(req: NextRequest) {
 
         // Get inspection to check if payment already processed (idempotency)
         const inspection = await Inspection.findById(inspectionId)
-          .populate('services.serviceId', 'name baseCost')
           .populate('discountCode', 'code type value active appliesToServices appliesToAddOns')
           .lean();
         if (!inspection) {
@@ -111,20 +110,20 @@ export async function POST(req: NextRequest) {
         const newAmountPaid = currentAmountPaid + paymentAmount;
 
       // Calculate total to determine if fully paid (same logic as payment endpoint)
+      // Use pricing.items
       let subtotal = 0;
-      if (inspection.services && Array.isArray(inspection.services)) {
-        for (const serviceEntry of inspection.services) {
-          const service = serviceEntry.serviceId;
-          if (service && typeof service === 'object' && '_id' in service) {
-            const serviceCost = (service as any).baseCost || 0;
-            subtotal += serviceCost;
-            if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-              const addOnsCost = serviceEntry.addOns.reduce((sum, addOn) => sum + (addOn.addFee || 0), 0);
-              subtotal += addOnsCost;
-            }
+      const pricing = (inspection as any).pricing;
+      
+      if (pricing && pricing.items && Array.isArray(pricing.items) && pricing.items.length > 0) {
+        // Use pricing items for subtotal (inspection-specific prices)
+        for (const item of pricing.items) {
+          if (item.type === 'service' || item.type === 'addon' || item.type === 'additional') {
+            subtotal += item.price || 0;
           }
         }
       }
+      
+      // Add approved requested addons (these are not in pricing.items)
       if (inspection.requestedAddons && Array.isArray(inspection.requestedAddons)) {
         const approvedAddons = inspection.requestedAddons.filter((addon: any) => addon.status === 'approved');
         for (const addon of approvedAddons) {
@@ -135,6 +134,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Calculate discount
+      // Discounts apply to original prices (from Service model), not inspection-specific prices
       let discountAmount = 0;
       const discountCode = inspection.discountCode;
       if (discountCode && typeof discountCode === 'object' && '_id' in discountCode) {
@@ -144,12 +144,13 @@ export async function POST(req: NextRequest) {
           const appliesToAddOns = discount.appliesToAddOns || [];
           
           if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
-            if (inspection.services && Array.isArray(inspection.services)) {
-              for (const serviceEntry of inspection.services) {
-                const service = serviceEntry.serviceId;
-                if (service && typeof service === 'object' && '_id' in service) {
-                  const serviceId = service._id?.toString() || '';
-                  const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+            if (pricing && pricing.items && Array.isArray(pricing.items) && pricing.items.length > 0) {
+              // Use pricing items - apply discount to originalPrice
+              for (const item of pricing.items) {
+                if (item.type === 'service' && item.serviceId) {
+                  const serviceIdString = typeof item.serviceId === 'object' 
+                    ? item.serviceId._id?.toString() || item.serviceId.toString()
+                    : item.serviceId.toString();
                   
                   const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
                     const appliedIdString = typeof appliedServiceId === 'string'
@@ -159,41 +160,42 @@ export async function POST(req: NextRequest) {
                   });
                   
                   if (serviceMatches) {
-                    const serviceCost = (service as any).baseCost || 0;
+                    const originalPrice = item.originalPrice || 0;
                     if (discount.type === 'percent') {
-                      discountAmount += serviceCost * (discount.value / 100);
+                      discountAmount += originalPrice * (discount.value / 100);
                     } else {
                       discountAmount += discount.value;
                     }
                   }
+                } else if (item.type === 'addon' && item.serviceId && item.addonName) {
+                  const serviceIdString = typeof item.serviceId === 'object'
+                    ? item.serviceId._id?.toString() || item.serviceId.toString()
+                    : item.serviceId.toString();
                   
-                  if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-                    serviceEntry.addOns.forEach((addOn: any) => {
-                      const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
-                        const appliedServiceId = appliedAddOn.service;
-                        const appliedServiceIdString = typeof appliedServiceId === 'string'
-                          ? appliedServiceId
-                          : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
-                        const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
-                        
-                        return appliedServiceIdString === serviceIdString &&
-                          appliedAddOnName?.toLowerCase() === addOn.name?.toLowerCase();
-                      });
-                      
-                      if (addOnMatches) {
-                        const addOnFee = addOn.addFee || 0;
-                        if (discount.type === 'percent') {
-                          discountAmount += addOnFee * (discount.value / 100);
-                        } else {
-                          discountAmount += discount.value;
-                        }
-                      }
-                    });
+                  const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+                    const appliedServiceId = appliedAddOn.service;
+                    const appliedServiceIdString = typeof appliedServiceId === 'string'
+                      ? appliedServiceId
+                      : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                    const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                    
+                    return appliedServiceIdString === serviceIdString &&
+                      appliedAddOnName?.toLowerCase() === item.addonName?.toLowerCase();
+                  });
+                  
+                  if (addOnMatches) {
+                    const originalPrice = item.originalPrice || 0;
+                    if (discount.type === 'percent') {
+                      discountAmount += originalPrice * (discount.value / 100);
+                    } else {
+                      discountAmount += discount.value;
+                    }
                   }
                 }
               }
             }
             
+            // Calculate discount for approved requested addons (not in pricing.items)
             if (inspection.requestedAddons && Array.isArray(inspection.requestedAddons)) {
               const approvedAddons = inspection.requestedAddons.filter((addon: any) => addon.status === 'approved');
               for (const addon of approvedAddons) {

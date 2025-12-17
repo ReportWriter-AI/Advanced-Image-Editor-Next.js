@@ -72,7 +72,6 @@ export async function POST(
       _id: new mongoose.Types.ObjectId(inspectionId),
       token: token,
     })
-      .populate('services.serviceId', 'name baseCost')
       .populate('discountCode', 'code type value active appliesToServices appliesToAddOns')
       .lean();
 
@@ -117,18 +116,13 @@ export async function POST(
         // Calculate current status
         const currentAmountPaid = inspection.paymentHistory?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
         
-        // Calculate total (same logic as payment endpoint)
+        // Calculate total (same logic as payment endpoint) from pricing.items
         let subtotal = 0;
-        if (inspection.services && Array.isArray(inspection.services)) {
-          for (const serviceEntry of inspection.services) {
-            const service = serviceEntry.serviceId;
-            if (service && typeof service === 'object' && '_id' in service) {
-              const serviceCost = (service as any).baseCost || 0;
-              subtotal += serviceCost;
-              if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-                const addOnsCost = serviceEntry.addOns.reduce((sum, addOn) => sum + (addOn.addFee || 0), 0);
-                subtotal += addOnsCost;
-              }
+        const pricing = (inspection as any).pricing;
+        if (pricing && pricing.items && Array.isArray(pricing.items)) {
+          for (const item of pricing.items) {
+            if (item.type === 'service' || item.type === 'addon' || item.type === 'additional') {
+              subtotal += item.price || 0;
             }
           }
         }
@@ -151,12 +145,12 @@ export async function POST(
             const appliesToAddOns = discount.appliesToAddOns || [];
             
             if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
-              if (inspection.services && Array.isArray(inspection.services)) {
-                for (const serviceEntry of inspection.services) {
-                  const service = serviceEntry.serviceId;
-                  if (service && typeof service === 'object' && '_id' in service) {
-                    const serviceId = service._id?.toString() || '';
-                    const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+              if (pricing && pricing.items && Array.isArray(pricing.items)) {
+                for (const item of pricing.items) {
+                  if (item.type === 'service' && item.serviceId) {
+                    const serviceIdString = typeof item.serviceId === 'object' 
+                      ? item.serviceId._id?.toString() || item.serviceId.toString()
+                      : item.serviceId.toString();
                     
                     const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
                       const appliedIdString = typeof appliedServiceId === 'string'
@@ -166,36 +160,36 @@ export async function POST(
                     });
                     
                     if (serviceMatches) {
-                      const serviceCost = (service as any).baseCost || 0;
+                      const originalPrice = item.originalPrice || item.price || 0;
                       if (discount.type === 'percent') {
-                        discountAmount += serviceCost * (discount.value / 100);
+                        discountAmount += originalPrice * (discount.value / 100);
                       } else {
                         discountAmount += discount.value;
                       }
                     }
+                  } else if (item.type === 'addon' && item.serviceId && item.addonName) {
+                    const serviceIdString = typeof item.serviceId === 'object'
+                      ? item.serviceId._id?.toString() || item.serviceId.toString()
+                      : item.serviceId.toString();
                     
-                    if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-                      serviceEntry.addOns.forEach((addOn: any) => {
-                        const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
-                          const appliedServiceId = appliedAddOn.service;
-                          const appliedServiceIdString = typeof appliedServiceId === 'string'
-                            ? appliedServiceId
-                            : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
-                          const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
-                          
-                          return appliedServiceIdString === serviceIdString &&
-                            appliedAddOnName?.toLowerCase() === addOn.name?.toLowerCase();
-                        });
-                        
-                        if (addOnMatches) {
-                          const addOnFee = addOn.addFee || 0;
-                          if (discount.type === 'percent') {
-                            discountAmount += addOnFee * (discount.value / 100);
-                          } else {
-                            discountAmount += discount.value;
-                          }
-                        }
-                      });
+                    const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+                      const appliedServiceId = appliedAddOn.service;
+                      const appliedServiceIdString = typeof appliedServiceId === 'string'
+                        ? appliedServiceId
+                        : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                      const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                      
+                      return appliedServiceIdString === serviceIdString &&
+                        appliedAddOnName?.toLowerCase() === item.addonName?.toLowerCase();
+                    });
+                    
+                    if (addOnMatches) {
+                      const originalPrice = item.originalPrice || item.price || 0;
+                      if (discount.type === 'percent') {
+                        discountAmount += originalPrice * (discount.value / 100);
+                      } else {
+                        discountAmount += discount.value;
+                      }
                     }
                   }
                 }
@@ -253,18 +247,13 @@ export async function POST(
       const currentAmountPaid = inspection.paymentHistory?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
       const newAmountPaid = currentAmountPaid + paymentAmount;
 
-      // Calculate total to determine if fully paid (same logic as payment endpoint)
+      // Calculate total to determine if fully paid (same logic as payment endpoint) from pricing.items
       let subtotal = 0;
-      if (inspection.services && Array.isArray(inspection.services)) {
-        for (const serviceEntry of inspection.services) {
-          const service = serviceEntry.serviceId;
-          if (service && typeof service === 'object' && '_id' in service) {
-            const serviceCost = (service as any).baseCost || 0;
-            subtotal += serviceCost;
-            if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-              const addOnsCost = serviceEntry.addOns.reduce((sum, addOn) => sum + (addOn.addFee || 0), 0);
-              subtotal += addOnsCost;
-            }
+      const pricing = (inspection as any).pricing;
+      if (pricing && pricing.items && Array.isArray(pricing.items)) {
+        for (const item of pricing.items) {
+          if (item.type === 'service' || item.type === 'addon' || item.type === 'additional') {
+            subtotal += item.price || 0;
           }
         }
       }
@@ -287,12 +276,12 @@ export async function POST(
           const appliesToAddOns = discount.appliesToAddOns || [];
           
           if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
-            if (inspection.services && Array.isArray(inspection.services)) {
-              for (const serviceEntry of inspection.services) {
-                const service = serviceEntry.serviceId;
-                if (service && typeof service === 'object' && '_id' in service) {
-                  const serviceId = service._id?.toString() || '';
-                  const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+            if (pricing && pricing.items && Array.isArray(pricing.items)) {
+              for (const item of pricing.items) {
+                if (item.type === 'service' && item.serviceId) {
+                  const serviceIdString = typeof item.serviceId === 'object' 
+                    ? item.serviceId._id?.toString() || item.serviceId.toString()
+                    : item.serviceId.toString();
                   
                   const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
                     const appliedIdString = typeof appliedServiceId === 'string'
@@ -302,36 +291,36 @@ export async function POST(
                   });
                   
                   if (serviceMatches) {
-                    const serviceCost = (service as any).baseCost || 0;
+                    const originalPrice = item.originalPrice || item.price || 0;
                     if (discount.type === 'percent') {
-                      discountAmount += serviceCost * (discount.value / 100);
+                      discountAmount += originalPrice * (discount.value / 100);
                     } else {
                       discountAmount += discount.value;
                     }
                   }
+                } else if (item.type === 'addon' && item.serviceId && item.addonName) {
+                  const serviceIdString = typeof item.serviceId === 'object'
+                    ? item.serviceId._id?.toString() || item.serviceId.toString()
+                    : item.serviceId.toString();
                   
-                  if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-                    serviceEntry.addOns.forEach((addOn: any) => {
-                      const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
-                        const appliedServiceId = appliedAddOn.service;
-                        const appliedServiceIdString = typeof appliedServiceId === 'string'
-                          ? appliedServiceId
-                          : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
-                        const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
-                        
-                        return appliedServiceIdString === serviceIdString &&
-                          appliedAddOnName?.toLowerCase() === addOn.name?.toLowerCase();
-                      });
-                      
-                      if (addOnMatches) {
-                        const addOnFee = addOn.addFee || 0;
-                        if (discount.type === 'percent') {
-                          discountAmount += addOnFee * (discount.value / 100);
-                        } else {
-                          discountAmount += discount.value;
-                        }
-                      }
-                    });
+                  const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+                    const appliedServiceId = appliedAddOn.service;
+                    const appliedServiceIdString = typeof appliedServiceId === 'string'
+                      ? appliedServiceId
+                      : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                    const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                    
+                    return appliedServiceIdString === serviceIdString &&
+                      appliedAddOnName?.toLowerCase() === item.addonName?.toLowerCase();
+                  });
+                  
+                  if (addOnMatches) {
+                    const originalPrice = item.originalPrice || item.price || 0;
+                    if (discount.type === 'percent') {
+                      discountAmount += originalPrice * (discount.value / 100);
+                    } else {
+                      discountAmount += discount.value;
+                    }
                   }
                 }
               }
@@ -396,7 +385,6 @@ export async function POST(
         // Payment already exists (webhook processed it first)
         // Re-fetch to get current status
         const updatedInspection = await Inspection.findById(inspectionId)
-          .populate('services.serviceId', 'name baseCost')
           .populate('discountCode', 'code type value active appliesToServices appliesToAddOns')
           .lean();
         
@@ -405,16 +393,11 @@ export async function POST(
           
           // Calculate total
           let subtotal = 0;
-          if (updatedInspection.services && Array.isArray(updatedInspection.services)) {
-            for (const serviceEntry of updatedInspection.services) {
-              const service = serviceEntry.serviceId;
-              if (service && typeof service === 'object' && '_id' in service) {
-                const serviceCost = (service as any).baseCost || 0;
-                subtotal += serviceCost;
-                if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-                  const addOnsCost = serviceEntry.addOns.reduce((sum, addOn) => sum + (addOn.addFee || 0), 0);
-                  subtotal += addOnsCost;
-                }
+          const updatedPricing = (updatedInspection as any).pricing;
+          if (updatedPricing && updatedPricing.items && Array.isArray(updatedPricing.items)) {
+            for (const item of updatedPricing.items) {
+              if (item.type === 'service' || item.type === 'addon' || item.type === 'additional') {
+                subtotal += item.price || 0;
               }
             }
           }
@@ -436,12 +419,12 @@ export async function POST(
               const appliesToAddOns = discount.appliesToAddOns || [];
               
               if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
-                if (updatedInspection.services && Array.isArray(updatedInspection.services)) {
-                  for (const serviceEntry of updatedInspection.services) {
-                    const service = serviceEntry.serviceId;
-                    if (service && typeof service === 'object' && '_id' in service) {
-                      const serviceId = service._id?.toString() || '';
-                      const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+                if (updatedPricing && updatedPricing.items && Array.isArray(updatedPricing.items)) {
+                  for (const item of updatedPricing.items) {
+                    if (item.type === 'service' && item.serviceId) {
+                      const serviceIdString = typeof item.serviceId === 'object' 
+                        ? item.serviceId._id?.toString() || item.serviceId.toString()
+                        : item.serviceId.toString();
                       
                       const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
                         const appliedIdString = typeof appliedServiceId === 'string'
@@ -451,36 +434,36 @@ export async function POST(
                       });
                       
                       if (serviceMatches) {
-                        const serviceCost = (service as any).baseCost || 0;
+                        const originalPrice = item.originalPrice || item.price || 0;
                         if (discount.type === 'percent') {
-                          discountAmount += serviceCost * (discount.value / 100);
+                          discountAmount += originalPrice * (discount.value / 100);
                         } else {
                           discountAmount += discount.value;
                         }
                       }
+                    } else if (item.type === 'addon' && item.serviceId && item.addonName) {
+                      const serviceIdString = typeof item.serviceId === 'object'
+                        ? item.serviceId._id?.toString() || item.serviceId.toString()
+                        : item.serviceId.toString();
                       
-                      if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
-                        serviceEntry.addOns.forEach((addOn: any) => {
-                          const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
-                            const appliedServiceId = appliedAddOn.service;
-                            const appliedServiceIdString = typeof appliedServiceId === 'string'
-                              ? appliedServiceId
-                              : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
-                            const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
-                            
-                            return appliedServiceIdString === serviceIdString &&
-                              appliedAddOnName?.toLowerCase() === addOn.name?.toLowerCase();
-                          });
-                          
-                          if (addOnMatches) {
-                            const addOnFee = addOn.addFee || 0;
-                            if (discount.type === 'percent') {
-                              discountAmount += addOnFee * (discount.value / 100);
-                            } else {
-                              discountAmount += discount.value;
-                            }
-                          }
-                        });
+                      const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+                        const appliedServiceId = appliedAddOn.service;
+                        const appliedServiceIdString = typeof appliedServiceId === 'string'
+                          ? appliedServiceId
+                          : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+                        const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+                        
+                        return appliedServiceIdString === serviceIdString &&
+                          appliedAddOnName?.toLowerCase() === item.addonName?.toLowerCase();
+                      });
+                      
+                      if (addOnMatches) {
+                        const originalPrice = item.originalPrice || item.price || 0;
+                        if (discount.type === 'percent') {
+                          discountAmount += originalPrice * (discount.value / 100);
+                        } else {
+                          discountAmount += discount.value;
+                        }
                       }
                     }
                   }

@@ -12,14 +12,6 @@ export interface IInspection extends Document {
   createdBy?: mongoose.Types.ObjectId;
   inspector?: mongoose.Types.ObjectId;
   companyOwnerRequested?: boolean;
-  services?: Array<{
-    serviceId: mongoose.Types.ObjectId;
-    addOns?: Array<{
-      name: string;
-      addFee?: number;
-      addHours?: number;
-    }>;
-  }>;
   requestedAddons?: Array<{
     serviceId: mongoose.Types.ObjectId;
     addonName: string;
@@ -103,6 +95,17 @@ export interface IInspection extends Document {
     createdBy: mongoose.Types.ObjectId;
     createdAt: Date;
   }>;
+  pricing?: {
+    items: Array<{
+      type: 'service' | 'addon' | 'additional';
+      serviceId?: mongoose.Types.ObjectId;
+      addonName?: string;
+      name: string;
+      price: number;
+      originalPrice?: number;
+      hours?: number;
+    }>;
+  };
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -137,26 +140,6 @@ const InspectionSchema = new Schema<IInspection>(
       type: Boolean,
       default: false,
     },
-    services: [{
-      serviceId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Service',
-        required: true,
-      },
-      addOns: [{
-        name: {
-          type: String,
-          required: true,
-          trim: true,
-        },
-        addFee: {
-          type: Number,
-        },
-        addHours: {
-          type: Number,
-        },
-      }],
-    }],
     requestedAddons: [{
       serviceId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -441,6 +424,41 @@ const InspectionSchema = new Schema<IInspection>(
         default: Date.now,
       },
     }],
+    pricing: {
+      items: [{
+        type: {
+          type: String,
+          enum: ['service', 'addon', 'additional'],
+          required: true,
+        },
+        serviceId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Service',
+        },
+        addonName: {
+          type: String,
+          trim: true,
+        },
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        price: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+        originalPrice: {
+          type: Number,
+          min: 0,
+        },
+        hours: {
+          type: Number,
+          min: 0,
+        },
+      }],
+    },
     deletedAt: {
       type: Date,
       default: null,

@@ -69,9 +69,15 @@ export async function POST(
       );
     }
 
-    // Get service IDs from inspection
+    // Get service IDs from pricing.items
+    const pricing = (inspection as any).pricing;
+    const pricingItems = pricing?.items || [];
+    const serviceItems = pricingItems.filter((item: any) => item.type === 'service');
     const inspectionServiceIds = new Set(
-      (inspection.services || []).map((s: any) => s.serviceId.toString())
+      serviceItems.map((item: any) => {
+        const serviceId = item.serviceId;
+        return typeof serviceId === 'string' ? serviceId : String(serviceId);
+      })
     );
 
     // Validate each addon request

@@ -767,17 +767,74 @@ export default function SchedulePage() {
     }, 0);
 
     let discountAmount = 0;
+    const serviceDiscounts = new Map<string, number>(); // serviceId -> discount amount
+    const addOnDiscounts = new Map<string, number>(); // serviceId:addOnName -> discount amount
+
     if (discountDetails) {
-      if (discountDetails.type === 'percent') {
-        discountAmount = subtotal * (discountDetails.value / 100);
-      } else {
-        discountAmount = discountDetails.value;
+      const appliesToServices = discountDetails.appliesToServices || [];
+      const appliesToAddOns = discountDetails.appliesToAddOns || [];
+
+      // Only apply discount if there are services or add-ons configured
+      if (appliesToServices.length > 0 || appliesToAddOns.length > 0) {
+        // Calculate discount for matching services
+        selectedServices.forEach((selectedService) => {
+          const serviceId = selectedService.serviceId;
+          const serviceIdString = typeof serviceId === 'string' ? serviceId : String(serviceId);
+
+          // Check if this service matches
+          const serviceMatches = appliesToServices.some((appliedServiceId: any) => {
+            const appliedIdString = typeof appliedServiceId === 'string'
+              ? appliedServiceId
+              : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+            return appliedIdString === serviceIdString;
+          });
+
+          if (serviceMatches) {
+            const serviceCost = selectedService.service.baseCost || 0;
+            let itemDiscount = 0;
+            if (discountDetails.type === 'percent') {
+              itemDiscount = serviceCost * (discountDetails.value / 100);
+            } else {
+              // Amount type: apply full amount per matching service
+              itemDiscount = discountDetails.value;
+            }
+            discountAmount += itemDiscount;
+            serviceDiscounts.set(serviceIdString, itemDiscount);
+          }
+
+          // Calculate discount for matching add-ons
+          selectedService.addOns.forEach((addOn) => {
+            const addOnMatches = appliesToAddOns.some((appliedAddOn: any) => {
+              const appliedServiceId = appliedAddOn.service;
+              const appliedServiceIdString = typeof appliedServiceId === 'string'
+                ? appliedServiceId
+                : (appliedServiceId?._id ? String(appliedServiceId._id) : String(appliedServiceId));
+              const appliedAddOnName = appliedAddOn.addOnName || appliedAddOn.addonName;
+
+              return appliedServiceIdString === serviceIdString &&
+                appliedAddOnName?.toLowerCase() === addOn.name.toLowerCase();
+            });
+
+            if (addOnMatches) {
+              const addOnFee = addOn.addFee || 0;
+              let itemDiscount = 0;
+              if (discountDetails.type === 'percent') {
+                itemDiscount = addOnFee * (discountDetails.value / 100);
+              } else {
+                // Amount type: apply full amount per matching add-on
+                itemDiscount = discountDetails.value;
+              }
+              discountAmount += itemDiscount;
+              addOnDiscounts.set(`${serviceIdString}:${addOn.name}`, itemDiscount);
+            }
+          });
+        });
       }
     }
 
     const total = Math.max(0, subtotal - discountAmount);
 
-    return { subtotal, discountAmount, total };
+    return { subtotal, discountAmount, total, serviceDiscounts, addOnDiscounts };
   };
 
   const handleScheduleInspection = async () => {
@@ -1954,49 +2011,88 @@ export default function SchedulePage() {
               <div className="space-y-2">
                 <h4 className="font-medium">{hidePricing ? 'Services' : 'Services & Pricing'}</h4>
                 <div className="p-4 border rounded-lg bg-muted/20">
-                  {selectedServices.length > 0 ? (
-                    <div className="space-y-3">
-                      {selectedServices.map((selectedService, index) => {
-                        const service = selectedService.service;
+                  {selectedServices.length > 0 ? (() => {
+                    const totals = calculateTotal();
+                    return (
+                      <div className="space-y-3">
+                        {selectedServices.map((selectedService, index) => {
+                          const service = selectedService.service;
+                          const serviceIdString = typeof selectedService.serviceId === 'string' 
+                            ? selectedService.serviceId 
+                            : String(selectedService.serviceId);
+                          const serviceDiscount = totals.serviceDiscounts.get(serviceIdString) || 0;
+                          const servicePrice = service.baseCost || 0;
+                          const finalServicePrice = servicePrice - serviceDiscount;
+
                         return (
                           <div key={index}>
                             <div className={hidePricing ? "text-sm" : "flex justify-between text-sm"}>
                               <span>{service.name}</span>
-                              {!hidePricing && <span>${service.baseCost || 0}</span>}
+                              {!hidePricing && (
+                                <div className="flex items-center gap-2">
+                                  {serviceDiscount > 0 ? (
+                                    <>
+                                      <span className="line-through text-muted-foreground">${servicePrice.toFixed(2)}</span>
+                                      <span className="text-green-600 font-medium">${finalServicePrice.toFixed(2)}</span>
+                                    </>
+                                  ) : (
+                                    <span>${servicePrice.toFixed(2)}</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             {selectedService.addOns.length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
-                                {selectedService.addOns.map((addOn, addOnIndex) => (
-                                  <div key={addOnIndex} className={hidePricing ? "text-xs text-muted-foreground" : "flex justify-between text-xs text-muted-foreground"}>
-                                    <span>+ {addOn.name}</span>
-                                    {!hidePricing && <span>${addOn.addFee || 0}</span>}
-                                  </div>
-                                ))}
+                                {selectedService.addOns.map((addOn, addOnIndex) => {
+                                  const addOnKey = `${serviceIdString}:${addOn.name}`;
+                                  const addOnDiscount = totals.addOnDiscounts.get(addOnKey) || 0;
+                                  const addOnPrice = addOn.addFee || 0;
+                                  const finalAddOnPrice = addOnPrice - addOnDiscount;
+
+                                  return (
+                                    <div key={addOnIndex} className={hidePricing ? "text-xs text-muted-foreground" : "flex justify-between text-xs text-muted-foreground"}>
+                                      <span>+ {addOn.name}</span>
+                                      {!hidePricing && (
+                                        <div className="flex items-center gap-2">
+                                          {addOnDiscount > 0 ? (
+                                            <>
+                                              <span className="line-through text-muted-foreground">${addOnPrice.toFixed(2)}</span>
+                                              <span className="text-green-600 font-medium">${finalAddOnPrice.toFixed(2)}</span>
+                                            </>
+                                          ) : (
+                                            <span>${addOnPrice.toFixed(2)}</span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
                         );
-                      })}
-                      {!hidePricing && (
-                        <div className="border-t pt-2 mt-2">
-                          <div className="flex justify-between text-sm">
-                            <span>Subtotal</span>
-                            <span>${calculateTotal().subtotal.toFixed(2)}</span>
-                          </div>
-                          {discountDetails && (
-                            <div className="flex justify-between text-sm text-green-600 mt-1">
-                              <span>Discount ({discountDetails.code})</span>
-                              <span>-${calculateTotal().discountAmount.toFixed(2)}</span>
+                        })}
+                        {!hidePricing && (
+                          <div className="border-t pt-2 mt-2">
+                            <div className="flex justify-between text-sm">
+                              <span>Subtotal</span>
+                              <span>${totals.subtotal.toFixed(2)}</span>
                             </div>
-                          )}
-                          <div className="flex justify-between font-semibold mt-2">
-                            <span>Total</span>
-                            <span>${calculateTotal().total.toFixed(2)}</span>
+                            {discountDetails && totals.discountAmount > 0 && (
+                              <div className="flex justify-between text-sm text-green-600 mt-1">
+                                <span>Discount ({discountDetails.code})</span>
+                                <span>-${totals.discountAmount.toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between font-semibold mt-2">
+                              <span>Total</span>
+                              <span>${totals.total.toFixed(2)}</span>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
+                        )}
+                      </div>
+                    );
+                  })() : (
                     <p className="text-sm text-muted-foreground">No services selected</p>
                   )}
                 </div>

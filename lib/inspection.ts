@@ -4,6 +4,7 @@ import Inspection, { IInspection } from "@/src/models/Inspection";
 import mongoose from "mongoose";
 import Client from "@/src/models/Client";
 import Agent from "@/src/models/Agent";
+import Service from "@/src/models/Service";
 import { IUser } from "@/src/models/User";
 import { IDiscountCode } from "@/src/models/DiscountCode";
 
@@ -21,7 +22,7 @@ type CreateInspectionParams = {
       addFee?: number;
       addHours?: number;
     }>;
-  }>;
+  }>; // Still accepted for initializePricingFromServices, but not stored in services array
   discountCode?: string;
   location?: {
     address?: string;
@@ -200,27 +201,42 @@ const formatInspection = (doc: IInspection | null) => {
         })
     : [];
 
-  // Format services with populated service names
-  const formattedServices = doc.services && Array.isArray(doc.services)
-    ? doc.services.map((service: any) => {
-        const serviceId = service.serviceId && typeof service.serviceId === 'object'
-          ? service.serviceId._id?.toString()
-          : service.serviceId?.toString();
-        const serviceName = service.serviceId && typeof service.serviceId === 'object'
-          ? service.serviceId.name
-          : '';
-        const baseCost = service.serviceId && typeof service.serviceId === 'object'
-          ? (service.serviceId.baseCost || 0)
-          : 0;
+  // Format services from pricing.items (build services list from pricing items)
+  // Fetch service names for services in pricing.items
+  const pricingItems = doc.pricing && doc.pricing.items && Array.isArray(doc.pricing.items) ? doc.pricing.items : [];
+  const serviceItems = pricingItems.filter((item: any) => item.type === 'service');
+  const addonItems = pricingItems.filter((item: any) => item.type === 'addon');
+  
+  // Group addons by serviceId
+  const addonMap = new Map<string, any[]>();
+  addonItems.forEach((addon: any) => {
+    const serviceId = addon.serviceId ? (typeof addon.serviceId === 'object' ? addon.serviceId._id?.toString() : addon.serviceId.toString()) : '';
+    if (serviceId) {
+      if (!addonMap.has(serviceId)) {
+        addonMap.set(serviceId, []);
+      }
+      addonMap.get(serviceId)!.push({
+        name: addon.name || addon.addonName || '',
+        addFee: addon.price || 0,
+        addHours: addon.hours || undefined,
+      });
+    }
+  });
 
-        return {
-          serviceId,
-          serviceName,
-          baseCost,
-          addOns: service.addOns || [],
-        };
-      })
-    : [];
+  // Build services array from pricing items
+  const formattedServices = serviceItems.map((item: any) => {
+    const serviceId = item.serviceId ? (typeof item.serviceId === 'object' ? item.serviceId._id?.toString() : item.serviceId.toString()) : '';
+    const serviceName = item.name || '';
+    const baseCost = item.price || 0;
+    const addOns = addonMap.get(serviceId) || [];
+
+    return {
+      serviceId,
+      serviceName,
+      baseCost,
+      addOns,
+    };
+  });
 
   // Format requested addons
   const formattedRequestedAddons = doc.requestedAddons && Array.isArray(doc.requestedAddons)
@@ -280,6 +296,19 @@ const formatInspection = (doc: IInspection | null) => {
       })
     : [];
 
+  // Format pricing items
+  const formattedPricing = doc.pricing && doc.pricing.items && Array.isArray(doc.pricing.items)
+    ? doc.pricing.items.map((item: any) => ({
+        type: item.type || 'service',
+        serviceId: item.serviceId ? (typeof item.serviceId === 'object' ? item.serviceId._id?.toString() : item.serviceId.toString()) : null,
+        addonName: item.addonName || null,
+        name: item.name || '',
+        price: item.price || 0,
+        originalPrice: item.originalPrice || null,
+        hours: item.hours || null,
+      }))
+    : [];
+
   return {
     _id: doc._id?.toString(),
     id: doc._id?.toString(),
@@ -318,6 +347,7 @@ const formatInspection = (doc: IInspection | null) => {
     listingAgent: formattedListingAgents,
     agreements: formattedAgreements,
     customData: doc.customData ?? {},
+    pricing: formattedPricing.length > 0 ? { items: formattedPricing } : null,
     closingDate: doc.closingDate ? {
       date: doc.closingDate.date ? new Date(doc.closingDate.date).toISOString() : null,
       lastModifiedBy: doc.closingDate.lastModifiedBy && typeof doc.closingDate.lastModifiedBy === 'object'
@@ -393,12 +423,8 @@ export async function createInspection({
     inspectionData.companyOwnerRequested = companyOwnerRequested;
   }
 
-  if (services && Array.isArray(services)) {
-    inspectionData.services = services.map(service => ({
-      serviceId: new mongoose.Types.ObjectId(service.serviceId),
-      addOns: service.addOns || [],
-    }));
-  }
+  // Services are now stored in pricing.items, not in services array
+  // The services parameter is still accepted to initialize pricing
 
   if (discountCode && mongoose.Types.ObjectId.isValid(discountCode)) {
     inspectionData.discountCode = new mongoose.Types.ObjectId(discountCode);
@@ -462,7 +488,26 @@ export async function createInspection({
   }
 
   const inspection = await Inspection.create(inspectionData);
-  return formatInspection(inspection);
+  
+  // Initialize pricing from services if services are provided
+  if (services && Array.isArray(services) && services.length > 0 && inspection._id) {
+    await initializePricingFromServices((inspection._id as mongoose.Types.ObjectId).toString(), services);
+  }
+  
+  // Reload inspection with pricing
+  const updatedInspection = await Inspection.findById(inspection._id)
+    .populate('inspector', 'firstName lastName email phoneNumber profileImageUrl')
+    .populate('clients', 'firstName lastName companyName email phone isCompany')
+    .populate('agreements.agreementId', 'name content')
+    .populate('agents', 'firstName lastName email phone photoUrl')
+    .populate('listingAgent', 'firstName lastName email phone photoUrl')
+    .populate('discountCode', 'code type value active')
+    .populate('officeNotes.createdBy', 'firstName lastName profileImageUrl')
+    .populate('closingDate.lastModifiedBy', 'firstName lastName')
+    .populate('endOfInspectionPeriod.lastModifiedBy', 'firstName lastName')
+    .lean();
+  
+  return formatInspection(updatedInspection as any);
 }
 
 // 2. Get all inspections for a company with filters and search
@@ -634,7 +679,6 @@ export async function getInspection(inspectionId: string) {
     .populate('officeNotes.createdBy', 'firstName lastName profileImageUrl')
     .populate('closingDate.lastModifiedBy', 'firstName lastName')
     .populate('endOfInspectionPeriod.lastModifiedBy', 'firstName lastName')
-    .populate('services.serviceId', 'name baseCost')
     .lean();
   return formatInspection(inspection as any);
 }
@@ -681,14 +725,17 @@ export async function updateInspection(inspectionId: string, data: Partial<{
   listingAgent: string[]; // array of listing agent IDs
   referralSource: string; // referral source
   discountCode: string; // discount code ID
-  services: Array<{
-    serviceId: string;
-    addOns?: Array<{
+  pricing: {
+    items: Array<{
+      type: 'service' | 'addon' | 'additional';
+      serviceId?: string;
+      addonName?: string;
       name: string;
-      addFee?: number;
-      addHours?: number;
+      price: number;
+      originalPrice?: number;
+      hours?: number;
     }>;
-  }>; // services with their addons
+  }; // pricing items (services and addons)
   customData: Record<string, any>; // custom field data
   internalNotes: string; // internal notes
   closingDate: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // closing date with metadata
@@ -718,14 +765,6 @@ export async function updateInspection(inspectionId: string, data: Partial<{
         acc[key] = value.map((id: string) => 
           mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id
         );
-      } else if (key === 'services' && Array.isArray(value)) {
-        // Handle services array with serviceId conversion to ObjectId
-        acc[key] = value.map((service: any) => ({
-          serviceId: mongoose.Types.ObjectId.isValid(service.serviceId) 
-            ? new mongoose.Types.ObjectId(service.serviceId) 
-            : service.serviceId,
-          addOns: service.addOns || [],
-        }));
       } else if (key === 'closingDate' || key === 'endOfInspectionPeriod') {
         // Handle date fields with metadata
         const dateField = value as { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date };
@@ -749,6 +788,22 @@ export async function updateInspection(inspectionId: string, data: Partial<{
           isSigned: agreement.isSigned !== undefined ? agreement.isSigned : false,
           inputData: agreement.inputData || {},
         }));
+      } else if (key === 'pricing' && value && typeof value === 'object' && 'items' in value) {
+        // Handle pricing field
+        const pricingData = value as { items: Array<any> };
+        acc[key] = {
+          items: pricingData.items.map((item: any) => ({
+            type: item.type || 'service',
+            serviceId: item.serviceId && mongoose.Types.ObjectId.isValid(item.serviceId)
+              ? new mongoose.Types.ObjectId(item.serviceId)
+              : item.serviceId,
+            addonName: item.addonName || undefined,
+            name: item.name || '',
+            price: typeof item.price === 'number' ? item.price : 0,
+            originalPrice: typeof item.originalPrice === 'number' ? item.originalPrice : undefined,
+            hours: typeof item.hours === 'number' ? item.hours : undefined,
+          })),
+        };
       } else {
         acc[key] = value;
       }
@@ -770,4 +825,109 @@ export async function updateInspection(inspectionId: string, data: Partial<{
     modifiedCount: result.modifiedCount,
     acknowledged: result.acknowledged,
   };
+}
+
+/**
+ * Initialize pricing items from services array
+ * Creates pricing items for each service and addon, preserving original prices
+ */
+export async function initializePricingFromServices(
+  inspectionId: string,
+  services: Array<{
+    serviceId: string;
+    addOns?: Array<{
+      name: string;
+      addFee?: number;
+      addHours?: number;
+    }>;
+  }>
+) {
+  if (!mongoose.Types.ObjectId.isValid(inspectionId)) {
+    throw new Error('Invalid inspection ID format');
+  }
+
+  await dbConnect();
+
+  const pricingItems: Array<{
+    type: 'service' | 'addon' | 'additional';
+    serviceId?: mongoose.Types.ObjectId;
+    addonName?: string;
+    name: string;
+    price: number;
+    originalPrice?: number;
+    hours?: number;
+  }> = [];
+
+  // Fetch all services to get their base costs and addon details
+  const serviceIds = services.map(s => new mongoose.Types.ObjectId(s.serviceId));
+  const serviceDocs = await Service.find({ _id: { $in: serviceIds } }).lean();
+
+  // Create a map for quick lookup
+  const serviceMap = new Map(
+    serviceDocs.map((s: any) => [s._id.toString(), s as any])
+  );
+
+  for (const serviceEntry of services) {
+    const serviceId = serviceEntry.serviceId;
+    const serviceDoc = serviceMap.get(serviceId) as any;
+
+    if (!serviceDoc) continue;
+
+    const serviceIdObj = new mongoose.Types.ObjectId(serviceId);
+    const serviceName = serviceDoc.name || 'Service';
+    const serviceBaseCost = serviceDoc.baseCost || 0;
+    const serviceBaseHours = serviceDoc.baseDurationHours || 0;
+
+    // Add service pricing item
+    pricingItems.push({
+      type: 'service',
+      serviceId: serviceIdObj,
+      name: serviceName,
+      price: serviceBaseCost,
+      originalPrice: serviceBaseCost,
+      hours: serviceBaseHours > 0 ? serviceBaseHours : undefined,
+    });
+
+    // Add addon pricing items
+    if (serviceEntry.addOns && Array.isArray(serviceEntry.addOns)) {
+      const serviceAddOns = (serviceDoc as any).addOns || [];
+      const addonMap = new Map(
+        serviceAddOns.map((a: any) => [a.name.toLowerCase(), a])
+      );
+
+      for (const addonEntry of serviceEntry.addOns) {
+        const addonName = addonEntry.name;
+        const addonFromService = addonMap.get(addonName.toLowerCase()) as any;
+        const addonFee = addonEntry.addFee || (addonFromService?.baseCost || 0);
+        const addonHours = addonEntry.addHours || (addonFromService?.baseDurationHours || 0);
+        const originalAddonFee = addonFromService?.baseCost || addonFee;
+
+        pricingItems.push({
+          type: 'addon',
+          serviceId: serviceIdObj,
+          addonName: addonName,
+          name: addonName,
+          price: addonFee,
+          originalPrice: originalAddonFee,
+          hours: addonHours > 0 ? addonHours : undefined,
+        });
+      }
+    }
+  }
+
+  // Update inspection with pricing
+  if (pricingItems.length > 0) {
+    await Inspection.findByIdAndUpdate(
+      new mongoose.Types.ObjectId(inspectionId),
+      {
+        $set: {
+          pricing: {
+            items: pricingItems,
+          },
+        },
+      }
+    );
+  }
+
+  return pricingItems;
 }

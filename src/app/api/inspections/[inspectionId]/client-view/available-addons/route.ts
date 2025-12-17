@@ -57,8 +57,13 @@ export async function GET(
       );
     }
 
+    // Get service IDs from pricing.items
+    const pricing = (inspection as any).pricing;
+    const pricingItems = pricing?.items || [];
+    const serviceItems = pricingItems.filter((item: any) => item.type === 'service');
+    
     // If no services, return empty array
-    if (!inspection.services || inspection.services.length === 0) {
+    if (serviceItems.length === 0) {
       return NextResponse.json({ addons: [] }, { status: 200 });
     }
 
@@ -70,9 +75,12 @@ export async function GET(
     );
 
     // Fetch all services with their addons
-    const serviceIds = inspection.services.map((s: any) => s.serviceId);
+    const serviceIds = serviceItems.map((item: any) => {
+      const serviceId = item.serviceId;
+      return typeof serviceId === 'string' ? serviceId : String(serviceId);
+    });
     const services = await Service.find({
-      _id: { $in: serviceIds }
+      _id: { $in: serviceIds.map((id: string) => new mongoose.Types.ObjectId(id)) }
     }).lean();
 
     // Build available addons list
