@@ -29,6 +29,7 @@ import TaskDialog from '../_components/TaskDialog';
 import TaskCommentsDialog from '../_components/TaskCommentsDialog';
 import ServiceSelectionDialog from './_components/ServiceSelectionDialog';
 import PricingModal from './_components/PricingModal';
+import PaymentManagementModal from './_components/PaymentManagementModal';
 import EventsManager from '@/components/EventsManager';
 
 const InformationSections = dynamic(() => import('../../../../../../components/InformationSections'), { 
@@ -259,6 +260,7 @@ export default function InspectionEditPage() {
   // Service selection dialog state
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
   // Payment state
   const [paymentInfo, setPaymentInfo] = useState<{
@@ -278,6 +280,8 @@ export default function InspectionEditPage() {
     }>;
   } | null>(null);
   const [loadingPayment, setLoadingPayment] = useState(false);
+  const [markingAsPaid, setMarkingAsPaid] = useState(false);
+  const [showMarkAsPaidDialog, setShowMarkAsPaidDialog] = useState(false);
 
   // Fetch inspection details
   const fetchInspectionDetails = async () => {
@@ -405,6 +409,53 @@ export default function InspectionEditPage() {
       setPaymentInfo(null);
     } finally {
       setLoadingPayment(false);
+    }
+  };
+
+  // Mark as paid handler - opens confirmation dialog
+  const handleMarkAsPaid = () => {
+    if (!paymentInfo || paymentInfo.remainingBalance <= 0) {
+      toast.error('No remaining balance to mark as paid');
+      return;
+    }
+    setShowMarkAsPaidDialog(true);
+  };
+
+  // Confirm mark as paid - actual API call
+  const confirmMarkAsPaid = async () => {
+    if (!paymentInfo || paymentInfo.remainingBalance <= 0) {
+      return;
+    }
+
+    setMarkingAsPaid(true);
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}/payment-history`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          amount: paymentInfo.remainingBalance,
+          paidAt: new Date().toISOString(),
+          currency: 'usd',
+          paymentMethod: 'Mark as Paid',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to mark as paid');
+      }
+
+      toast.success('Inspection marked as paid successfully');
+      setShowMarkAsPaidDialog(false);
+      await fetchPaymentInfo();
+    } catch (error: any) {
+      console.error('Error marking as paid:', error);
+      toast.error(error.message || 'Failed to mark as paid');
+    } finally {
+      setMarkingAsPaid(false);
     }
   };
 
@@ -3406,7 +3457,44 @@ export default function InspectionEditPage() {
 
               {/* Payments Section */}
               <div className="p-4 border rounded-lg bg-muted/50">
-                <h3 className="font-semibold text-lg mb-4">Payments</h3>
+                <div className="flex-col flex  gap-4  justify-between mb-4">
+                  <h3 className="font-semibold text-lg">Payments</h3>
+                    <div>
+                      {paymentInfo && !loadingPayment && (
+                        <div className="flex items-center gap-2">
+                          {paymentInfo.remainingBalance > 0 && (
+                            <Button
+                              size="sm"
+                              onClick={handleMarkAsPaid}
+                              disabled={markingAsPaid}
+                              className="gap-2 bg-green-600 hover:bg-green-700"
+                            >
+                              {markingAsPaid ? (
+                                <>
+                                  <i className="fas fa-spinner fa-spin"></i>
+                                  Marking...
+                                </>
+                              ) : (
+                                <>
+                                  <i className="fas fa-check-circle"></i>
+                                  Mark As Paid
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setPaymentModalOpen(true)}
+                            className="gap-2"
+                          >
+                            <i className="fas fa-money-bill-wave"></i>
+                            Manage Payments
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                </div>
                 
                 {loadingPayment ? (
                   <div className="flex items-center justify-center py-8">
@@ -4365,6 +4453,19 @@ export default function InspectionEditPage() {
         }}
       />
 
+      {/* Payment Management Modal */}
+      <PaymentManagementModal
+        open={paymentModalOpen}
+        onOpenChange={setPaymentModalOpen}
+        inspectionId={inspectionId}
+        paymentHistory={paymentInfo?.paymentHistory || []}
+        remainingBalance={paymentInfo?.remainingBalance || 0}
+        total={paymentInfo?.total || 0}
+        onPaymentUpdated={() => {
+          fetchPaymentInfo();
+        }}
+      />
+
       {/* Delete Task Confirmation Dialog */}
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
         <AlertDialogContent>
@@ -4500,6 +4601,41 @@ export default function InspectionEditPage() {
                 </>
               ) : (
                 'Remove'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Mark As Paid Confirmation Dialog */}
+      <AlertDialog open={showMarkAsPaidDialog} onOpenChange={(open) => !open && setShowMarkAsPaidDialog(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark As Paid</AlertDialogTitle>
+            <AlertDialogDescription>
+              {paymentInfo && paymentInfo.remainingBalance > 0 ? (
+                <>
+                  Mark this inspection as fully paid? This will create a payment of <strong>{formatCurrency(paymentInfo.remainingBalance)}</strong> with payment method "Mark as Paid".
+                </>
+              ) : (
+                'This inspection has no remaining balance to mark as paid.'
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={markingAsPaid}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmMarkAsPaid} 
+              disabled={markingAsPaid || !paymentInfo || paymentInfo.remainingBalance <= 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {markingAsPaid ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Marking...
+                </>
+              ) : (
+                'Mark As Paid'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
