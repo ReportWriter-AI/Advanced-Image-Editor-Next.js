@@ -3,12 +3,10 @@ import { createInspection, getAllInspections } from "@/lib/inspection";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import dbConnect from "@/lib/db";
 import Event from "@/src/models/Event";
-import OrderIdCounter from "@/src/models/OrderIdCounter";
 import Inspection from "@/src/models/Inspection";
-import Service from "@/src/models/Service";
 import mongoose from "mongoose";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
-import { generateSecureToken } from "@/src/lib/token-utils";
+import { processInspectionPostCreation } from "@/lib/inspection-utils";
 
 const mapInspectionResponse = (inspection: any) => {
   if (!inspection) return null;
@@ -55,46 +53,6 @@ export async function POST(req: NextRequest) {
     const internalNotes = body.internalNotes;
     const customData = body.customData || {};
 
-    // Generate Order ID using OrderIdCounter
-    let orderId: number | undefined = undefined;
-    try {
-      const counter = await OrderIdCounter.findOneAndUpdate(
-        { company: currentUser.company },
-        { $inc: { lastOrderId: 1 } },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-      orderId = counter.lastOrderId; // This will be 1001 for first inspection (1000 + 1)
-    } catch (error) {
-      console.error('Error generating Order ID:', error);
-      // Continue without orderId if generation fails
-    }
-
-    // Generate unique token for client view access
-    let token: string | undefined = undefined;
-    let tokenGenerationAttempts = 0;
-    const maxTokenAttempts = 5;
-    
-    while (tokenGenerationAttempts < maxTokenAttempts) {
-      try {
-        const generatedToken = generateSecureToken();
-        // Check if token already exists
-        const existingInspection = await Inspection.findOne({ token: generatedToken });
-        if (!existingInspection) {
-          token = generatedToken;
-          break;
-        }
-        tokenGenerationAttempts++;
-      } catch (error) {
-        console.error('Error generating token:', error);
-        tokenGenerationAttempts++;
-      }
-    }
-    
-    if (!token) {
-      console.error('Failed to generate unique token after multiple attempts');
-      // Continue without token - token is optional
-    }
-
     const inspection = await createInspection({
       status,
       date,
@@ -107,14 +65,21 @@ export async function POST(req: NextRequest) {
       location,
       requirePaymentToReleaseReports,
       paymentNotes,
-      orderId,
       referralSource: referralSource?.trim() || undefined,
       confirmedInspection,
       disableAutomatedNotifications,
       internalNotes: internalNotes?.trim() || undefined,
-      token,
       customData,
     });
+
+    // Process post-creation tasks: Order ID, token generation, and agreement collection
+    if (inspection?._id) {
+      await processInspectionPostCreation(
+        inspection._id,
+        currentUser.company as mongoose.Types.ObjectId,
+        services
+      );
+    }
 
     // Handle clients creation/update
     const clientIds: mongoose.Types.ObjectId[] = [];
@@ -206,57 +171,6 @@ export async function POST(req: NextRequest) {
         await Inspection.findByIdAndUpdate(inspection._id, {
           listingAgent: listingAgentIds,
         });
-      }
-    }
-
-    // Collect unique agreements from services
-    if (inspection?._id && services.length > 0) {
-      try {
-        const uniqueAgreementIds = new Set<string>();
-        
-        // Get all service IDs from the inspection
-        const serviceIds = services
-          .map((s: any) => s.serviceId)
-          .filter((id: any) => id && mongoose.Types.ObjectId.isValid(id))
-          .map((id: any) => new mongoose.Types.ObjectId(id));
-
-        if (serviceIds.length > 0) {
-          // Fetch all services to get their agreementIds
-          const fetchedServices = await Service.find({
-            _id: { $in: serviceIds },
-          }).select('agreementIds').lean();
-
-          // Collect agreementIds from main services
-          fetchedServices.forEach((service: any) => {
-            if (service.agreementIds && Array.isArray(service.agreementIds)) {
-              service.agreementIds.forEach((agreementId: any) => {
-                if (agreementId && mongoose.Types.ObjectId.isValid(agreementId)) {
-                  uniqueAgreementIds.add(agreementId.toString());
-                }
-              });
-            }
-          });
-
-          // Update inspection with unique agreement IDs (with isSigned: false by default)
-          if (uniqueAgreementIds.size > 0) {
-            const agreementObjects = Array.from(uniqueAgreementIds).map(
-              (id: string) => ({
-                agreementId: new mongoose.Types.ObjectId(id),
-                isSigned: false,
-              })
-            );
-            
-            // Fetch the document first to ensure proper schema handling
-            const inspectionDoc = await Inspection.findById(inspection._id);
-            if (inspectionDoc) {
-              inspectionDoc.agreements = agreementObjects;
-              await inspectionDoc.save();
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error collecting agreements from services:', error);
-        // Don't fail the inspection creation if agreement collection fails
       }
     }
 

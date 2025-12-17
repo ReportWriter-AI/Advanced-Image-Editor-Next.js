@@ -1170,18 +1170,32 @@ export default function SchedulePage() {
               </div>
 
               {/* Custom Fields Section */}
-              {companyId && (
-                <div className="space-y-4 border-t pt-6">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">Additional Information</h3>
+              {companyId && (() => {
+                const customData = form.watch('customData') || {};
+                // Check if customData has any meaningful data
+                const hasCustomData = Object.keys(customData).length > 0 && 
+                  Object.values(customData).some(value => {
+                    if (value === null || value === undefined || value === '') return false;
+                    if (Array.isArray(value) && value.length === 0) return false;
+                    if (typeof value === 'object' && Object.keys(value).length === 0) return false;
+                    return true;
+                  });
+                
+                if (!hasCustomData) return null;
+                
+                return (
+                  <div className="space-y-4 border-t pt-6">
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">Additional Information</h3>
+                    </div>
+                    <CustomFields
+                      control={form.control}
+                      customData={customData}
+                      companyId={companyId}
+                    />
                   </div>
-                  <CustomFields
-                    control={form.control}
-                    customData={form.watch('customData')}
-                    companyId={companyId}
-                  />
-                </div>
-              )}
+                );
+              })()}
 
               <div className="flex justify-end pt-4 border-t">
                 <Button onClick={handleNextTab} disabled={selectedServices.length === 0}>
