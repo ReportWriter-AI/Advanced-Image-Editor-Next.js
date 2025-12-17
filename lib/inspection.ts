@@ -693,6 +693,11 @@ export async function updateInspection(inspectionId: string, data: Partial<{
   internalNotes: string; // internal notes
   closingDate: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // closing date with metadata
   endOfInspectionPeriod: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // end of inspection period with metadata
+  agreements: Array<{
+    agreementId: string;
+    isSigned?: boolean;
+    inputData?: Record<string, any>;
+  }>; // agreements array
 }>) {
   if (!mongoose.Types.ObjectId.isValid(inspectionId)) {
     throw new Error('Invalid inspection ID format');
@@ -735,6 +740,15 @@ export async function updateInspection(inspectionId: string, data: Partial<{
           processedField.lastModifiedAt = dateField.lastModifiedAt ? new Date(dateField.lastModifiedAt) : new Date();
         }
         acc[key] = processedField;
+      } else if (key === 'agreements' && Array.isArray(value)) {
+        // Handle agreements array with agreementId conversion to ObjectId
+        acc[key] = value.map((agreement: any) => ({
+          agreementId: mongoose.Types.ObjectId.isValid(agreement.agreementId) 
+            ? new mongoose.Types.ObjectId(agreement.agreementId) 
+            : agreement.agreementId,
+          isSigned: agreement.isSigned !== undefined ? agreement.isSigned : false,
+          inputData: agreement.inputData || {},
+        }));
       } else {
         acc[key] = value;
       }

@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon } from 'lucide-react';
@@ -232,6 +233,11 @@ export default function InspectionEditPage() {
   // Agreements state
   const [agreements, setAgreements] = useState<any[]>([]);
   const [loadingAgreements, setLoadingAgreements] = useState(false);
+  const [availableAgreements, setAvailableAgreements] = useState<Array<{ value: string; label: string }>>([]);
+  const [loadingAvailableAgreements, setLoadingAvailableAgreements] = useState(false);
+  const [agreementToDelete, setAgreementToDelete] = useState<string | null>(null);
+  const [deletingAgreement, setDeletingAgreement] = useState(false);
+  const [addAgreementDialogOpen, setAddAgreementDialogOpen] = useState(false);
 
   // Service selection dialog state
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
@@ -337,6 +343,30 @@ export default function InspectionEditPage() {
     }
   };
 
+  // Fetch available agreements from company
+  const fetchAvailableAgreements = async () => {
+    try {
+      setLoadingAvailableAgreements(true);
+      const response = await fetch('/api/agreements', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        const agreementsList = (data.agreements || []).map((agreement: any) => ({
+          value: agreement._id,
+          label: agreement.name || 'Unnamed Agreement',
+        }));
+        setAvailableAgreements(agreementsList);
+      } else {
+        console.error('Failed to fetch available agreements');
+        setAvailableAgreements([]);
+      }
+    } catch (error) {
+      console.error('Error fetching available agreements:', error);
+      setAvailableAgreements([]);
+    } finally {
+      setLoadingAvailableAgreements(false);
+    }
+  };
+
   // Fetch payment information
   const fetchPaymentInfo = async () => {
     try {
@@ -385,6 +415,7 @@ export default function InspectionEditPage() {
       fetchTasks();
       fetchCompanyUsers();
       fetchAgreements();
+      fetchAvailableAgreements();
       fetchPaymentInfo();
       
       // Get current user ID
@@ -1728,6 +1759,104 @@ export default function InspectionEditPage() {
     }
   };
 
+  // Agreement management functions
+  const handleAddAgreement = async (agreementId: string) => {
+    try {
+      // Check if agreement already exists in inspection (prevent duplicates)
+      const existingAgreementIds = agreements.map((a: any) => {
+        // Handle both formatted (from formatInspection) and raw (from API) structures
+        const id = a._id || a.agreementId?._id || a.agreementId;
+        return id?.toString();
+      });
+      
+      if (existingAgreementIds.includes(agreementId)) {
+        toast.error('This agreement is already added to the inspection');
+        return;
+      }
+
+      // Get current agreements from inspection
+      const currentAgreements = agreements.map((a: any) => {
+        // Handle both formatted and raw structures
+        const id = a._id || a.agreementId?._id || a.agreementId;
+        return {
+          agreementId: id?.toString() || a.agreementId,
+          isSigned: a.isSigned || false,
+          inputData: a.inputData || {},
+        };
+      });
+
+      // Add new agreement
+      const updatedAgreements = [
+        ...currentAgreements,
+        {
+          agreementId,
+          isSigned: false,
+          inputData: {},
+        },
+      ];
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agreements: updatedAgreements }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add agreement');
+      }
+
+      // Refresh agreements list
+      await fetchAgreements();
+      toast.success('Agreement added successfully');
+      setAddAgreementDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error adding agreement:', error);
+      toast.error(error.message || 'Failed to add agreement');
+    }
+  };
+
+  const handleDeleteAgreement = async () => {
+    if (!agreementToDelete) return;
+
+    setDeletingAgreement(true);
+    try {
+      // Get current agreements and remove the one to delete
+      const updatedAgreements = agreements
+        .map((a: any) => {
+          // Handle both formatted and raw structures
+          const id = a._id || a.agreementId?._id || a.agreementId;
+          return {
+            agreementId: id?.toString() || a.agreementId,
+            isSigned: a.isSigned || false,
+            inputData: a.inputData || {},
+          };
+        })
+        .filter((a: any) => a.agreementId !== agreementToDelete);
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agreements: updatedAgreements }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete agreement');
+      }
+
+      // Refresh agreements list
+      await fetchAgreements();
+      toast.success('Agreement removed successfully');
+      setAgreementToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting agreement:', error);
+      toast.error(error.message || 'Failed to delete agreement');
+    } finally {
+      setDeletingAgreement(false);
+    }
+  };
+
   const startEditing = (defect: Defect) => {
     setEditingId(defect._id);
     setEditedValues({ ...defect });
@@ -2709,18 +2838,95 @@ export default function InspectionEditPage() {
 
               {/* Agreements Section */}
               <div className="p-4 border rounded-lg bg-muted/50">
-                <h3 className="font-semibold text-lg mb-4">Agreements</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-lg">Agreements</h3>
+                  <Dialog open={addAgreementDialogOpen} onOpenChange={setAddAgreementDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        disabled={loadingAgreements || deletingAgreement || loadingAvailableAgreements}
+                        className="gap-2"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Agreement
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Add Agreement</DialogTitle>
+                      </DialogHeader>
+                      <div className="py-4">
+                        {loadingAvailableAgreements ? (
+                          <div className="flex items-center justify-center py-8">
+                            <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
+                          </div>
+                        ) : (() => {
+                          const filteredAgreements = availableAgreements.filter((agreement) => {
+                            // Filter out already-added agreements
+                            const existingAgreementIds = agreements.map((a: any) => {
+                              // Handle both formatted and raw structures
+                              const id = a._id || a.agreementId?._id || a.agreementId;
+                              return id?.toString();
+                            });
+                            return !existingAgreementIds.includes(agreement.value);
+                          });
+
+                          return filteredAgreements.length === 0 ? (
+                            <div className="text-center py-8">
+                              <p className="text-sm text-muted-foreground">No available agreements to add</p>
+                            </div>
+                          ) : (
+                            <div className="max-h-[60vh] overflow-y-auto space-y-2">
+                              {filteredAgreements.map((agreement) => (
+                                <button
+                                  key={agreement.value}
+                                  onClick={() => {
+                                    handleAddAgreement(agreement.value);
+                                    setAddAgreementDialogOpen(false);
+                                  }}
+                                  className="w-full text-left p-3 bg-card border rounded-lg hover:bg-muted hover:shadow-sm transition-shadow"
+                                >
+                                  <p className="text-sm font-medium">{agreement.label}</p>
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
                 {loadingAgreements ? (
                   <div className="flex items-center justify-center py-8">
                     <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
                   </div>
                 ) : agreements.length > 0 ? (
                   <div className="space-y-2">
-                    {agreements.map((agreement, index) => (
-                      <div key={agreement._id || `agreement-${index}`} className="p-3 bg-card border rounded-lg hover:shadow-sm transition-shadow">
-                        <p className="text-sm font-medium">{agreement.name || 'Unnamed Agreement'}</p>
-                      </div>
-                    ))}
+                    {agreements.map((agreement, index) => {
+                      // Handle both formatted (from formatInspection) and raw (from API) structures
+                      const agreementId = agreement._id || agreement.agreementId?._id || agreement.agreementId;
+                      const agreementIdString = agreementId?.toString() || '';
+                      const agreementName = agreement.name || agreement.agreementId?.name || 'Unnamed Agreement';
+                      return (
+                        <div key={agreementIdString || `agreement-${index}`} className="p-3 bg-card border rounded-lg hover:shadow-sm transition-shadow flex items-center justify-between">
+                          <p className="text-sm font-medium">{agreementName}</p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setAgreementToDelete(agreementIdString)}
+                            disabled={deletingAgreement}
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            title="Remove agreement"
+                          >
+                            {deletingAgreement && agreementToDelete === agreementIdString ? (
+                              <i className="fas fa-spinner fa-spin text-xs"></i>
+                            ) : (
+                              <i className="fas fa-trash text-xs"></i>
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-8">
@@ -3979,6 +4185,35 @@ export default function InspectionEditPage() {
                 </>
               ) : (
                 'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Agreement Confirmation Dialog */}
+      <AlertDialog open={!!agreementToDelete} onOpenChange={(open) => !open && setAgreementToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Agreement</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this agreement from the inspection? This will not delete the agreement itself, only remove it from this inspection. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAgreement}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteAgreement} 
+              disabled={deletingAgreement}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {deletingAgreement ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Removing...
+                </>
+              ) : (
+                'Remove'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
