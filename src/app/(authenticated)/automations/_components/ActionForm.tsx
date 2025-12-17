@@ -159,6 +159,19 @@ export function ActionForm({
   const [placeholderTargetField, setPlaceholderTargetField] = useState<"subject" | "body" | null>(null);
   const quillRef = useRef<any>(null);
 
+  // Triggers that support both BEFORE and AFTER options
+  const TRIGGERS_WITH_BEFORE_AFTER = [
+    'INSPECTION_START_TIME',
+    'INSPECTION_END_TIME',
+    'INSPECTION_CLOSING_DATE',
+    'INSPECTION_END_OF_PERIOD_DATE',
+  ];
+
+  // Helper function to check if trigger supports BEFORE/AFTER
+  const supportsBeforeAfter = (triggerKey: string): boolean => {
+    return TRIGGERS_WITH_BEFORE_AFTER.includes(triggerKey);
+  };
+
   // Shared recipient options for To, CC, and BCC fields
   const recipientOptions = [
     { value: "CLIENTS", label: "Clients" },
@@ -255,7 +268,7 @@ export function ActionForm({
       communicationType: initialValues?.communicationType,
       sendTiming: initialValues?.sendTiming || "AFTER",
       sendDelay: initialValues?.sendDelay,
-      sendDelayUnit: initialValues?.sendDelayUnit,
+      sendDelayUnit: initialValues?.sendDelayUnit || "HOURS",
       onlyTriggerOnce: initialValues?.onlyTriggerOnce || false,
       alsoSendOnRecurringInspections: initialValues?.alsoSendOnRecurringInspections || false,
       sendEvenWhenNotificationsDisabled: initialValues?.sendEvenWhenNotificationsDisabled || false,
@@ -298,7 +311,7 @@ export function ActionForm({
         communicationType: initialValues.communicationType,
         sendTiming: initialValues.sendTiming || "AFTER",
         sendDelay: initialValues.sendDelay,
-        sendDelayUnit: initialValues.sendDelayUnit,
+        sendDelayUnit: initialValues.sendDelayUnit || "HOURS",
         onlyTriggerOnce: initialValues.onlyTriggerOnce || false,
         alsoSendOnRecurringInspections: initialValues.alsoSendOnRecurringInspections || false,
         sendEvenWhenNotificationsDisabled: initialValues.sendEvenWhenNotificationsDisabled || false,
@@ -332,6 +345,14 @@ export function ActionForm({
   useEffect(() => {
     form.setValue("conditionLogic", conditionLogic);
   }, [conditionLogic, form]);
+
+  // Enforce sendTiming to "AFTER" for triggers that don't support BEFORE/AFTER
+  const automationTrigger = form.watch("automationTrigger");
+  useEffect(() => {
+    if (automationTrigger && !supportsBeforeAfter(automationTrigger)) {
+      form.setValue("sendTiming", "AFTER");
+    }
+  }, [automationTrigger, form]);
 
   const fetchCategories = async () => {
     try {
@@ -623,23 +644,69 @@ export function ActionForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center space-x-2">
-          <Controller
-            name="isActive"
-            control={form.control}
-            render={({ field }) => (
-              <Checkbox
-                id="isActive"
-                checked={field.value}
-                onCheckedChange={(checked) => field.onChange(checked === true)}
-              />
-            )}
-          />
-          <Label htmlFor="isActive" className="text-sm font-normal cursor-pointer">
-            Active
-          </Label>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-medium">Conditions (Optional)</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAddCondition}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Condition
+          </Button>
         </div>
+
+        {conditions.length > 1 && (
+          <div className="space-y-2">
+            <Label>Connect conditions with</Label>
+            <Controller
+              name="conditionLogic"
+              control={form.control}
+              render={({ field }) => (
+                <ReactSelect
+                  value={{ value: conditionLogic, label: conditionLogic }}
+                  onChange={(option) => {
+                    const value = option?.value as "AND" | "OR";
+                    setConditionLogic(value);
+                    field.onChange(value);
+                  }}
+                  options={[
+                    // @ts-ignore
+                    { value: "AND", label: "AND (All conditions must be true)" },
+                    // @ts-ignore
+                    { value: "OR", label: "OR (At least one condition must be true)" },
+                  ]}
+                  className="react-select-container"
+                  classNamePrefix="react-select"
+                />
+              )}
+            />
+          </div>
+        )}
+
+        {conditions.length > 0 && (
+          <div className="space-y-3">
+            {conditions.map((condition, index) => (
+              <div key={index} className="relative">
+                {index > 0 && conditions.length > 1 && (
+                  <div className="flex items-center justify-center my-2">
+                    <span className="px-3 py-1 bg-muted rounded-md text-sm font-medium">
+                      {conditionLogic}
+                    </span>
+                  </div>
+                )}
+                <ConditionForm
+                  condition={condition}
+                  index={index}
+                  onChange={handleConditionChange}
+                  onRemove={handleConditionRemove}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -934,38 +1001,42 @@ export function ActionForm({
 
         {form.watch("communicationType") && (
           <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
-            <div className="space-y-2">
-              <Label>When should this be sent?</Label>
-              <Controller
-                name="sendTiming"
-                control={form.control}
-                render={({ field }) => (
-                  <div className="flex items-center space-x-3">
-                    <span
-                      className={`text-sm font-medium ${
-                        field.value === "AFTER" ? "text-foreground" : "text-muted-foreground"
-                      }`}
-                    >
-                      After
-                    </span>
-                    <Switch
-                      checked={field.value === "BEFORE"}
-                      onCheckedChange={(checked) => field.onChange(checked ? "BEFORE" : "AFTER")}
-                    />
-                    <span
-                      className={`text-sm font-medium ${
-                        field.value === "BEFORE" ? "text-foreground" : "text-muted-foreground"
-                      }`}
-                    >
-                      Before
-                    </span>
-                  </div>
-                )}
-              />
-            </div>
+            {supportsBeforeAfter(form.watch("automationTrigger") || "") && (
+              <div className="space-y-2">
+                <Label>When should this be sent?</Label>
+                <Controller
+                  name="sendTiming"
+                  control={form.control}
+                  render={({ field }) => (
+                    <div className="flex items-center space-x-3">
+                      <span
+                        className={`text-sm font-medium ${
+                          field.value === "AFTER" ? "text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
+                        After
+                      </span>
+                      <Switch
+                        checked={field.value === "BEFORE"}
+                        onCheckedChange={(checked) => field.onChange(checked ? "BEFORE" : "AFTER")}
+                      />
+                      <span
+                        className={`text-sm font-medium ${
+                          field.value === "BEFORE" ? "text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
+                        Before
+                      </span>
+                    </div>
+                  )}
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
-              <Label>Send communication after</Label>
+              <Label>
+                Send communication {form.watch("sendTiming") === "BEFORE" ? "before" : "after"}
+              </Label>
               <div className="flex items-center gap-2">
                 <Controller
                   name="sendDelay"
@@ -989,7 +1060,7 @@ export function ActionForm({
                   control={form.control}
                   render={({ field }) => (
                     <Select
-                      value={field.value || ""}
+                      value={field.value || "HOURS"}
                       onValueChange={field.onChange}
                     >
                       <SelectTrigger className="w-32">
@@ -1145,71 +1216,26 @@ export function ActionForm({
             </div>
           </div>
         )}
-      </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Label className="text-base font-medium">Conditions (Optional)</Label>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleAddCondition}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Condition
-          </Button>
-        </div>
 
-        {conditions.length > 1 && (
-          <div className="space-y-2">
-            <Label>Connect conditions with</Label>
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="isActive" className="text-sm font-normal">
+              Active
+            </Label>
             <Controller
-              name="conditionLogic"
+              name="isActive"
               control={form.control}
               render={({ field }) => (
-                <ReactSelect
-                  value={{ value: conditionLogic, label: conditionLogic }}
-                  onChange={(option) => {
-                    const value = option?.value as "AND" | "OR";
-                    setConditionLogic(value);
-                    field.onChange(value);
-                  }}
-                  options={[
-                    // @ts-ignore
-                    { value: "AND", label: "AND (All conditions must be true)" },
-                    // @ts-ignore
-                    { value: "OR", label: "OR (At least one condition must be true)" },
-                  ]}
-                  className="react-select-container"
-                  classNamePrefix="react-select"
+                <Switch
+                  id="isActive"
+                  checked={field.value}
+                  onCheckedChange={(checked) => field.onChange(checked === true)}
                 />
               )}
             />
           </div>
-        )}
-
-        {conditions.length > 0 && (
-          <div className="space-y-3">
-            {conditions.map((condition, index) => (
-              <div key={index} className="relative">
-                {index > 0 && conditions.length > 1 && (
-                  <div className="flex items-center justify-center my-2">
-                    <span className="px-3 py-1 bg-muted rounded-md text-sm font-medium">
-                      {conditionLogic}
-                    </span>
-                  </div>
-                )}
-                <ConditionForm
-                  condition={condition}
-                  index={index}
-                  onChange={handleConditionChange}
-                  onRemove={handleConditionRemove}
-                />
-              </div>
-            ))}
-          </div>
-        )}
+        </div>
       </div>
 
       <div className="flex justify-end gap-3 pt-4">
