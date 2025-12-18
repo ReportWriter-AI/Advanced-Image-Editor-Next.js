@@ -7,7 +7,7 @@ import LocationSearch from '../../../../../../components/LocationSearch';
 import FileUpload from '../../../../../../components/FileUpload';
 import { LOCATION_OPTIONS } from '../../../../../../constants/locations';
 import dynamic from 'next/dynamic';
-import { ArrowLeft, X, Plus } from 'lucide-react';
+import { ArrowLeft, X, Plus, Trash2, Power, PowerOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ReactSelect from 'react-select';
 import AsyncSelect from 'react-select/async';
@@ -25,6 +25,7 @@ import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { splitCommaSeparated } from '@/lib/utils';
+import { getTriggerByKey } from '@/src/lib/automation-triggers';
 import TaskDialog from '../_components/TaskDialog';
 import TaskCommentsDialog from '../_components/TaskCommentsDialog';
 import ServiceSelectionDialog from './_components/ServiceSelectionDialog';
@@ -248,6 +249,12 @@ export default function InspectionEditPage() {
   // Events state
   const [events, setEvents] = useState<any[]>([]);
 
+  // Triggers state
+  const [triggers, setTriggers] = useState<any[]>([]);
+  const [disablingTrigger, setDisablingTrigger] = useState<string | null>(null);
+  const [deletingTrigger, setDeletingTrigger] = useState<string | null>(null);
+  const [triggerToDelete, setTriggerToDelete] = useState<string | null>(null);
+
   // Agreements state
   const [agreements, setAgreements] = useState<any[]>([]);
   const [loadingAgreements, setLoadingAgreements] = useState(false);
@@ -290,6 +297,8 @@ export default function InspectionEditPage() {
       if (response.ok) {
         const data = await response.json();
         setInspectionDetails(data);
+        // Extract triggers from inspection data
+        setTriggers(data.triggers || []);
       } else {
         console.error('Failed to fetch inspection details');
       }
@@ -456,6 +465,61 @@ export default function InspectionEditPage() {
       toast.error(error.message || 'Failed to mark as paid');
     } finally {
       setMarkingAsPaid(false);
+    }
+  };
+
+  // Handle trigger disable/enable
+  const handleToggleTrigger = async (actionId: string, currentDisabled: boolean) => {
+    try {
+      setDisablingTrigger(actionId);
+      const response = await fetch(`/api/inspections/${inspectionId}/triggers/${actionId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ isDisabled: !currentDisabled }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update trigger');
+      }
+
+      toast.success(`Trigger ${!currentDisabled ? 'disabled' : 'enabled'} successfully`);
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error toggling trigger:', error);
+      toast.error(error.message || 'Failed to update trigger');
+    } finally {
+      setDisablingTrigger(null);
+    }
+  };
+
+  // Handle trigger delete
+  const handleDeleteTrigger = async () => {
+    if (!triggerToDelete) return;
+
+    try {
+      setDeletingTrigger(triggerToDelete);
+      const response = await fetch(`/api/inspections/${inspectionId}/triggers/${triggerToDelete}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete trigger');
+      }
+
+      toast.success('Trigger deleted successfully');
+      setTriggerToDelete(null);
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error deleting trigger:', error);
+      toast.error(error.message || 'Failed to delete trigger');
+    } finally {
+      setDeletingTrigger(null);
     }
   };
 
@@ -4402,6 +4466,207 @@ export default function InspectionEditPage() {
               </div>
             </div>
           </div>
+
+          {/* Automation Triggers Section - Full Width at Bottom */}
+          {triggers && triggers.length > 0 && (
+            <div className="mt-8 w-full">
+              <div className="border-t pt-6">
+                <h3 className="text-xl font-semibold mb-4">Automation Triggers</h3>
+                
+                {/* Email and Text Triggers Side by Side */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Email Triggers List */}
+                  {triggers.filter((t: any) => t.communicationType === 'EMAIL').length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-3 text-primary">Email Triggers</h4>
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="divide-y">
+                          {triggers
+                            .filter((t: any) => t.communicationType === 'EMAIL')
+                            .map((trigger: any, index: number) => {
+                              const triggerInfo = getTriggerByKey(trigger.automationTrigger);
+                              return (
+                                <div key={trigger.actionId || index} className={`p-4 hover:bg-muted/50 transition-colors ${trigger.isDisabled ? 'opacity-60' : ''}`}>
+                                  <div className="space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <h5 className="font-semibold text-sm">{trigger.name}</h5>
+                                          {trigger.isDisabled && (
+                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                              Disabled
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
+                                          trigger.status === 'sent' 
+                                            ? 'bg-green-100 text-green-800 border border-green-200' 
+                                            : trigger.status === 'bounced'
+                                            ? 'bg-red-100 text-red-800 border border-red-200'
+                                            : 'bg-gray-100 text-gray-800 border border-gray-200'
+                                        }`}>
+                                          {trigger.status || 'Pending'}
+                                        </span>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleToggleTrigger(trigger.actionId, trigger.isDisabled || false)}
+                                          disabled={disablingTrigger === trigger.actionId}
+                                          className="h-8 w-8"
+                                          title={trigger.isDisabled ? 'Enable trigger' : 'Disable trigger'}
+                                        >
+                                          {disablingTrigger === trigger.actionId ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : trigger.isDisabled ? (
+                                            <Power className="h-4 w-4" />
+                                          ) : (
+                                            <PowerOff className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => setTriggerToDelete(trigger.actionId)}
+                                          disabled={deletingTrigger === trigger.actionId}
+                                          className="h-8 w-8 text-destructive hover:text-destructive"
+                                          title="Delete trigger"
+                                        >
+                                          {deletingTrigger === trigger.actionId ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {triggerInfo?.title || trigger.automationTrigger}
+                                    </p>
+                                    {trigger.emailSubject && (
+                                      <p className="text-xs font-medium text-foreground">
+                                        Subject: {trigger.emailSubject}
+                                      </p>
+                                    )}
+                                    {trigger.sentAt && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Sent: {new Date(trigger.sentAt).toLocaleString('en-US', {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </p>
+                                    )}
+                                    {!trigger.sentAt && (
+                                      <p className="text-xs text-muted-foreground italic">Not sent yet</p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Text Triggers List */}
+                  {triggers.filter((t: any) => t.communicationType === 'TEXT').length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-3 text-primary">Text Triggers</h4>
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="divide-y">
+                          {triggers
+                            .filter((t: any) => t.communicationType === 'TEXT')
+                            .map((trigger: any, index: number) => {
+                              const triggerInfo = getTriggerByKey(trigger.automationTrigger);
+                              return (
+                                <div key={trigger.actionId || index} className={`p-4 hover:bg-muted/50 transition-colors ${trigger.isDisabled ? 'opacity-60' : ''}`}>
+                                  <div className="space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <h5 className="font-semibold text-sm">{trigger.name}</h5>
+                                          {trigger.isDisabled && (
+                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                              Disabled
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
+                                          trigger.status === 'sent' 
+                                            ? 'bg-green-100 text-green-800 border border-green-200' 
+                                            : trigger.status === 'bounced'
+                                            ? 'bg-red-100 text-red-800 border border-red-200'
+                                            : 'bg-gray-100 text-gray-800 border border-gray-200'
+                                        }`}>
+                                          {trigger.status || 'Pending'}
+                                        </span>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleToggleTrigger(trigger.actionId, trigger.isDisabled || false)}
+                                          disabled={disablingTrigger === trigger.actionId}
+                                          className="h-8 w-8"
+                                          title={trigger.isDisabled ? 'Enable trigger' : 'Disable trigger'}
+                                        >
+                                          {disablingTrigger === trigger.actionId ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : trigger.isDisabled ? (
+                                            <Power className="h-4 w-4" />
+                                          ) : (
+                                            <PowerOff className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => setTriggerToDelete(trigger.actionId)}
+                                          disabled={deletingTrigger === trigger.actionId}
+                                          className="h-8 w-8 text-destructive hover:text-destructive"
+                                          title="Delete trigger"
+                                        >
+                                          {deletingTrigger === trigger.actionId ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {triggerInfo?.title || trigger.automationTrigger}
+                                    </p>
+                                    {trigger.sentAt && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Sent: {new Date(trigger.sentAt).toLocaleString('en-US', {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </p>
+                                    )}
+                                    {!trigger.sentAt && (
+                                      <p className="text-xs text-muted-foreground italic">Not sent yet</p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           </>
         )}
       </div>
@@ -4465,6 +4730,28 @@ export default function InspectionEditPage() {
           fetchPaymentInfo();
         }}
       />
+
+      {/* Delete Trigger Confirmation Dialog */}
+      <AlertDialog open={!!triggerToDelete} onOpenChange={(open) => !open && setTriggerToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Trigger?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this automation trigger? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingTrigger !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTrigger}
+              disabled={deletingTrigger !== null}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingTrigger ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Task Confirmation Dialog */}
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>

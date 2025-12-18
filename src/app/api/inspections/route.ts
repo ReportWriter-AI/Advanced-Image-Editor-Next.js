@@ -6,7 +6,7 @@ import Event from "@/src/models/Event";
 import Inspection from "@/src/models/Inspection";
 import mongoose from "mongoose";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
-import { processInspectionPostCreation } from "@/lib/inspection-utils";
+import { processInspectionPostCreation, attachAutomationActionsToInspection } from "@/lib/inspection-utils";
 
 const mapInspectionResponse = (inspection: any) => {
   if (!inspection) return null;
@@ -78,6 +78,12 @@ export async function POST(req: NextRequest) {
         inspection._id,
         currentUser.company as mongoose.Types.ObjectId,
         services
+      );
+      
+      // Attach active automation actions to the inspection
+      await attachAutomationActionsToInspection(
+        inspection._id,
+        currentUser.company as mongoose.Types.ObjectId
       );
     }
 

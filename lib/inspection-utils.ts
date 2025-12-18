@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import OrderIdCounter from '@/src/models/OrderIdCounter';
 import Inspection from '@/src/models/Inspection';
 import Service from '@/src/models/Service';
+import AutomationAction from '@/src/models/AutomationAction';
 import { generateSecureToken } from '@/src/lib/token-utils';
 
 /**
@@ -140,5 +141,80 @@ export async function processInspectionPostCreation(
   }
 
   return result;
+}
+
+/**
+ * Attaches active automation actions to an inspection.
+ * Fetches all active automation actions for the company and stores them in the inspection's triggers field.
+ * 
+ * @param inspectionId - The ID of the inspection
+ * @param companyId - The company ID to filter automation actions
+ */
+export async function attachAutomationActionsToInspection(
+  inspectionId: string | mongoose.Types.ObjectId,
+  companyId: string | mongoose.Types.ObjectId
+): Promise<void> {
+  // Ensure inspectionId is valid
+  if (!inspectionId || !mongoose.Types.ObjectId.isValid(inspectionId)) {
+    console.error('Invalid inspection ID for attaching automation actions');
+    return;
+  }
+
+  // Ensure companyId is valid
+  if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+    console.error('Invalid company ID for attaching automation actions');
+    return;
+  }
+
+  const inspectionObjectId = new mongoose.Types.ObjectId(inspectionId);
+  const companyObjectId = new mongoose.Types.ObjectId(companyId);
+
+  try {
+    // Fetch all active automation actions for the company
+    const activeActions = await AutomationAction.find({
+      company: companyObjectId,
+      isActive: true,
+    }).lean();
+
+    if (activeActions.length === 0) {
+      // No active actions to attach
+      return;
+    }
+
+    // Map actions to trigger objects
+    const triggers = activeActions.map((action: any) => ({
+      actionId: action._id,
+      name: action.name || '',
+      automationTrigger: action.automationTrigger || '',
+      communicationType: action.communicationType,
+      conditions: action.conditions || [],
+      conditionLogic: action.conditionLogic,
+      sendTiming: action.sendTiming,
+      sendDelay: action.sendDelay,
+      sendDelayUnit: action.sendDelayUnit,
+      onlyTriggerOnce: action.onlyTriggerOnce,
+      alsoSendOnRecurringInspections: action.alsoSendOnRecurringInspections,
+      sendEvenWhenNotificationsDisabled: action.sendEvenWhenNotificationsDisabled,
+      sendDuringCertainHoursOnly: action.sendDuringCertainHoursOnly,
+      doNotSendOnWeekends: action.doNotSendOnWeekends,
+      emailTo: action.emailTo || [],
+      emailCc: action.emailCc || [],
+      emailBcc: action.emailBcc || [],
+      emailFrom: action.emailFrom,
+      emailSubject: action.emailSubject || '',
+      emailBody: action.emailBody || '',
+      // sentAt and status are initially undefined, will be set when email is sent
+      sentAt: undefined,
+      status: undefined,
+    }));
+
+    // Update inspection with triggers array
+    await Inspection.findByIdAndUpdate(inspectionObjectId, {
+      triggers: triggers,
+    });
+  } catch (error) {
+    console.error('Error attaching automation actions to inspection:', error);
+    // Don't fail the inspection creation if automation attachment fails
+  }
 }
 

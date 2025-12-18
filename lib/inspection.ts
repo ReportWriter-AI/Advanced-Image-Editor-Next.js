@@ -309,6 +309,35 @@ const formatInspection = (doc: IInspection | null) => {
       }))
     : [];
 
+  // Format triggers array
+  const formattedTriggers = doc.triggers && Array.isArray(doc.triggers)
+    ? doc.triggers.map((trigger: any) => ({
+        actionId: trigger.actionId ? (typeof trigger.actionId === 'object' ? trigger.actionId._id?.toString() : trigger.actionId.toString()) : null,
+        name: trigger.name || '',
+        automationTrigger: trigger.automationTrigger || '',
+        communicationType: trigger.communicationType || null,
+        conditions: trigger.conditions || [],
+        conditionLogic: trigger.conditionLogic || null,
+        sendTiming: trigger.sendTiming || null,
+        sendDelay: trigger.sendDelay || null,
+        sendDelayUnit: trigger.sendDelayUnit || null,
+        onlyTriggerOnce: trigger.onlyTriggerOnce || false,
+        alsoSendOnRecurringInspections: trigger.alsoSendOnRecurringInspections || false,
+        sendEvenWhenNotificationsDisabled: trigger.sendEvenWhenNotificationsDisabled || false,
+        sendDuringCertainHoursOnly: trigger.sendDuringCertainHoursOnly || false,
+        doNotSendOnWeekends: trigger.doNotSendOnWeekends || false,
+        emailTo: trigger.emailTo || [],
+        emailCc: trigger.emailCc || [],
+        emailBcc: trigger.emailBcc || [],
+        emailFrom: trigger.emailFrom || null,
+        emailSubject: trigger.emailSubject || '',
+        emailBody: trigger.emailBody || '',
+        sentAt: trigger.sentAt ? new Date(trigger.sentAt).toISOString() : null,
+        status: trigger.status || null,
+        isDisabled: trigger.isDisabled || false,
+      }))
+    : [];
+
   return {
     _id: doc._id?.toString(),
     id: doc._id?.toString(),
@@ -371,6 +400,7 @@ const formatInspection = (doc: IInspection | null) => {
       lastModifiedAt: doc.endOfInspectionPeriod.lastModifiedAt ? new Date(doc.endOfInspectionPeriod.lastModifiedAt).toISOString() : null,
     } : null,
     officeNotes: formattedOfficeNotes,
+    triggers: formattedTriggers,
     createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : null,
     updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : null,
   };

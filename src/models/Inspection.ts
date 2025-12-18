@@ -106,6 +106,45 @@ export interface IInspection extends Document {
       hours?: number;
     }>;
   };
+  triggers?: Array<{
+    actionId: mongoose.Types.ObjectId;
+    name: string;
+    automationTrigger: string;
+    communicationType?: 'EMAIL' | 'TEXT';
+    conditions?: Array<{
+      type: string;
+      operator: string;
+      value?: string;
+      serviceId?: mongoose.Types.ObjectId;
+      addonName?: string;
+      serviceCategory?: string;
+      categoryId?: mongoose.Types.ObjectId;
+      yearBuild?: number;
+      foundation?: string;
+      squareFeet?: number;
+      zipCode?: string;
+      city?: string;
+      state?: string;
+    }>;
+    conditionLogic?: 'AND' | 'OR';
+    sendTiming?: 'AFTER' | 'BEFORE';
+    sendDelay?: number;
+    sendDelayUnit?: 'MINUTES' | 'HOURS' | 'DAYS' | 'WEEKS' | 'MONTHS';
+    onlyTriggerOnce?: boolean;
+    alsoSendOnRecurringInspections?: boolean;
+    sendEvenWhenNotificationsDisabled?: boolean;
+    sendDuringCertainHoursOnly?: boolean;
+    doNotSendOnWeekends?: boolean;
+    emailTo?: string[];
+    emailCc?: string[];
+    emailBcc?: string[];
+    emailFrom?: 'COMPANY' | 'INSPECTOR';
+    emailSubject?: string;
+    emailBody?: string;
+    sentAt?: Date;
+    status?: 'sent' | 'bounced';
+    isDisabled?: boolean;
+  }>;
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -459,6 +498,149 @@ const InspectionSchema = new Schema<IInspection>(
         },
       }],
     },
+    triggers: [{
+      actionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'AutomationAction',
+        required: true,
+      },
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      automationTrigger: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      communicationType: {
+        type: String,
+        enum: ['EMAIL', 'TEXT'],
+      },
+      conditions: [{
+        type: {
+          type: String,
+          required: true,
+        },
+        operator: {
+          type: String,
+          required: true,
+        },
+        value: {
+          type: String,
+          trim: true,
+        },
+        serviceId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Service',
+        },
+        addonName: {
+          type: String,
+          trim: true,
+        },
+        serviceCategory: {
+          type: String,
+          trim: true,
+        },
+        categoryId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Category',
+        },
+        yearBuild: {
+          type: Number,
+        },
+        foundation: {
+          type: String,
+          trim: true,
+        },
+        squareFeet: {
+          type: Number,
+        },
+        zipCode: {
+          type: String,
+          trim: true,
+        },
+        city: {
+          type: String,
+          trim: true,
+        },
+        state: {
+          type: String,
+          trim: true,
+        },
+      }],
+      conditionLogic: {
+        type: String,
+        enum: ['AND', 'OR'],
+      },
+      sendTiming: {
+        type: String,
+        enum: ['AFTER', 'BEFORE'],
+      },
+      sendDelay: {
+        type: Number,
+        min: 0,
+      },
+      sendDelayUnit: {
+        type: String,
+        enum: ['MINUTES', 'HOURS', 'DAYS', 'WEEKS', 'MONTHS'],
+      },
+      onlyTriggerOnce: {
+        type: Boolean,
+        default: false,
+      },
+      alsoSendOnRecurringInspections: {
+        type: Boolean,
+        default: false,
+      },
+      sendEvenWhenNotificationsDisabled: {
+        type: Boolean,
+        default: false,
+      },
+      sendDuringCertainHoursOnly: {
+        type: Boolean,
+        default: false,
+      },
+      doNotSendOnWeekends: {
+        type: Boolean,
+        default: false,
+      },
+      emailTo: {
+        type: [String],
+        default: [],
+      },
+      emailCc: {
+        type: [String],
+        default: [],
+      },
+      emailBcc: {
+        type: [String],
+        default: [],
+      },
+      emailFrom: {
+        type: String,
+        enum: ['COMPANY', 'INSPECTOR'],
+      },
+      emailSubject: {
+        type: String,
+        trim: true,
+      },
+      emailBody: {
+        type: String,
+      },
+      sentAt: {
+        type: Date,
+      },
+      status: {
+        type: String,
+        enum: ['sent', 'bounced'],
+      },
+      isDisabled: {
+        type: Boolean,
+        default: false,
+      },
+    }],
     deletedAt: {
       type: Date,
       default: null,

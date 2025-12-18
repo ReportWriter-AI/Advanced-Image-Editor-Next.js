@@ -5,7 +5,7 @@ import { createInspection } from '@/lib/inspection';
 import Inspection from '@/src/models/Inspection';
 import DiscountCode from '@/src/models/DiscountCode';
 import { createOrUpdateClient, createOrUpdateAgent } from '@/lib/client-agent-utils';
-import { processInspectionPostCreation } from '@/lib/inspection-utils';
+import { processInspectionPostCreation, attachAutomationActionsToInspection } from '@/lib/inspection-utils';
 
 interface RouteParams {
   params: Promise<{
@@ -206,6 +206,12 @@ export async function POST(request: NextRequest, context: RouteParams) {
         inspection._id,
         companyObjectId,
         services
+      );
+      
+      // Attach active automation actions to the inspection
+      await attachAutomationActionsToInspection(
+        inspection._id,
+        companyObjectId
       );
     }
 
