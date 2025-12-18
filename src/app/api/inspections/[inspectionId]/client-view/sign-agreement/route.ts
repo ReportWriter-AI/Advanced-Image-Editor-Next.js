@@ -94,6 +94,18 @@ export async function POST(
       });
 
       await inspection.save();
+
+      // Check if all agreements are now signed
+      const allSigned = inspection.agreements.every((a: any) => a.isSigned === true);
+      if (allSigned && inspection.agreements.length > 0) {
+        const { checkAndProcessTriggers } = await import('@/lib/automation-trigger-helper');
+        await checkAndProcessTriggers(inspectionId, 'ALL_AGREEMENTS_SIGNED');
+
+        // Also check if fully paid for combined trigger
+        if (inspection.isPaid) {
+          await checkAndProcessTriggers(inspectionId, 'ALL_AGREEMENTS_SIGNED_AND_FULLY_PAID');
+        }
+      }
     }
 
     return NextResponse.json(

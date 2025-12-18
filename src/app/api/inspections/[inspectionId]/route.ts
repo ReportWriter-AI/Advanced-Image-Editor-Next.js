@@ -6,6 +6,7 @@ import Defect from "@/src/models/Defect";
 import InspectionInformationBlock from "@/src/models/InspectionInformationBlock";
 import mongoose from "mongoose";
 import { extractR2KeyFromUrl, deleteFromR2 } from "@/lib/r2";
+import { checkAndProcessTriggers, queueTimeBasedTriggers } from "@/src/lib/automation-trigger-helper";
 
 export async function GET(
   req: Request,
@@ -68,6 +69,9 @@ export async function PUT(
       );
     }
 
+    // Get current inspection state before update
+    const inspectionBefore = await Inspection.findById(inspectionId).lean();
+    
     const body = await req.json();
     const result = await updateInspection(inspectionId, body);
 
@@ -76,6 +80,50 @@ export async function PUT(
         { error: "Inspection not found" },
         { status: 404 }
       );
+    }
+
+    // Get updated inspection state
+    const inspectionAfter = await Inspection.findById(inspectionId).lean();
+
+    // Check for trigger events based on changes
+    if (inspectionBefore && inspectionAfter) {
+      // Status change
+      if (body.status && inspectionBefore.status !== inspectionAfter.status) {
+        if (body.status === 'Canceled') {
+          await checkAndProcessTriggers(inspectionId, 'INSPECTION_CANCELED');
+        } else if (inspectionAfter.confirmedInspection && !inspectionBefore.confirmedInspection) {
+          await checkAndProcessTriggers(inspectionId, 'INSPECTION_SCHEDULED');
+        }
+      }
+
+      // Inspector assignment change
+      if (body.inspector !== undefined) {
+        const inspectorBefore = inspectionBefore.inspector?.toString();
+        const inspectorAfter = inspectionAfter.inspector?.toString();
+        
+        if (!inspectorBefore && inspectorAfter) {
+          await checkAndProcessTriggers(inspectionId, 'INSPECTOR_ASSIGNED');
+        } else if (inspectorBefore && !inspectorAfter) {
+          await checkAndProcessTriggers(inspectionId, 'INSPECTOR_UNASSIGNED');
+        }
+      }
+
+      // Date change (rescheduled)
+      if (body.date && inspectionBefore.date?.toString() !== inspectionAfter.date?.toString()) {
+        await checkAndProcessTriggers(inspectionId, 'INSPECTION_RESCHEDULED');
+        // Re-queue time-based triggers
+        await queueTimeBasedTriggers(inspectionId);
+      }
+
+      // Closing date change
+      if (body.closingDate?.date) {
+        await queueTimeBasedTriggers(inspectionId);
+      }
+
+      // End of period date change
+      if (body.endOfInspectionPeriod?.date) {
+        await queueTimeBasedTriggers(inspectionId);
+      }
     }
 
     return NextResponse.json(

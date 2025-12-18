@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Event from '@/src/models/Event';
+import Inspection from '@/src/models/Inspection';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import mongoose from 'mongoose';
 
@@ -131,6 +132,13 @@ export async function POST(
         { error: 'Failed to create event' },
         { status: 500 }
       );
+    }
+
+    // Check if inspection is confirmed before triggering automation
+    const inspection = await Inspection.findById(inspectionId).lean();
+    if (inspection?.confirmedInspection) {
+      const { checkAndProcessTriggers } = await import('@/lib/automation-trigger-helper');
+      await checkAndProcessTriggers(inspectionId, 'INSPECTION_EVENT_CREATED');
     }
 
     const formattedEvent = {

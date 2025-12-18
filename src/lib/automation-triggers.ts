@@ -248,3 +248,24 @@ export function getTriggerByKey(key: string): AutomationTrigger | undefined {
 export function isValidTriggerKey(key: string): boolean {
   return AUTOMATION_TRIGGERS.some((trigger) => trigger.key === key);
 }
+
+/**
+ * Checks if a trigger requires the inspection to be confirmed.
+ * These triggers explicitly state "after confirmation" or "when confirmed" in their descriptions.
+ */
+export function requiresConfirmedInspection(triggerKey: string): boolean {
+  const triggersRequiringConfirmation = [
+    'INSPECTION_SCHEDULED', // "Triggers when an inspection is confirmed"
+    'SERVICE_ADDED_AFTER_CONFIRMATION',
+    'SERVICE_REMOVED_AFTER_CONFIRMATION',
+    'AGREEMENT_ADDED_AFTER_CONFIRMATION',
+    'AGREEMENT_REMOVED_AFTER_CONFIRMATION',
+    'ATTACHMENT_ADDED_AFTER_CONFIRMATION',
+    'ATTACHMENT_REMOVED_AFTER_CONFIRMATION',
+    'FEE_ADDED_AFTER_CONFIRMATION',
+    'FEE_REMOVED_AFTER_CONFIRMATION',
+    'INSPECTION_RESCHEDULED', // "after being scheduled" - scheduled means confirmed
+  ];
+  
+  return triggersRequiringConfirmation.includes(triggerKey);
+}

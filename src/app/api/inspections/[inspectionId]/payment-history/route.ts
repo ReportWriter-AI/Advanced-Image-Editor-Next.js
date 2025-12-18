@@ -266,6 +266,21 @@ export async function POST(
       );
     }
 
+    // Check if inspection is now fully paid and trigger automation
+    if (newIsPaid) {
+      const { checkAndProcessTriggers } = await import('@/lib/automation-trigger-helper');
+      await checkAndProcessTriggers(inspectionId, 'INSPECTION_FULLY_PAID');
+      
+      // Also check if all agreements are signed for combined trigger
+      const inspectionWithAgreements = await Inspection.findById(inspectionId).lean();
+      if (inspectionWithAgreements?.agreements) {
+        const allAgreementsSigned = inspectionWithAgreements.agreements.every((a: any) => a.isSigned === true);
+        if (allAgreementsSigned && inspectionWithAgreements.agreements.length > 0) {
+          await checkAndProcessTriggers(inspectionId, 'ALL_AGREEMENTS_SIGNED_AND_FULLY_PAID');
+        }
+      }
+    }
+
     // Return updated payment info
     const updatedTotals = await calculatePaymentTotals(inspectionId);
     return NextResponse.json({

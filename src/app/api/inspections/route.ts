@@ -7,6 +7,7 @@ import Inspection from "@/src/models/Inspection";
 import mongoose from "mongoose";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
 import { processInspectionPostCreation, attachAutomationActionsToInspection } from "@/lib/inspection-utils";
+import { checkAndProcessTriggers, queueTimeBasedTriggers } from "@/src/lib/automation-trigger-helper";
 
 const mapInspectionResponse = (inspection: any) => {
   if (!inspection) return null;
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
       );
       
       // Attach active automation actions to the inspection
+      // IMPORTANT: This must happen BEFORE processing triggers
       await attachAutomationActionsToInspection(
         inspection._id,
         currentUser.company as mongoose.Types.ObjectId
@@ -178,6 +180,30 @@ export async function POST(req: NextRequest) {
           listingAgent: listingAgentIds,
         });
       }
+    }
+
+    // Process automation triggers after all data (clients, agents, events) is attached
+    // This ensures triggers have access to all inspection data when evaluating conditions
+    if (inspection?._id) {
+      // Check for INSPECTION_REQUESTED trigger (fires when inspection is NOT confirmed)
+      // According to trigger description: "Triggers when an unconfirmed inspection is created,
+      // defaulting to send once, even if notifications are off."
+      if (!confirmedInspection) {
+        await checkAndProcessTriggers(inspection._id, 'INSPECTION_REQUESTED');
+      } else {
+        // If confirmed, trigger INSPECTION_SCHEDULED
+        await checkAndProcessTriggers(inspection._id, 'INSPECTION_SCHEDULED');
+      }
+
+      // Queue time-based triggers if inspection has a date
+      // if (date) {
+      //   await queueTimeBasedTriggers(inspection._id);
+      // }
+
+      // Check for event-related triggers if events were created
+      // if (events.length > 0 && confirmedInspection) {
+      //   await checkAndProcessTriggers(inspection._id, 'INSPECTION_EVENT_CREATED');
+      // }
     }
 
     return NextResponse.json(mapInspectionResponse(inspection), { status: 201 });
