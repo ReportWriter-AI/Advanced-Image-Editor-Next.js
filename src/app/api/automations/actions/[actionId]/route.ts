@@ -443,14 +443,50 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         }
         action.emailBody = emailBody;
       }
-    } else if (communicationType === 'TEXT') {
-      // Clear email fields if switching to TEXT
-      if (emailTo !== undefined) action.emailTo = undefined;
-      if (emailCc !== undefined) action.emailCc = undefined;
-      if (emailBcc !== undefined) action.emailBcc = undefined;
-      if (emailFrom !== undefined) action.emailFrom = undefined;
-      if (emailSubject !== undefined) action.emailSubject = undefined;
-      if (emailBody !== undefined) action.emailBody = undefined;
+    }
+
+    // Handle text fields - validate and update if communicationType is TEXT or being set to TEXT
+    const isTextType = communicationType === 'TEXT' || (communicationType === undefined && action.communicationType === 'TEXT');
+    
+    if (isTextType) {
+      // Validate emailTo
+      if (emailTo !== undefined) {
+        if (!Array.isArray(emailTo)) {
+          return NextResponse.json(
+            { error: 'emailTo must be an array' },
+            { status: 400 }
+          );
+        }
+        for (const recipient of emailTo) {
+          if (typeof recipient !== 'string') {
+            return NextResponse.json(
+              { error: 'All emailTo entries must be strings' },
+              { status: 400 }
+            );
+          }
+        }
+        action.emailTo = emailTo.map((item: string) => item.trim()).filter((item: string) => item.length > 0);
+      }
+
+      // Validate emailBody
+      if (emailBody !== undefined) {
+        if (typeof emailBody !== 'string') {
+          return NextResponse.json(
+            { error: 'emailBody must be a string' },
+            { status: 400 }
+          );
+        }
+        action.emailBody = emailBody;
+      }
+
+      // Clear email-specific fields when switching to TEXT
+      if (communicationType === 'TEXT') {
+        // Only clear fields that are not used for TEXT
+        action.emailCc = undefined;
+        action.emailBcc = undefined;
+        action.emailFrom = undefined;
+        action.emailSubject = undefined;
+      }
     }
 
     const updatedAction = await action.save();

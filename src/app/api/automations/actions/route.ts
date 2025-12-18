@@ -309,6 +309,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Validate text fields if communicationType is TEXT
+    if (communicationType === 'TEXT') {
+      // Validate emailTo
+      if (emailTo !== undefined) {
+        if (!Array.isArray(emailTo)) {
+          return NextResponse.json(
+            { error: 'emailTo must be an array' },
+            { status: 400 }
+          );
+        }
+        // Validate each entry is a string
+        for (const recipient of emailTo) {
+          if (typeof recipient !== 'string') {
+            return NextResponse.json(
+              { error: 'All emailTo entries must be strings' },
+              { status: 400 }
+            );
+          }
+        }
+      }
+
+      // Validate emailBody
+      if (emailBody !== undefined && typeof emailBody !== 'string') {
+        return NextResponse.json(
+          { error: 'emailBody must be a string' },
+          { status: 400 }
+        );
+      }
+    }
+
     if (sendTiming !== undefined) {
       if (sendTiming !== 'AFTER' && sendTiming !== 'BEFORE') {
         return NextResponse.json(
@@ -417,6 +447,16 @@ export async function POST(request: NextRequest) {
       }
       if (emailSubject !== undefined) {
         actionData.emailSubject = emailSubject.trim();
+      }
+      if (emailBody !== undefined) {
+        actionData.emailBody = emailBody;
+      }
+    }
+
+    // Add text fields if provided
+    if (communicationType === 'TEXT') {
+      if (emailTo !== undefined) {
+        actionData.emailTo = emailTo.map((item: string) => item.trim()).filter((item: string) => item.length > 0);
       }
       if (emailBody !== undefined) {
         actionData.emailBody = emailBody;

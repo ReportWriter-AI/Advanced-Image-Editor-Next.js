@@ -89,26 +89,44 @@ const actionFormSchema = z.object({
   emailFrom: z.enum(["COMPANY", "INSPECTOR"]).optional(),
   emailSubject: z.string().optional(),
   emailBody: z.string().optional(),
-}).refine(
-  (data) => {
-    if (data.communicationType === "EMAIL") {
-      if (!data.emailSubject || data.emailSubject.trim().length === 0) {
-        return false;
+})
+  .refine(
+    (data) => {
+      if (data.communicationType === "EMAIL") {
+        if (!data.emailSubject || data.emailSubject.trim().length === 0) {
+          return false;
+        }
+        if (!data.emailBody || data.emailBody.trim().length === 0) {
+          return false;
+        }
+        if (!data.emailTo || data.emailTo.length === 0) {
+          return false;
+        }
       }
-      if (!data.emailBody || data.emailBody.trim().length === 0) {
-        return false;
-      }
-      if (!data.emailTo || data.emailTo.length === 0) {
-        return false;
-      }
+      return true;
+    },
+    {
+      message: "Email subject, body, and at least one recipient are required when communication type is EMAIL",
+      path: ["emailSubject"],
     }
-    return true;
-  },
-  {
-    message: "Email subject, body, and at least one recipient are required when communication type is EMAIL",
-    path: ["emailSubject"],
-  }
-);
+  )
+  .refine(
+    (data) => {
+      if (data.communicationType === "TEXT") {
+        if (!data.emailBody || data.emailBody.trim().length === 0) {
+          return false;
+        }
+        if (!data.emailTo || data.emailTo.length === 0) {
+          return false;
+        }
+      }
+      return true;
+    },
+    {
+      message: "Text body and at least one recipient are required when communication type is TEXT",
+      path: ["emailBody"],
+    }
+  );
 
 export type ActionFormValues = z.infer<typeof actionFormSchema>;
 
@@ -246,12 +264,39 @@ export function ActionForm({
     editor.setSelection(index + token.length + 2, 0);
   };
 
+  // Insert placeholder into text body field (textarea)
+  const insertPlaceholderIntoTextBody = (token: string) => {
+    const currentValue = form.getValues("emailBody") || "";
+    const textarea = document.getElementById("textBody") as HTMLTextAreaElement;
+    if (textarea) {
+      const start = textarea.selectionStart || currentValue.length;
+      const end = textarea.selectionEnd || currentValue.length;
+      const newValue = currentValue.slice(0, start) + ` ${token} ` + currentValue.slice(end);
+      form.setValue("emailBody", newValue);
+      // Set cursor position after inserted placeholder
+      setTimeout(() => {
+        textarea.focus();
+        const newCursorPos = start + token.length + 2;
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    } else {
+      // Fallback: append to end
+      form.setValue("emailBody", currentValue + ` ${token} `);
+    }
+  };
+
   // Handle placeholder selection
   const handlePlaceholderSelect = (token: string) => {
     if (placeholderTargetField === "subject") {
       insertPlaceholderIntoSubject(token);
     } else if (placeholderTargetField === "body") {
-      insertPlaceholderIntoBody(token);
+      // Check if we're in EMAIL or TEXT mode
+      const communicationType = form.watch("communicationType");
+      if (communicationType === "EMAIL") {
+        insertPlaceholderIntoBody(token);
+      } else if (communicationType === "TEXT") {
+        insertPlaceholderIntoTextBody(token);
+      }
     }
     setPlaceholderTargetField(null);
   };
@@ -388,12 +433,12 @@ export function ActionForm({
       sendEvenWhenNotificationsDisabled: values.communicationType ? (values.sendEvenWhenNotificationsDisabled || false) : undefined,
       sendDuringCertainHoursOnly: values.communicationType ? (values.sendDuringCertainHoursOnly || false) : undefined,
       doNotSendOnWeekends: values.communicationType ? (values.doNotSendOnWeekends || false) : undefined,
-      emailTo: values.communicationType === "EMAIL" && values.emailTo && values.emailTo.length > 0 ? values.emailTo : undefined,
+      emailTo: (values.communicationType === "EMAIL" || values.communicationType === "TEXT") && values.emailTo && values.emailTo.length > 0 ? values.emailTo : undefined,
       emailCc: values.communicationType === "EMAIL" && values.emailCc && values.emailCc.length > 0 ? values.emailCc : undefined,
       emailBcc: values.communicationType === "EMAIL" && values.emailBcc && values.emailBcc.length > 0 ? values.emailBcc : undefined,
       emailFrom: values.communicationType === "EMAIL" ? values.emailFrom : undefined,
       emailSubject: values.communicationType === "EMAIL" && values.emailSubject ? values.emailSubject.trim() : undefined,
-      emailBody: values.communicationType === "EMAIL" && values.emailBody ? values.emailBody : undefined,
+      emailBody: (values.communicationType === "EMAIL" || values.communicationType === "TEXT") && values.emailBody ? values.emailBody : undefined,
     };
     await onSubmit(normalized);
   };
@@ -989,6 +1034,74 @@ export function ActionForm({
                         placeholder="Enter email body"
                       />
                     </div>
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-destructive">{fieldState.error.message}</p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
+          </div>
+        )}
+
+        {form.watch("communicationType") === "TEXT" && (
+          <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
+            {/* Text To Field */}
+            <div className="space-y-2">
+              <Label htmlFor="emailTo">
+                To <span className="text-destructive">*</span>
+              </Label>
+              <Controller
+                name="emailTo"
+                control={form.control}
+                render={({ field }) => {
+                  const selectedValues = field.value?.map((val) => ({
+                    value: val,
+                    label: recipientOptions.find((opt) => opt.value === val)?.label || val,
+                  })) || [];
+
+                  return (
+                    <CreatableSelect
+                      isMulti
+                      value={selectedValues}
+                      onChange={(options) => {
+                        const values = options ? options.map((opt) => opt.value) : [];
+                        field.onChange(values);
+                      }}
+                      options={recipientOptions}
+                      placeholder="Select recipients or type to add"
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                      createOptionPosition="first"
+                    />
+                  );
+                }}
+              />
+            </div>
+
+            {/* Text Body Field */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="textBody">
+                  Body <span className="text-destructive">*</span>
+                </Label>
+                <PlaceholderSelector targetField="body" />
+              </div>
+              <Controller
+                name="emailBody"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <div>
+                    <textarea
+                      id="textBody"
+                      {...field}
+                      placeholder="Enter text message body"
+                      rows={6}
+                      className={`flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        fieldState.error ? "border-destructive" : ""
+                      }`}
+                    />
                     {fieldState.error && (
                       <p className="mt-1 text-sm text-destructive">{fieldState.error.message}</p>
                     )}
