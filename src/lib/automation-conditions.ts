@@ -23,7 +23,7 @@ export const CONDITION_TYPES: ConditionTypeOption[] = [
   { value: 'LISTING_AGENT_CATEGORY', label: 'Listing Agent Category' },
   // { value: 'ALL_REPORTS', label: 'All Reports' },
   // { value: 'ANY_REPORTS', label: 'Any Reports' },
-  { value: 'YEAR_BUILD', label: 'Year Build' },
+  { value: 'YEAR_BUILD', label: 'Year Built' },
   { value: 'FOUNDATION', label: 'Foundation' },
   { value: 'SQUARE_FEET', label: 'Square Feet' },
   { value: 'ZIP_CODE', label: 'Zip Code' },

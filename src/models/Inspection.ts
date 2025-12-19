@@ -32,7 +32,7 @@ export interface IInspection extends Document {
     county?: string;
     squareFeet?: number;
     yearBuild?: number;
-    foundation?: 'Basement' | 'Slab' | 'Crawlspace';
+    foundation?: string;
   };
   headerImage?: string;
   headerText?: string;
@@ -252,7 +252,6 @@ const InspectionSchema = new Schema<IInspection>(
       },
       foundation: {
         type: String,
-        enum: ['Basement', 'Slab', 'Crawlspace'],
       },
     },
     headerImage: {

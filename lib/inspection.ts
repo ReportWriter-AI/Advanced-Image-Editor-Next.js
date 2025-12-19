@@ -33,7 +33,7 @@ type CreateInspectionParams = {
     county?: string;
     squareFeet?: number;
     yearBuild?: number;
-    foundation?: 'Basement' | 'Slab' | 'Crawlspace';
+    foundation?: string;
   };
   requirePaymentToReleaseReports?: boolean;
   paymentNotes?: string;
