@@ -252,6 +252,7 @@ const InspectionSchema = new Schema<IInspection>(
       },
       foundation: {
         type: String,
+        trim: true,
       },
     },
     headerImage: {
