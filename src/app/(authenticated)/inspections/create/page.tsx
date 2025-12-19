@@ -1534,13 +1534,23 @@ export default function CreateInspectionPage() {
                     const currentAgents = form.getValues('agents');
                     const newAgents = [...currentAgents];
                     
+                    // Extract agency ID and cache agency name if available
+                    const agencyId = selectedAgent.agency?._id?.toString() || selectedAgent.agency || undefined;
+                    if (agencyId && selectedAgent.agency?.name) {
+                      // Cache the agency name for immediate display
+                      setAgencyNames(prev => ({
+                        ...prev,
+                        [agencyId]: selectedAgent.agency.name,
+                      }));
+                    }
+                    
                     newAgents[index] = {
                       firstName: selectedAgent.firstName || '',
                       lastName: selectedAgent.lastName || '',
                       email: selectedAgent.email || '',
                       ccEmail: selectedAgent.ccEmail || '',
                       phone: selectedAgent.phone || '',
-                      agency: selectedAgent.agency?._id?.toString() || selectedAgent.agency || undefined,
+                      agency: agencyId,
                       photoUrl: selectedAgent.photoUrl || undefined,
                       categories: (selectedAgent.categories || []).map((category: any) => 
                         typeof category === 'string' ? category : category.name || category
@@ -1973,13 +1983,23 @@ export default function CreateInspectionPage() {
                     const currentAgents = form.getValues('listingAgents');
                     const newAgents = [...currentAgents];
                     
+                    // Extract agency ID and cache agency name if available
+                    const agencyId = selectedAgent.agency?._id?.toString() || selectedAgent.agency || undefined;
+                    if (agencyId && selectedAgent.agency?.name) {
+                      // Cache the agency name for immediate display
+                      setListingAgencyNames(prev => ({
+                        ...prev,
+                        [agencyId]: selectedAgent.agency.name,
+                      }));
+                    }
+                    
                     newAgents[index] = {
                       firstName: selectedAgent.firstName || '',
                       lastName: selectedAgent.lastName || '',
                       email: selectedAgent.email || '',
                       ccEmail: selectedAgent.ccEmail || '',
                       phone: selectedAgent.phone || '',
-                      agency: selectedAgent.agency?._id?.toString() || selectedAgent.agency || undefined,
+                      agency: agencyId,
                       photoUrl: selectedAgent.photoUrl || undefined,
                       categories: (selectedAgent.categories || []).map((category: any) => 
                         typeof category === 'string' ? category : category.name || category

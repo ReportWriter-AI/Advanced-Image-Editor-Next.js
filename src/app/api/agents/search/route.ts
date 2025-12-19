@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import Agent from '@/src/models/Agent';
+import '@/src/models/Agency';
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,7 +35,9 @@ export async function GET(request: NextRequest) {
     }
 
     const agents = await Agent.find(query)
-      .select('firstName lastName email photoUrl')
+      .select('firstName lastName email ccEmail phone photoUrl agency categories internalNotes internalAdminNotes')
+      .populate('agency', 'name')
+      .populate('categories', 'name')
       .limit(limit)
       .sort({ firstName: 1, lastName: 1 })
       .lean();
