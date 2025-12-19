@@ -4482,7 +4482,7 @@ export default function InspectionEditPage() {
                       <div className="border rounded-lg overflow-hidden">
                         <div className="divide-y">
                           {triggers
-                            .filter((t: any) => t.communicationType === 'EMAIL')
+                            .filter((t: any) => t.communicationType === 'EMAIL' && !t.sentAt)
                             .map((trigger: any, index: number) => {
                               const triggerInfo = getTriggerByKey(trigger.automationTrigger);
                               return (
@@ -4549,17 +4549,6 @@ export default function InspectionEditPage() {
                                         Subject: {trigger.emailSubject}
                                       </p>
                                     )}
-                                    {trigger.sentAt && (
-                                      <p className="text-xs text-muted-foreground">
-                                        Sent: {new Date(trigger.sentAt).toLocaleString('en-US', {
-                                          year: 'numeric',
-                                          month: 'short',
-                                          day: 'numeric',
-                                          hour: '2-digit',
-                                          minute: '2-digit',
-                                        })}
-                                      </p>
-                                    )}
                                     {!trigger.sentAt && (
                                       <p className="text-xs text-muted-foreground italic">Not sent yet</p>
                                     )}
@@ -4569,6 +4558,70 @@ export default function InspectionEditPage() {
                             })}
                         </div>
                       </div>
+                      
+                      {/* Sent Email Triggers - Separate Section */}
+                      {triggers.filter((t: any) => t.communicationType === 'EMAIL' && t.sentAt).length > 0 && (
+                        <div className="mt-6">
+                          <h4 className="text-lg font-semibold mb-3 text-primary">Sent Email Triggers</h4>
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="divide-y">
+                              {triggers
+                                .filter((t: any) => t.communicationType === 'EMAIL' && t.sentAt)
+                                .map((trigger: any, index: number) => {
+                                  const triggerInfo = getTriggerByKey(trigger.automationTrigger);
+                                  return (
+                                    <div key={trigger.actionId || index} className="p-4 hover:bg-muted/50 transition-colors">
+                                      <div className="space-y-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                              <h5 className="font-semibold text-sm">{trigger.name}</h5>
+                                              {trigger.isDisabled && (
+                                                <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                                  Disabled
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
+                                              trigger.status === 'sent' 
+                                                ? 'bg-green-100 text-green-800 border border-green-200' 
+                                                : trigger.status === 'bounced'
+                                                ? 'bg-red-100 text-red-800 border border-red-200'
+                                                : 'bg-gray-100 text-gray-800 border border-gray-200'
+                                            }`}>
+                                              {trigger.status || 'Pending'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                          {triggerInfo?.title || trigger.automationTrigger}
+                                        </p>
+                                        {trigger.emailSubject && (
+                                          <p className="text-xs font-medium text-foreground">
+                                            Subject: {trigger.emailSubject}
+                                          </p>
+                                        )}
+                                        {trigger.sentAt && (
+                                          <p className="text-xs text-muted-foreground">
+                                            Sent: {new Date(trigger.sentAt).toLocaleString('en-US', {
+                                              year: 'numeric',
+                                              month: 'short',
+                                              day: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                            })}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
