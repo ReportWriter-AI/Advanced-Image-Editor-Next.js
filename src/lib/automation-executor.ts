@@ -276,11 +276,13 @@ async function evaluateCategoryCondition(
       const clients = await Client.find({
         _id: { $in: clientIds },
       })
-        .select('category')
+        .select('categories')
         .lean();
 
       hasCategory = clients.some(
-        (c: any) => c.category && c.category.toString() === categoryIdStr
+        (c: any) => c.categories && Array.isArray(c.categories) && c.categories.some(
+          (catId: any) => catId && catId.toString() === categoryIdStr
+        )
       );
     }
   } else if (condition.type === 'CLIENT_AGENT_CATEGORY') {
@@ -289,11 +291,13 @@ async function evaluateCategoryCondition(
       const agents = await Agent.find({
         _id: { $in: agentIds },
       })
-        .select('category')
+        .select('categories')
         .lean();
 
       hasCategory = agents.some(
-        (a: any) => a.category && a.category.toString() === categoryIdStr
+        (a: any) => a.categories && Array.isArray(a.categories) && a.categories.some(
+          (catId: any) => catId && catId.toString() === categoryIdStr
+        )
       );
     }
   } else if (condition.type === 'LISTING_AGENT_CATEGORY') {
@@ -302,11 +306,13 @@ async function evaluateCategoryCondition(
       const agents = await Agent.find({
         _id: { $in: listingAgentIds },
       })
-        .select('category')
+        .select('categories')
         .lean();
 
       hasCategory = agents.some(
-        (a: any) => a.category && a.category.toString() === categoryIdStr
+        (a: any) => a.categories && Array.isArray(a.categories) && a.categories.some(
+          (catId: any) => catId && catId.toString() === categoryIdStr
+        )
       );
     }
   }

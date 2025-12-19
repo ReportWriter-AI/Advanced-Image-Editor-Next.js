@@ -335,10 +335,10 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
         )}
 
         {/* All Reports - no additional field */}
-        {conditionType === "ALL_REPORTS" && null}
+        {/* {conditionType === "ALL_REPORTS" && null} */}
 
         {/* Any Reports - no additional field */}
-        {conditionType === "ANY_REPORTS" && null}
+        {/* {conditionType === "ANY_REPORTS" && null} */}
 
         {/* Year Build - yearBuild field */}
         {conditionType === "YEAR_BUILD" && (
