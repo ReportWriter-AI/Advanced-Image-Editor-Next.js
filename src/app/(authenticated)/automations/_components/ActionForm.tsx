@@ -135,7 +135,7 @@ export type ActionFormNormalizedValues = {
   category: string;
   automationTrigger: string;
   isActive: boolean;
-  conditions?: ConditionFormData[];
+  conditions?: ConditionFormData[]; // Can be empty array to clear conditions
   conditionLogic?: "AND" | "OR";
   communicationType?: "EMAIL" | "TEXT";
   sendTiming?: "AFTER" | "BEFORE";
@@ -176,6 +176,7 @@ export function ActionForm({
   const [companyOwnerEmail, setCompanyOwnerEmail] = useState<string | null>(null);
   const [placeholderTargetField, setPlaceholderTargetField] = useState<"subject" | "body" | null>(null);
   const quillRef = useRef<any>(null);
+  const previousInitialValuesRef = useRef<any>(null);
 
   // Triggers that support both BEFORE and AFTER options
   const TRIGGERS_WITH_BEFORE_AFTER = [
@@ -343,16 +344,54 @@ export function ActionForm({
     fetchCompanyOwnerEmail();
   }, []);
 
-  // Reset form when initialValues change (for edit mode)
+  // Sync conditions/conditionLogic state and reset form when initialValues changes (for when switching between actions)
+  // Use a ref to track previous initialValues to detect when we're actually switching to a different action
+  // Note: This should NOT depend on conditions/conditionLogic state to avoid resetting when user modifies conditions
   useEffect(() => {
-    if (initialValues) {
+    // Check if initialValues actually changed (switching to a different action)
+    const initialValuesChanged = 
+      previousInitialValuesRef.current === null ||
+      previousInitialValuesRef.current !== initialValues;
+
+    if (initialValuesChanged && initialValues) {
+      // Derive conditions from initialValues
+      const derivedConditions = initialValues.conditions
+        ? initialValues.conditions.map((c: any) => ({
+            type: c.type,
+            operator: c.operator || "",
+            value: c.value,
+            serviceId: typeof c.serviceId === 'object' ? c.serviceId?.toString() : c.serviceId,
+            addonName: c.addonName,
+            serviceCategory: c.serviceCategory,
+            categoryId: typeof c.categoryId === 'object' ? c.categoryId?.toString() : c.categoryId,
+            yearBuild: c.yearBuild,
+            foundation: c.foundation,
+            squareFeet: c.squareFeet,
+            zipCode: c.zipCode,
+            city: c.city,
+            state: c.state,
+          }))
+        : [];
+
+      const derivedConditionLogic = 
+        initialValues.conditionLogic === "AND" || initialValues.conditionLogic === "OR"
+          ? initialValues.conditionLogic
+          : "AND";
+
+      // Update conditions state from initialValues
+      setConditions(derivedConditions);
+      
+      // Update conditionLogic state from initialValues
+      setConditionLogic(derivedConditionLogic);
+
+      // Reset form with new values
       form.reset({
         name: initialValues.name || "",
         category: initialValues.category || "",
         automationTrigger: initialValues.automationTrigger || "",
         isActive: initialValues.isActive !== undefined ? initialValues.isActive : true,
-        conditions: conditions,
-        conditionLogic: conditionLogic,
+        conditions: derivedConditions,
+        conditionLogic: derivedConditionLogic,
         communicationType: initialValues.communicationType,
         sendTiming: initialValues.sendTiming || "AFTER",
         sendDelay: initialValues.sendDelay,
@@ -369,8 +408,11 @@ export function ActionForm({
         emailSubject: initialValues.emailSubject || "",
         emailBody: initialValues.emailBody || "",
       });
+
+      // Update the ref to track this initialValues
+      previousInitialValuesRef.current = initialValues;
     }
-  }, [initialValues, form, conditions, conditionLogic]);
+  }, [initialValues, form]);
 
   const fetchCompanyOwnerEmail = async () => {
     try {
@@ -422,7 +464,8 @@ export function ActionForm({
       category: values.category,
       automationTrigger: values.automationTrigger,
       isActive: values.isActive,
-      conditions: conditions.length > 0 ? conditions : undefined,
+      // Always send conditions array (even if empty) so backend can clear them when deleted
+      conditions: conditions,
       conditionLogic: conditions.length > 1 ? conditionLogic : undefined,
       communicationType: values.communicationType,
       sendTiming: values.communicationType ? (values.sendTiming || "AFTER") : undefined,

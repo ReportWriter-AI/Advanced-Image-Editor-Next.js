@@ -137,7 +137,7 @@ export async function POST(
     // Check if inspection is confirmed before triggering automation
     const inspection = await Inspection.findById(inspectionId).lean();
     if (inspection?.confirmedInspection) {
-      const { checkAndProcessTriggers } = await import('@/lib/automation-trigger-helper');
+      const { checkAndProcessTriggers } = await import('@/src/lib/automation-trigger-helper');
       await checkAndProcessTriggers(inspectionId, 'INSPECTION_EVENT_CREATED');
     }
 

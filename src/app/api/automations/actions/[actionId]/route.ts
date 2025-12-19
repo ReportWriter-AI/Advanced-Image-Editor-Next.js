@@ -271,7 +271,7 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         state: cond.state?.trim(),
       }));
       
-      // Set conditionLogic if conditions exist
+      // Set conditionLogic based on conditions
       if (conditionLogic !== undefined && (conditionLogic === 'AND' || conditionLogic === 'OR')) {
         action.conditionLogic = conditionLogic;
       } else if (conditions.length > 1 && !action.conditionLogic) {
@@ -281,7 +281,7 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         // Clear conditionLogic if no conditions
         action.conditionLogic = undefined;
       }
-      } else if (conditions === undefined && conditionLogic !== undefined) {
+    } else if (conditions === undefined && conditionLogic !== undefined) {
       // Allow updating conditionLogic even if conditions aren't being updated
       if (conditionLogic === 'AND' || conditionLogic === 'OR') {
         action.conditionLogic = conditionLogic;

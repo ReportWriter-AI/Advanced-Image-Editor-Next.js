@@ -209,7 +209,7 @@ function evaluateAddonCondition(condition: Condition, inspection: any): boolean 
       item.serviceId &&
       item.serviceId.toString() === serviceIdStr &&
       item.addonName &&
-      item.addonName.toLowerCase() === condition.addonName.toLowerCase()
+      item.addonName.toLowerCase() === condition.addonName?.toLowerCase()
   );
 
   switch (condition.operator) {
@@ -240,11 +240,11 @@ async function evaluateServiceCategoryCondition(
   const services = await Service.find({
     _id: { $in: serviceIds },
   })
-    .select('category')
+    .select('serviceCategory')
     .lean();
 
   const hasCategory = services.some(
-    (s: any) => s.category && s.category.toLowerCase() === condition.serviceCategory?.toLowerCase()
+    (s: any) => s.serviceCategory && s.serviceCategory.toLowerCase() === condition.serviceCategory?.toLowerCase()
   );
 
   switch (condition.operator) {
