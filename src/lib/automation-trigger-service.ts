@@ -170,14 +170,11 @@ export async function processTrigger(
     }
 
     // Check if notifications are disabled
-    // INSPECTION_REQUESTED should always trigger even if notifications are disabled
-    // (as per trigger description: "defaulting to send once, even if notifications are off")
-    const isInspectionRequested = triggerEvent === 'INSPECTION_REQUESTED';
-    
+    // All triggers should respect disableAutomatedNotifications flag
+    // unless the trigger config explicitly allows sending when notifications are disabled
     if (
       inspection.disableAutomatedNotifications &&
-      !triggerConfig.sendEvenWhenNotificationsDisabled &&
-      !isInspectionRequested
+      !triggerConfig.sendEvenWhenNotificationsDisabled
     ) {
       return {
         success: false,

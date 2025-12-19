@@ -399,6 +399,17 @@ export default function CreateInspectionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyOwner, inspectors]);
 
+  // Ensure disableAutomatedNotifications is true when confirmedInspection is false
+  useEffect(() => {
+    const confirmedInspection = form.watch('confirmedInspection');
+    const disableAutomatedNotifications = form.watch('disableAutomatedNotifications');
+    
+    if (!confirmedInspection && !disableAutomatedNotifications) {
+      form.setValue('disableAutomatedNotifications', true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.watch('confirmedInspection')]);
+
   // Check inspector availability when inspector or date changes
   useEffect(() => {
     const checkAvailability = async () => {
@@ -2888,17 +2899,24 @@ export default function CreateInspectionPage() {
                 <Controller
                   name="disableAutomatedNotifications"
                   control={form.control}
-                  render={({ field }) => (
-                    <Checkbox
-                      id="disableAutomatedNotifications"
-                      checked={field.value}
-                      onCheckedChange={(checked) => field.onChange(checked === true)}
-                    />
-                  )}
+                  render={({ field }) => {
+                    const confirmedInspection = form.watch('confirmedInspection');
+                    return (
+                      <Checkbox
+                        id="disableAutomatedNotifications"
+                        checked={field.value}
+                        disabled={!confirmedInspection}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                      />
+                    );
+                  }}
                 />
                 <Label
                   htmlFor="disableAutomatedNotifications"
-                  className="text-sm font-normal cursor-pointer"
+                  className={cn(
+                    "text-sm font-normal",
+                    form.watch('confirmedInspection') ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+                  )}
                 >
                   Disable Automated Notifications
                 </Label>
