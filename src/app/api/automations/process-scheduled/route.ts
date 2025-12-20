@@ -67,6 +67,11 @@ async function processScheduledTriggers() {
           continue;
         }
 
+        // Check if already sent and onlyTriggerOnce is true
+        if (triggerConfig.onlyTriggerOnce && triggerConfig.sentAt) {
+          continue;
+        }
+
         // Process the trigger
         const result = await processTrigger(
           queuedTrigger.inspectionId,

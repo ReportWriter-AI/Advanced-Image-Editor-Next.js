@@ -54,6 +54,8 @@ interface Action {
   alsoSendOnRecurringInspections?: boolean;
   sendEvenWhenNotificationsDisabled?: boolean;
   sendDuringCertainHoursOnly?: boolean;
+  startTime?: string;
+  endTime?: string;
   doNotSendOnWeekends?: boolean;
   emailTo?: string[];
   emailCc?: string[];
@@ -81,6 +83,8 @@ const mapAction = (item: any): Action => {
     alsoSendOnRecurringInspections: item?.alsoSendOnRecurringInspections,
     sendEvenWhenNotificationsDisabled: item?.sendEvenWhenNotificationsDisabled,
     sendDuringCertainHoursOnly: item?.sendDuringCertainHoursOnly,
+    startTime: item?.startTime,
+    endTime: item?.endTime,
     doNotSendOnWeekends: item?.doNotSendOnWeekends,
     emailTo: item?.emailTo || [],
     emailCc: item?.emailCc || [],
@@ -374,6 +378,8 @@ export default function ActionsList() {
                     alsoSendOnRecurringInspections: editingAction.alsoSendOnRecurringInspections,
                     sendEvenWhenNotificationsDisabled: editingAction.sendEvenWhenNotificationsDisabled,
                     sendDuringCertainHoursOnly: editingAction.sendDuringCertainHoursOnly,
+                    startTime: editingAction.startTime,
+                    endTime: editingAction.endTime,
                     doNotSendOnWeekends: editingAction.doNotSendOnWeekends,
                     emailTo: editingAction.emailTo || [],
                     emailCc: editingAction.emailCc || [],

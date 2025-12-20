@@ -82,6 +82,8 @@ const actionFormSchema = z.object({
   alsoSendOnRecurringInspections: z.boolean().optional(),
   sendEvenWhenNotificationsDisabled: z.boolean().optional(),
   sendDuringCertainHoursOnly: z.boolean().optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
   doNotSendOnWeekends: z.boolean().optional(),
   emailTo: z.array(z.string()).optional(),
   emailCc: z.array(z.string()).optional(),
@@ -126,6 +128,33 @@ const actionFormSchema = z.object({
       message: "Text body and at least one recipient are required when communication type is TEXT",
       path: ["emailBody"],
     }
+  )
+  .refine(
+    (data) => {
+      if (data.sendDuringCertainHoursOnly) {
+        if (!data.startTime || !data.endTime) {
+          return false;
+        }
+        // Validate time format (HH:mm)
+        const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+        if (!timeRegex.test(data.startTime) || !timeRegex.test(data.endTime)) {
+          return false;
+        }
+        // Validate startTime < endTime
+        const [startHour, startMin] = data.startTime.split(':').map(Number);
+        const [endHour, endMin] = data.endTime.split(':').map(Number);
+        const startMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
+        if (startMinutes >= endMinutes) {
+          return false;
+        }
+      }
+      return true;
+    },
+    {
+      message: "Start time must be before end time when 'Send during certain hours only' is enabled",
+      path: ["startTime"],
+    }
   );
 
 export type ActionFormValues = z.infer<typeof actionFormSchema>;
@@ -145,6 +174,8 @@ export type ActionFormNormalizedValues = {
   alsoSendOnRecurringInspections?: boolean;
   sendEvenWhenNotificationsDisabled?: boolean;
   sendDuringCertainHoursOnly?: boolean;
+  startTime?: string;
+  endTime?: string;
   doNotSendOnWeekends?: boolean;
   emailTo?: string[];
   emailCc?: string[];
@@ -180,8 +211,8 @@ export function ActionForm({
 
   // Triggers that support both BEFORE and AFTER options
   const TRIGGERS_WITH_BEFORE_AFTER = [
-    'INSPECTION_START_TIME',
-    'INSPECTION_END_TIME',
+    // 'INSPECTION_START_TIME',
+    // 'INSPECTION_END_TIME',
     'INSPECTION_CLOSING_DATE',
     'INSPECTION_END_OF_PERIOD_DATE',
   ];
@@ -198,6 +229,24 @@ export function ActionForm({
     { value: "LISTING_AGENTS", label: "Listing Agents" },
     { value: "INSPECTORS", label: "Inspectors" },
   ];
+
+  // Helper function to generate time options (30-minute intervals)
+  const generateTimeOptions = () => {
+    const options = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        const time24 = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+        const ampm = hour < 12 ? 'AM' : 'PM';
+        const minuteStr = minute === 0 ? '00' : minute.toString();
+        const time12 = `${hour12}:${minuteStr} ${ampm}`;
+        options.push({ value: time24, label: time12 });
+      }
+    }
+    return options;
+  };
+
+  const timeOptions = generateTimeOptions();
 
   const [conditions, setConditions] = useState<ConditionFormData[]>(() => {
     if (!initialValues?.conditions) return [];
@@ -319,6 +368,8 @@ export function ActionForm({
       alsoSendOnRecurringInspections: initialValues?.alsoSendOnRecurringInspections || false,
       sendEvenWhenNotificationsDisabled: initialValues?.sendEvenWhenNotificationsDisabled || false,
       sendDuringCertainHoursOnly: initialValues?.sendDuringCertainHoursOnly || false,
+      startTime: initialValues?.startTime || "00:00",
+      endTime: initialValues?.endTime || "00:30",
       doNotSendOnWeekends: initialValues?.doNotSendOnWeekends || false,
       emailTo: initialValues?.emailTo || [],
       emailCc: initialValues?.emailCc || [],
@@ -400,6 +451,8 @@ export function ActionForm({
         alsoSendOnRecurringInspections: initialValues.alsoSendOnRecurringInspections || false,
         sendEvenWhenNotificationsDisabled: initialValues.sendEvenWhenNotificationsDisabled || false,
         sendDuringCertainHoursOnly: initialValues.sendDuringCertainHoursOnly || false,
+        startTime: initialValues.startTime || "00:00",
+        endTime: initialValues.endTime || "00:30",
         doNotSendOnWeekends: initialValues.doNotSendOnWeekends || false,
         emailTo: initialValues.emailTo || [],
         emailCc: initialValues.emailCc || [],
@@ -475,6 +528,8 @@ export function ActionForm({
       alsoSendOnRecurringInspections: values.communicationType ? (values.alsoSendOnRecurringInspections || false) : undefined,
       sendEvenWhenNotificationsDisabled: values.communicationType ? (values.sendEvenWhenNotificationsDisabled || false) : undefined,
       sendDuringCertainHoursOnly: values.communicationType ? (values.sendDuringCertainHoursOnly || false) : undefined,
+      startTime: values.communicationType && values.sendDuringCertainHoursOnly ? values.startTime : undefined,
+      endTime: values.communicationType && values.sendDuringCertainHoursOnly ? values.endTime : undefined,
       doNotSendOnWeekends: values.communicationType ? (values.doNotSendOnWeekends || false) : undefined,
       emailTo: (values.communicationType === "EMAIL" || values.communicationType === "TEXT") && values.emailTo && values.emailTo.length > 0 ? values.emailTo : undefined,
       emailCc: values.communicationType === "EMAIL" && values.emailCc && values.emailCc.length > 0 ? values.emailCc : undefined,
@@ -1342,6 +1397,80 @@ export function ActionForm({
                     </p>
                   </div>
                 </div>
+
+                {form.watch("sendDuringCertainHoursOnly") && (
+                  <div className="space-y-4 pl-6 border-l-2 border-muted">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="startTime">
+                          Start Time <span className="text-destructive">*</span>
+                        </Label>
+                        <Controller
+                          name="startTime"
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <div>
+                              <Select
+                                value={field.value || "00:00"}
+                                onValueChange={field.onChange}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Select start time" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[200px]">
+                                  {timeOptions.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {fieldState.error && (
+                                <p className="mt-1 text-sm text-destructive">
+                                  {fieldState.error.message}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="endTime">
+                          End Time <span className="text-destructive">*</span>
+                        </Label>
+                        <Controller
+                          name="endTime"
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <div>
+                              <Select
+                                value={field.value || "00:30"}
+                                onValueChange={field.onChange}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Select end time" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[200px]">
+                                  {timeOptions.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {fieldState.error && (
+                                <p className="mt-1 text-sm text-destructive">
+                                  {fieldState.error.message}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-start space-x-2">
                   <Controller

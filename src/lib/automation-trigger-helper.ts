@@ -68,8 +68,8 @@ export async function queueTimeBasedTriggers(
     }
 
     const timeBasedTriggerKeys = [
-      'INSPECTION_START_TIME',
-      'INSPECTION_END_TIME',
+      // 'INSPECTION_START_TIME',
+      // 'INSPECTION_END_TIME',
       'INSPECTION_CLOSING_DATE',
       'INSPECTION_END_OF_PERIOD_DATE',
     ];
@@ -85,14 +85,23 @@ export async function queueTimeBasedTriggers(
         continue;
       }
 
+      // Check if notifications are disabled
+      // Skip queueing if notifications are disabled unless trigger allows it
+      if (
+        inspection.disableAutomatedNotifications &&
+        !triggerConfig.sendEvenWhenNotificationsDisabled
+      ) {
+        continue;
+      }
+
       // Calculate execution time
       let baseTime: Date | null = null;
 
       switch (triggerConfig.automationTrigger) {
-        case 'INSPECTION_START_TIME':
-        case 'INSPECTION_END_TIME':
-          baseTime = inspection.date ? new Date(inspection.date) : null;
-          break;
+        // case 'INSPECTION_START_TIME':
+        // case 'INSPECTION_END_TIME':
+        //   baseTime = inspection.date ? new Date(inspection.date) : null;
+        //   break;
         case 'INSPECTION_CLOSING_DATE':
           baseTime = inspection.closingDate?.date
             ? new Date(inspection.closingDate.date)

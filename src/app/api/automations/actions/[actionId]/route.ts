@@ -96,6 +96,8 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       alsoSendOnRecurringInspections,
       sendEvenWhenNotificationsDisabled,
       sendDuringCertainHoursOnly,
+      startTime,
+      endTime,
       doNotSendOnWeekends,
       emailTo,
       emailCc,
@@ -344,6 +346,14 @@ export async function PUT(request: NextRequest, context: RouteParams) {
 
     if (sendDuringCertainHoursOnly !== undefined) {
       action.sendDuringCertainHoursOnly = Boolean(sendDuringCertainHoursOnly);
+    }
+
+    if (startTime !== undefined) {
+      action.startTime = startTime;
+    }
+
+    if (endTime !== undefined) {
+      action.endTime = endTime;
     }
 
     if (doNotSendOnWeekends !== undefined) {

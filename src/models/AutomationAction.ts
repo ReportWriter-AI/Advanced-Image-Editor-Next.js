@@ -50,6 +50,8 @@ export interface IAutomationAction extends Document {
   alsoSendOnRecurringInspections?: boolean;
   sendEvenWhenNotificationsDisabled?: boolean;
   sendDuringCertainHoursOnly?: boolean;
+  startTime?: string;
+  endTime?: string;
   doNotSendOnWeekends?: boolean;
   emailTo?: string[];
   emailCc?: string[];
@@ -199,6 +201,14 @@ const AutomationActionSchema = new Schema<IAutomationAction>(
     sendDuringCertainHoursOnly: {
       type: Boolean,
       default: false,
+    },
+    startTime: {
+      type: String,
+      trim: true,
+    },
+    endTime: {
+      type: String,
+      trim: true,
     },
     doNotSendOnWeekends: {
       type: Boolean,

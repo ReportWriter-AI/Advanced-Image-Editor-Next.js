@@ -325,6 +325,8 @@ const formatInspection = (doc: IInspection | null) => {
         alsoSendOnRecurringInspections: trigger.alsoSendOnRecurringInspections || false,
         sendEvenWhenNotificationsDisabled: trigger.sendEvenWhenNotificationsDisabled || false,
         sendDuringCertainHoursOnly: trigger.sendDuringCertainHoursOnly || false,
+        startTime: trigger.startTime || null,
+        endTime: trigger.endTime || null,
         doNotSendOnWeekends: trigger.doNotSendOnWeekends || false,
         emailTo: trigger.emailTo || [],
         emailCc: trigger.emailCc || [],

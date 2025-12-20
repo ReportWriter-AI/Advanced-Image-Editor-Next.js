@@ -59,6 +59,12 @@ export async function PUT(
     await dbConnect();
     
     const { inspectionId } = await params;
+
+
+    if (inspectionId) {
+      console.log("trigger api called")
+      await checkAndProcessTriggers(inspectionId, 'INSPECTION_SCHEDULED');
+    }
     
     console.log('Updating inspection ID:', inspectionId);
     
@@ -116,13 +122,23 @@ export async function PUT(
       }
 
       // Closing date change
-      if (body.closingDate?.date) {
-        await queueTimeBasedTriggers(inspectionId);
+      const closingDateBefore = inspectionBefore.closingDate?.date?.toString();
+      const closingDateAfter = inspectionAfter.closingDate?.date?.toString();
+      if (body.closingDate !== undefined) {
+        // Date was set, changed, or cleared
+        if (closingDateBefore !== closingDateAfter) {
+          await queueTimeBasedTriggers(inspectionId);
+        }
       }
 
       // End of period date change
-      if (body.endOfInspectionPeriod?.date) {
-        await queueTimeBasedTriggers(inspectionId);
+      const endOfPeriodBefore = inspectionBefore.endOfInspectionPeriod?.date?.toString();
+      const endOfPeriodAfter = inspectionAfter.endOfInspectionPeriod?.date?.toString();
+      if (body.endOfInspectionPeriod !== undefined) {
+        // Date was set, changed, or cleared
+        if (endOfPeriodBefore !== endOfPeriodAfter) {
+          await queueTimeBasedTriggers(inspectionId);
+        }
       }
     }
 

@@ -196,6 +196,8 @@ export async function attachAutomationActionsToInspection(
       alsoSendOnRecurringInspections: action.alsoSendOnRecurringInspections,
       sendEvenWhenNotificationsDisabled: action.sendEvenWhenNotificationsDisabled,
       sendDuringCertainHoursOnly: action.sendDuringCertainHoursOnly,
+      startTime: action.startTime,
+      endTime: action.endTime,
       doNotSendOnWeekends: action.doNotSendOnWeekends,
       emailTo: action.emailTo || [],
       emailCc: action.emailCc || [],

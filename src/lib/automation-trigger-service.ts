@@ -21,6 +21,8 @@ export interface TriggerConfig {
   alsoSendOnRecurringInspections?: boolean;
   sendEvenWhenNotificationsDisabled?: boolean;
   sendDuringCertainHoursOnly?: boolean;
+  startTime?: string;
+  endTime?: string;
   doNotSendOnWeekends?: boolean;
   emailTo?: string[];
   emailCc?: string[];
@@ -49,20 +51,94 @@ function shouldTriggerBasedOnTiming(
     // Will be handled by the caller
   }
 
-  // Check weekend restriction
-  if (triggerConfig.doNotSendOnWeekends) {
+  // Check time window restriction
+  if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    
+    // Parse start and end times
+    const [startHour, startMin] = triggerConfig.startTime.split(':').map(Number);
+    const [endHour, endMin] = triggerConfig.endTime.split(':').map(Number);
+    const startTimeMinutes = startHour * 60 + startMin;
+    const endTimeMinutes = endHour * 60 + endMin;
+    
+    // Check if current time is within window
+    const isWithinWindow = currentTimeMinutes >= startTimeMinutes && currentTimeMinutes < endTimeMinutes;
+    
+    // Check if it's a weekend and doNotSendOnWeekends is enabled
+    const dayOfWeek = now.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    
+    if (!isWithinWindow || (isWeekend && triggerConfig.doNotSendOnWeekends)) {
+      // Schedule for next available time
+      const nextExecution = new Date(now);
+      
+      if (!isWithinWindow) {
+        // Outside window: schedule for next day at startTime
+        nextExecution.setDate(nextExecution.getDate() + 1);
+      } else {
+        // Within window but weekend: schedule for Monday at startTime
+        if (isWeekend && triggerConfig.doNotSendOnWeekends) {
+          const daysUntilMonday = dayOfWeek === 0 ? 1 : 2; // Sunday -> Monday (1 day), Saturday -> Monday (2 days)
+          nextExecution.setDate(nextExecution.getDate() + daysUntilMonday);
+        }
+      }
+      
+      nextExecution.setHours(startHour, startMin, 0, 0);
+      
+      // Double-check: if scheduled day is still a weekend, move to Monday
+      if (triggerConfig.doNotSendOnWeekends) {
+        const scheduledDayOfWeek = nextExecution.getDay();
+        if (scheduledDayOfWeek === 0 || scheduledDayOfWeek === 6) {
+          const daysUntilMonday = scheduledDayOfWeek === 0 ? 1 : 2;
+          nextExecution.setDate(nextExecution.getDate() + daysUntilMonday);
+        }
+      }
+      
+      const reason = !isWithinWindow 
+        ? `Current time (${now.toLocaleString()}) is outside the allowed time window (${triggerConfig.startTime} - ${triggerConfig.endTime})`
+        : `Current time is within window but it's a weekend and "Do not send on weekends" is enabled`;
+      
+      console.log(`[Automation Trigger] Email scheduled due to time window restriction:`);
+      console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
+      console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
+      console.log(`  Reason: ${reason}`);
+      console.log(`  Current time: ${now.toLocaleString()}`);
+      console.log(`  Scheduled to send at: ${nextExecution.toLocaleString()}`);
+      console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime}`);
+      
+      return { shouldTrigger: true, executionTime: nextExecution };
+    }
+  }
+
+  // Check weekend restriction (only for immediate execution when time window is not enabled)
+  if (triggerConfig.doNotSendOnWeekends && !triggerConfig.sendDuringCertainHoursOnly) {
     const now = new Date();
     const dayOfWeek = now.getDay();
     if (dayOfWeek === 0 || dayOfWeek === 6) {
-      // Sunday or Saturday
-      return { shouldTrigger: false };
+      // Sunday or Saturday - schedule for Monday instead of blocking
+      const mondayExecution = new Date(now);
+      const daysUntilMonday = dayOfWeek === 0 ? 1 : 2; // Sunday -> Monday (1 day), Saturday -> Monday (2 days)
+      mondayExecution.setDate(mondayExecution.getDate() + daysUntilMonday);
+      mondayExecution.setHours(0, 0, 0, 0); // Start of Monday
+      
+      console.log(`[Automation Trigger] Email scheduled due to weekend restriction:`);
+      console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
+      console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
+      console.log(`  Reason: Current day is ${dayOfWeek === 0 ? 'Sunday' : 'Saturday'} and "Do not send on weekends" is enabled`);
+      console.log(`  Current time: ${now.toLocaleString()}`);
+      console.log(`  Scheduled to send at: ${mondayExecution.toLocaleString()} (Monday)`);
+      
+      return { shouldTrigger: true, executionTime: mondayExecution };
     }
   }
 
   // For time-based triggers, calculate execution time
   const timeBasedTriggers = [
-    'INSPECTION_START_TIME',
-    'INSPECTION_END_TIME',
+    // 'INSPECTION_START_TIME',
+    // 'INSPECTION_END_TIME',
     'INSPECTION_CLOSING_DATE',
     'INSPECTION_END_OF_PERIOD_DATE',
   ];
@@ -130,6 +206,22 @@ function shouldTriggerBasedOnTiming(
       return { shouldTrigger: true };
     } else {
       // Queue for later
+      const delayDescription = delay > 0 
+        ? `${delay} ${delayUnit.toLowerCase()} ${triggerConfig.sendTiming === 'BEFORE' ? 'before' : 'after'} ${triggerConfig.automationTrigger}`
+        : `at ${triggerConfig.automationTrigger}`;
+      
+      console.log(`[Automation Trigger] Email scheduled due to delay:`);
+      console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
+      console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
+      console.log(`  Delay: ${delayDescription}`);
+      console.log(`  Base time: ${baseTime.toLocaleString()}`);
+      console.log(`  Current time: ${now.toLocaleString()}`);
+      console.log(`  Scheduled to send at: ${executionTime.toLocaleString()}`);
+      if (delayUnit === 'WEEKS' || delayUnit === 'MONTHS' || delayUnit === 'DAYS') {
+        const daysUntil = Math.ceil((executionTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        console.log(`  Days until send: ${daysUntil} day(s)`);
+      }
+      
       return { shouldTrigger: true, executionTime };
     }
   }
@@ -166,6 +258,15 @@ export async function processTrigger(
         success: false,
         queued: false,
         error: 'Inspection not found',
+      };
+    }
+
+    // Check if already sent and onlyTriggerOnce is true (safety check)
+    if (triggerConfig.onlyTriggerOnce && inspection.triggers?.[triggerIndex]?.sentAt) {
+      return {
+        success: false,
+        queued: false,
+        error: 'Trigger already sent (onlyTriggerOnce enabled)',
       };
     }
 

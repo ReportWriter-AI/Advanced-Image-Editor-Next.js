@@ -135,18 +135,18 @@ export const AUTOMATION_TRIGGERS: AutomationTrigger[] = [
   },
 
   // DAY OF INSPECTION
-  {
-    key: 'INSPECTION_START_TIME',
-    title: 'Inspection Start Time',
-    description: 'Triggers when the inspection is scheduled to begin.',
-    section: 'DAY_OF_INSPECTION',
-  },
-  {
-    key: 'INSPECTION_END_TIME',
-    title: 'Inspection End Time',
-    description: 'Triggers when the inspection is scheduled to end.',
-    section: 'DAY_OF_INSPECTION',
-  },
+  // {
+  //   key: 'INSPECTION_START_TIME',
+  //   title: 'Inspection Start Time',
+  //   description: 'Triggers when the inspection is scheduled to begin.',
+  //   section: 'DAY_OF_INSPECTION',
+  // },
+  // {
+  //   key: 'INSPECTION_END_TIME',
+  //   title: 'Inspection End Time',
+  //   description: 'Triggers when the inspection is scheduled to end.',
+  //   section: 'DAY_OF_INSPECTION',
+  // },
   {
     key: 'ANY_REPORTS_PUBLISHED',
     title: 'Any Reports Published',

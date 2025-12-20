@@ -69,6 +69,8 @@ export async function POST(request: NextRequest) {
       alsoSendOnRecurringInspections,
       sendEvenWhenNotificationsDisabled,
       sendDuringCertainHoursOnly,
+      startTime,
+      endTime,
       doNotSendOnWeekends,
       emailTo,
       emailCc,
@@ -426,6 +428,12 @@ export async function POST(request: NextRequest) {
     }
     if (sendDuringCertainHoursOnly !== undefined) {
       actionData.sendDuringCertainHoursOnly = Boolean(sendDuringCertainHoursOnly);
+    }
+    if (startTime !== undefined) {
+      actionData.startTime = startTime;
+    }
+    if (endTime !== undefined) {
+      actionData.endTime = endTime;
     }
     if (doNotSendOnWeekends !== undefined) {
       actionData.doNotSendOnWeekends = Boolean(doNotSendOnWeekends);
