@@ -522,7 +522,7 @@ export function ActionForm({
       conditionLogic: conditions.length > 1 ? conditionLogic : undefined,
       communicationType: values.communicationType,
       sendTiming: values.communicationType ? (values.sendTiming || "AFTER") : undefined,
-      sendDelay: values.communicationType && values.sendDelay ? values.sendDelay : undefined,
+      sendDelay: values.communicationType && values.sendDelay !== undefined ? values.sendDelay : undefined,
       sendDelayUnit: values.communicationType && values.sendDelayUnit ? values.sendDelayUnit : undefined,
       onlyTriggerOnce: values.communicationType ? (values.onlyTriggerOnce || false) : undefined,
       // alsoSendOnRecurringInspections: values.communicationType ? (values.alsoSendOnRecurringInspections || false) : undefined,
@@ -1257,10 +1257,16 @@ export function ActionForm({
                       type="number"
                       min="0"
                       step="1"
-                      value={field.value || ""}
-                      onChange={(e) =>
-                        field.onChange(e.target.value === "" ? undefined : Number(e.target.value))
-                      }
+                      value={field.value !== undefined && field.value !== null ? field.value : ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "") {
+                          field.onChange(undefined);
+                        } else {
+                          const numVal = Number(val);
+                          field.onChange(isNaN(numVal) ? undefined : numVal);
+                        }
+                      }}
                       placeholder="0"
                       className="w-24"
                     />
