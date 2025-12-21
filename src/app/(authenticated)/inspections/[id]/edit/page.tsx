@@ -18,7 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon } from 'lucide-react';
@@ -26,6 +26,10 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { splitCommaSeparated } from '@/lib/utils';
 import { getTriggerByKey } from '@/src/lib/automation-triggers';
+import { checkInspectorAvailability, type InspectorAvailability, getDayKeyFromDate, getAvailableTimesForDate, isDateAvailable } from '@/src/lib/inspection-availability';
+import { formatTimeLabel } from '@/src/lib/availability-utils';
+import { DAY_LABELS } from '@/src/constants/availability';
+import { TimeBlock } from '@/src/models/Availability';
 import TaskDialog from '../_components/TaskDialog';
 import TaskCommentsDialog from '../_components/TaskCommentsDialog';
 import ServiceSelectionDialog from './_components/ServiceSelectionDialog';
@@ -281,6 +285,16 @@ export default function InspectionEditPage() {
   const [disablingTrigger, setDisablingTrigger] = useState<string | null>(null);
   const [deletingTrigger, setDeletingTrigger] = useState<string | null>(null);
   const [triggerToDelete, setTriggerToDelete] = useState<string | null>(null);
+
+  // Inspector selection state
+  const [inspectorDialogOpen, setInspectorDialogOpen] = useState(false);
+  const [inspectorAvailability, setInspectorAvailability] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<'openSchedule' | 'timeSlots'>('openSchedule');
+  const [inspectorName, setInspectorName] = useState<string>('');
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [selectedInspectorId, setSelectedInspectorId] = useState<string | null>(null);
+  const [removingInspector, setRemovingInspector] = useState(false);
+  const [showRemoveInspectorDialog, setShowRemoveInspectorDialog] = useState(false);
 
   // Agreements state
   const [agreements, setAgreements] = useState<any[]>([]);
@@ -1102,6 +1116,193 @@ export default function InspectionEditPage() {
       }
     } catch (e) {
       console.error('Error updating inspector:', e);
+    }
+  };
+
+  // Check inspector availability for the inspection date
+  const checkInspectorAvailabilityForDate = async (inspectorId: string) => {
+    if (!inspectionDetails.date) {
+      toast.error('Inspection date is required to check availability');
+      return false;
+    }
+
+    try {
+      const dateString = format(new Date(inspectionDetails.date), 'yyyy-MM-dd');
+      
+      const response = await fetch(
+        `/api/inspections/check-availability?inspectorId=${encodeURIComponent(inspectorId)}&date=${encodeURIComponent(dateString)}`,
+        { credentials: 'include' }
+      );
+
+      if (!response.ok) {
+        console.error('Failed to fetch availability');
+        toast.error('Failed to check inspector availability');
+        return false;
+      }
+
+      const data = await response.json();
+      setInspectorAvailability(data.availability);
+      setViewMode(data.viewMode);
+      setInspectorName(data.inspectorName || '');
+
+      if (!data.availability) {
+        setAvailableTimes([]);
+        toast.error(
+          `${data.inspectorName} is not available for this date`,
+          { duration: 5000 }
+        );
+        return false;
+      }
+
+      // Compute available times for the inspection date
+      const inspectionDate = new Date(inspectionDetails.date);
+      const computedAvailableTimes = getAvailableTimesForDate(
+        inspectionDate,
+        data.viewMode,
+        data.availability
+      );
+      setAvailableTimes(computedAvailableTimes);
+
+      // Get day name for the selected date
+      const dayKey = getDayKeyFromDate(inspectionDate);
+      const dayName = DAY_LABELS[dayKey];
+
+      // Helper function to format schedule blocks for Open Schedule mode
+      const formatScheduleBlocks = () => {
+        const dayData = data.availability.days[dayKey];
+        if (!dayData || !dayData.openSchedule || dayData.openSchedule.length === 0) {
+          return '';
+        }
+        
+        const blocks = dayData.openSchedule
+          .map((block: TimeBlock) => `${formatTimeLabel(block.start)}-${formatTimeLabel(block.end)}`)
+          .join(', ');
+        
+        return blocks;
+      };
+
+      // Check if the inspection time (if exists) is available
+      const inspectionDateTime = new Date(inspectionDetails.date);
+      const inspectionTime = inspectionDateTime.toTimeString().slice(0, 5); // HH:MM format
+      
+      const result = checkInspectorAvailability(
+        inspectionDate,
+        inspectionTime,
+        data.viewMode,
+        data.availability
+      );
+
+      // Show toast messages based on availability
+      if (computedAvailableTimes.length > 0) {
+        // Inspector has available times
+        if (result.availableTimes.length > 0) {
+          if (data.viewMode === 'openSchedule') {
+            // For Open Schedule, show regular schedule
+            const scheduleBlocks = formatScheduleBlocks();
+            if (scheduleBlocks) {
+              toast.info(
+                `${data.inspectorName}'s regular schedule of ${scheduleBlocks} on ${dayName}s.`,
+                { duration: 5000 }
+              );
+            } else {
+              toast.info(
+                `${data.inspectorName} available on ${dayName}s`,
+                { duration: 5000 }
+              );
+            }
+          } else {
+            // For Time Slots, show available time slots with day name
+            const formattedTimes = result.availableTimes.map(formatTimeLabel);
+            
+            // Join times with commas and "or" for last item
+            let timesText = '';
+            if (formattedTimes.length === 1) {
+              timesText = formattedTimes[0];
+            } else if (formattedTimes.length === 2) {
+              timesText = `${formattedTimes[0]} or ${formattedTimes[1]}`;
+            } else {
+              const lastTime = formattedTimes.pop();
+              timesText = `${formattedTimes.join(', ')}, or ${lastTime}`;
+            }
+
+            toast.info(
+              `${data.inspectorName} available at ${timesText} on ${dayName}s`,
+              { duration: 5000 }
+            );
+          }
+        }
+
+        // Check if date is in the past
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const selectedDate = new Date(inspectionDate);
+        selectedDate.setHours(0, 0, 0, 0);
+        
+        if (selectedDate < today) {
+          toast.warning(
+            'Date is in the past, no confirmation email will be sent',
+            { duration: 5000 }
+          );
+        }
+
+        return true;
+      } else {
+        // No available times
+        toast.error(
+          `${data.inspectorName} is not available for this date`,
+          { duration: 5000 }
+        );
+        return false;
+      }
+    } catch (error) {
+      console.error('Error checking availability:', error);
+      toast.error('Failed to check inspector availability');
+      return false;
+    }
+  };
+
+  // Handle remove inspector
+  const handleRemoveInspector = async () => {
+    setRemovingInspector(true);
+    try {
+      await updateInspector(undefined);
+      toast.success('Inspector removed successfully');
+      setShowRemoveInspectorDialog(false);
+    } catch (error) {
+      console.error('Error removing inspector:', error);
+      toast.error('Failed to remove inspector');
+    } finally {
+      setRemovingInspector(false);
+    }
+  };
+
+  // Handle select inspector from dialog
+  const handleSelectInspector = async () => {
+    if (!selectedInspectorId) {
+      toast.error('Please select an inspector');
+      return;
+    }
+
+    // Check availability
+    const isAvailable = await checkInspectorAvailabilityForDate(selectedInspectorId);
+    
+    if (!isAvailable) {
+      // Don't proceed if inspector is not available
+      return;
+    }
+
+    // Update inspector
+    try {
+      await updateInspector(selectedInspectorId);
+      toast.success('Inspector updated successfully');
+      setInspectorDialogOpen(false);
+      setSelectedInspectorId(null);
+      setInspectorAvailability(null);
+      setAvailableTimes([]);
+      setInspectorName('');
+    } catch (error) {
+      console.error('Error selecting inspector:', error);
+      toast.error('Failed to update inspector');
     }
   };
 
@@ -2449,6 +2650,20 @@ export default function InspectionEditPage() {
     };
   }, []);
 
+  // Check availability when inspector is selected in dialog
+  useEffect(() => {
+    if (inspectorDialogOpen && selectedInspectorId && inspectionDetails.date) {
+      checkInspectorAvailabilityForDate(selectedInspectorId);
+    } else if (!inspectorDialogOpen) {
+      // Clear availability state when dialog closes
+      setInspectorAvailability(null);
+      setAvailableTimes([]);
+      setInspectorName('');
+      setSelectedInspectorId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inspectorDialogOpen, selectedInspectorId, inspectionDetails.date]);
+
   // Pre-populate reschedule dialog when opened
   useEffect(() => {
     if (rescheduleDialogOpen && inspectionDetails.date) {
@@ -3154,7 +3369,46 @@ export default function InspectionEditPage() {
             <div className="space-y-6 lg:col-span-1 order-2 lg:order-1">
               {/* Inspector Section */}
               <div className="p-4 border rounded-lg bg-muted/50">
-                <h3 className="font-semibold text-lg mb-4">Inspector</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-lg">Inspector</h3>
+                  {inspectionDetails.inspector ? (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedInspectorId(inspectionDetails.inspectorId || null);
+                          setInspectorDialogOpen(true);
+                        }}
+                        className="gap-2"
+                      >
+                        <i className="fas fa-edit"></i>
+                        Change
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setShowRemoveInspectorDialog(true)}
+                        className="gap-2"
+                      >
+                        <i className="fas fa-trash"></i>
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSelectedInspectorId(null);
+                        setInspectorDialogOpen(true);
+                      }}
+                      className="gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Inspector
+                    </Button>
+                  )}
+                </div>
                 {inspectionDetails.inspector ? (
                   <div className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow">
                     <div className="flex items-start gap-3">
@@ -5283,6 +5537,127 @@ export default function InspectionEditPage() {
           fetchPaymentInfo();
         }}
       />
+
+      {/* Remove Inspector Confirmation Dialog */}
+      <AlertDialog open={showRemoveInspectorDialog} onOpenChange={(open) => !open && setShowRemoveInspectorDialog(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Inspector</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the inspector from this inspection? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingInspector}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveInspector}
+              disabled={removingInspector}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removingInspector ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Removing...
+                </>
+              ) : (
+                'Remove Inspector'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Inspector Selection Dialog */}
+      <Dialog open={inspectorDialogOpen} onOpenChange={(open) => {
+        setInspectorDialogOpen(open);
+        if (!open) {
+          setSelectedInspectorId(null);
+          setInspectorAvailability(null);
+          setAvailableTimes([]);
+          setInspectorName('');
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Select Inspector</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Inspector</Label>
+              <ReactSelect
+                value={inspectors.find(opt => opt.value === selectedInspectorId) || null}
+                onChange={(option) => {
+                  setSelectedInspectorId(option?.value || null);
+                }}
+                options={inspectors}
+                isClearable
+                placeholder="Select an inspector..."
+                className="react-select-container"
+                classNamePrefix="react-select"
+              />
+            </div>
+
+            {selectedInspectorId && inspectionDetails.date && (
+              <div className="space-y-2">
+                <Label>Availability Validation</Label>
+                <div className="p-4 bg-muted rounded-lg border">
+                  {inspectorAvailability !== null ? (
+                    availableTimes.length > 0 ? (
+                      <div className="flex items-center gap-2 text-sm text-green-600">
+                        <i className="fas fa-check-circle"></i>
+                        <span>
+                          {inspectorName} is available for the inspection date ({format(new Date(inspectionDetails.date), 'PPP')})
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-destructive">
+                        <i className="fas fa-times-circle"></i>
+                        <span>
+                          {inspectorName} is not available for the inspection date ({format(new Date(inspectionDetails.date), 'PPP')})
+                        </span>
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex items-center justify-center py-4">
+                      <i className="fas fa-spinner fa-spin text-muted-foreground"></i>
+                      <span className="ml-2 text-sm text-muted-foreground">Checking availability...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {selectedInspectorId && !inspectionDetails.date && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <i className="fas fa-exclamation-triangle mr-2"></i>
+                  This inspection does not have a date set. Availability cannot be checked.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setInspectorDialogOpen(false);
+                setSelectedInspectorId(null);
+                setInspectorAvailability(null);
+                setAvailableTimes([]);
+                setInspectorName('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSelectInspector}
+              disabled={!selectedInspectorId || (inspectionDetails.date ? (availableTimes.length === 0 && inspectorAvailability !== null) : false)}
+            >
+              Select Inspector
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Trigger Confirmation Dialog */}
       <AlertDialog open={!!triggerToDelete} onOpenChange={(open) => !open && setTriggerToDelete(null)}>
