@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { DataTable, Column } from "@/components/ui/data-table";
 import {
   AlertDialog,
@@ -302,6 +302,57 @@ export default function ActionsList() {
     },
   ];
 
+  // Memoize initialValues to prevent creating new object references on every render
+  // This ensures the form doesn't reset unnecessarily during submission
+  const memoizedInitialValues = useMemo(() => {
+    if (!editingAction) return undefined;
+    
+    return {
+      name: editingAction.name,
+      category:
+        typeof editingAction.category === "string"
+          ? editingAction.category
+          : editingAction.category?._id || "",
+      automationTrigger: editingAction.automationTrigger,
+      isActive: editingAction.isActive,
+      conditions: editingAction.conditions?.map((cond) => ({
+        type: cond.type,
+        operator: cond.operator,
+        value: cond.value,
+        // @ts-ignore 
+        serviceId: cond.serviceId ? (typeof cond.serviceId === 'string' ? cond.serviceId : cond.serviceId.toString()) : undefined,
+        addonName: cond.addonName,
+        serviceCategory: cond.serviceCategory,
+        // @ts-ignore 
+        categoryId: cond.categoryId ? (typeof cond.categoryId === 'string' ? cond.categoryId : cond.categoryId.toString()) : undefined,
+        yearBuild: cond.yearBuild,
+        foundation: cond.foundation,
+        squareFeet: cond.squareFeet,
+        zipCode: cond.zipCode,
+        city: cond.city,
+        state: cond.state,
+      })),
+      conditionLogic: editingAction.conditionLogic || "AND",
+      communicationType: editingAction.communicationType,
+      sendTiming: editingAction.sendTiming,
+      sendDelay: editingAction.sendDelay,
+      sendDelayUnit: editingAction.sendDelayUnit,
+      onlyTriggerOnce: editingAction.onlyTriggerOnce,
+      // alsoSendOnRecurringInspections: editingAction.alsoSendOnRecurringInspections,
+      sendEvenWhenNotificationsDisabled: editingAction.sendEvenWhenNotificationsDisabled,
+      sendDuringCertainHoursOnly: editingAction.sendDuringCertainHoursOnly,
+      startTime: editingAction.startTime,
+      endTime: editingAction.endTime,
+      doNotSendOnWeekends: editingAction.doNotSendOnWeekends,
+      emailTo: editingAction.emailTo || [],
+      emailCc: editingAction.emailCc || [],
+      emailBcc: editingAction.emailBcc || [],
+      emailFrom: editingAction.emailFrom,
+      emailSubject: editingAction.emailSubject || "",
+      emailBody: editingAction.emailBody || "",
+    };
+  }, [editingAction]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -342,54 +393,7 @@ export default function ActionsList() {
 
           <ActionForm
           // @ts-ignore 
-            initialValues={
-              editingAction
-                ? {
-                    name: editingAction.name,
-                    category:
-                      typeof editingAction.category === "string"
-                        ? editingAction.category
-                        : editingAction.category?._id || "",
-                    automationTrigger: editingAction.automationTrigger,
-                    isActive: editingAction.isActive,
-                    conditions: editingAction.conditions?.map((cond) => ({
-                      type: cond.type,
-                      operator: cond.operator,
-                      value: cond.value,
-                      // @ts-ignore 
-                      serviceId: cond.serviceId ? (typeof cond.serviceId === 'string' ? cond.serviceId : cond.serviceId.toString()) : undefined,
-                      addonName: cond.addonName,
-                      serviceCategory: cond.serviceCategory,
-                      // @ts-ignore 
-                      categoryId: cond.categoryId ? (typeof cond.categoryId === 'string' ? cond.categoryId : cond.categoryId.toString()) : undefined,
-                      yearBuild: cond.yearBuild,
-                      foundation: cond.foundation,
-                      squareFeet: cond.squareFeet,
-                      zipCode: cond.zipCode,
-                      city: cond.city,
-                      state: cond.state,
-                    })),
-                    conditionLogic: editingAction.conditionLogic || "AND",
-                    communicationType: editingAction.communicationType,
-                    sendTiming: editingAction.sendTiming,
-                    sendDelay: editingAction.sendDelay,
-                    sendDelayUnit: editingAction.sendDelayUnit,
-                    onlyTriggerOnce: editingAction.onlyTriggerOnce,
-                    // alsoSendOnRecurringInspections: editingAction.alsoSendOnRecurringInspections,
-                    sendEvenWhenNotificationsDisabled: editingAction.sendEvenWhenNotificationsDisabled,
-                    sendDuringCertainHoursOnly: editingAction.sendDuringCertainHoursOnly,
-                    startTime: editingAction.startTime,
-                    endTime: editingAction.endTime,
-                    doNotSendOnWeekends: editingAction.doNotSendOnWeekends,
-                    emailTo: editingAction.emailTo || [],
-                    emailCc: editingAction.emailCc || [],
-                    emailBcc: editingAction.emailBcc || [],
-                    emailFrom: editingAction.emailFrom,
-                    emailSubject: editingAction.emailSubject || "",
-                    emailBody: editingAction.emailBody || "",
-                  }
-                : undefined
-            }
+            initialValues={memoizedInitialValues}
             submitLabel={editingAction ? "Update Action" : "Create Action"}
             onSubmit={handleFormSubmit}
             onCancel={closeDialog}

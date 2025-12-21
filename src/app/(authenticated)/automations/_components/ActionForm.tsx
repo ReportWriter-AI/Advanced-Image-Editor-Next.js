@@ -512,31 +512,34 @@ export function ActionForm({
   };
 
   const handleSubmit = async (values: ActionFormValues) => {
+    // Get the absolute latest form values to ensure we have the most current state
+    const latestValues = form.getValues();
+    
     const normalized: ActionFormNormalizedValues = {
-      name: values.name.trim(),
-      category: values.category,
-      automationTrigger: values.automationTrigger,
-      isActive: values.isActive,
+      name: latestValues.name.trim(),
+      category: latestValues.category,
+      automationTrigger: latestValues.automationTrigger,
+      isActive: latestValues.isActive,
       // Always send conditions array (even if empty) so backend can clear them when deleted
-      conditions: conditions,
-      conditionLogic: conditions.length > 1 ? conditionLogic : undefined,
-      communicationType: values.communicationType,
-      sendTiming: values.communicationType ? (values.sendTiming || "AFTER") : undefined,
-      sendDelay: values.communicationType && values.sendDelay !== undefined ? values.sendDelay : undefined,
-      sendDelayUnit: values.communicationType && values.sendDelayUnit ? values.sendDelayUnit : undefined,
-      onlyTriggerOnce: values.communicationType ? (values.onlyTriggerOnce || false) : undefined,
-      // alsoSendOnRecurringInspections: values.communicationType ? (values.alsoSendOnRecurringInspections || false) : undefined,
-      sendEvenWhenNotificationsDisabled: values.communicationType ? (values.sendEvenWhenNotificationsDisabled || false) : undefined,
-      sendDuringCertainHoursOnly: values.communicationType ? (values.sendDuringCertainHoursOnly || false) : undefined,
-      startTime: values.communicationType && values.sendDuringCertainHoursOnly ? values.startTime : undefined,
-      endTime: values.communicationType && values.sendDuringCertainHoursOnly ? values.endTime : undefined,
-      doNotSendOnWeekends: values.communicationType ? (values.doNotSendOnWeekends || false) : undefined,
-      emailTo: (values.communicationType === "EMAIL" || values.communicationType === "TEXT") && values.emailTo && values.emailTo.length > 0 ? values.emailTo : undefined,
-      emailCc: values.communicationType === "EMAIL" && values.emailCc && values.emailCc.length > 0 ? values.emailCc : undefined,
-      emailBcc: values.communicationType === "EMAIL" && values.emailBcc && values.emailBcc.length > 0 ? values.emailBcc : undefined,
-      emailFrom: values.communicationType === "EMAIL" ? values.emailFrom : undefined,
-      emailSubject: values.communicationType === "EMAIL" && values.emailSubject ? values.emailSubject.trim() : undefined,
-      emailBody: (values.communicationType === "EMAIL" || values.communicationType === "TEXT") && values.emailBody ? values.emailBody : undefined,
+      conditions: latestValues.conditions || [],
+      conditionLogic: (latestValues.conditions || []).length > 1 ? (latestValues.conditionLogic || "AND") : undefined,
+      communicationType: latestValues.communicationType,
+      sendTiming: latestValues.communicationType ? (latestValues.sendTiming || "AFTER") : undefined,
+      sendDelay: latestValues.communicationType && latestValues.sendDelay !== undefined ? latestValues.sendDelay : undefined,
+      sendDelayUnit: latestValues.communicationType && latestValues.sendDelayUnit ? latestValues.sendDelayUnit : undefined,
+      onlyTriggerOnce: latestValues.communicationType ? (latestValues.onlyTriggerOnce || false) : undefined,
+      // alsoSendOnRecurringInspections: latestValues.communicationType ? (latestValues.alsoSendOnRecurringInspections || false) : undefined,
+      sendEvenWhenNotificationsDisabled: latestValues.communicationType ? (latestValues.sendEvenWhenNotificationsDisabled || false) : undefined,
+      sendDuringCertainHoursOnly: latestValues.communicationType ? (latestValues.sendDuringCertainHoursOnly || false) : undefined,
+      startTime: latestValues.communicationType && latestValues.sendDuringCertainHoursOnly ? latestValues.startTime : undefined,
+      endTime: latestValues.communicationType && latestValues.sendDuringCertainHoursOnly ? latestValues.endTime : undefined,
+      doNotSendOnWeekends: latestValues.communicationType ? (latestValues.doNotSendOnWeekends || false) : undefined,
+      emailTo: (latestValues.communicationType === "EMAIL" || latestValues.communicationType === "TEXT") && latestValues.emailTo && latestValues.emailTo.length > 0 ? latestValues.emailTo : undefined,
+      emailCc: latestValues.communicationType === "EMAIL" && latestValues.emailCc && latestValues.emailCc.length > 0 ? latestValues.emailCc : undefined,
+      emailBcc: latestValues.communicationType === "EMAIL" && latestValues.emailBcc && latestValues.emailBcc.length > 0 ? latestValues.emailBcc : undefined,
+      emailFrom: latestValues.communicationType === "EMAIL" ? latestValues.emailFrom : undefined,
+      emailSubject: latestValues.communicationType === "EMAIL" && latestValues.emailSubject ? latestValues.emailSubject.trim() : undefined,
+      emailBody: (latestValues.communicationType === "EMAIL" || latestValues.communicationType === "TEXT") && latestValues.emailBody ? latestValues.emailBody : undefined,
     };
     await onSubmit(normalized);
   };

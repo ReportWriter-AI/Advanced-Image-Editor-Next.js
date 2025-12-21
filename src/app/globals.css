@@ -2936,4 +2936,15 @@ body div.submit-section div.submit-controls div.location-button-container button
   fill: #0f172a !important;
 }
 
+/* Make description text white in selected React Select options */
+.react-select__option--is-selected .text-muted-foreground,
+.react-select-container .react-select__option--is-selected .text-muted-foreground {
+  color: white !important;
+}
+
+.react-select__option--is-selected .text-xs.text-muted-foreground,
+.react-select-container .react-select__option--is-selected .text-xs.text-muted-foreground {
+  color: white !important;
+}
+
 
