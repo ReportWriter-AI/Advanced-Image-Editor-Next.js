@@ -51,7 +51,7 @@ interface Action {
   sendDelay?: number;
   sendDelayUnit?: "MINUTES" | "HOURS" | "DAYS" | "WEEKS" | "MONTHS";
   onlyTriggerOnce?: boolean;
-  alsoSendOnRecurringInspections?: boolean;
+  // alsoSendOnRecurringInspections?: boolean;
   sendEvenWhenNotificationsDisabled?: boolean;
   sendDuringCertainHoursOnly?: boolean;
   startTime?: string;
@@ -80,7 +80,7 @@ const mapAction = (item: any): Action => {
     sendDelay: item?.sendDelay,
     sendDelayUnit: item?.sendDelayUnit,
     onlyTriggerOnce: item?.onlyTriggerOnce,
-    alsoSendOnRecurringInspections: item?.alsoSendOnRecurringInspections,
+    // alsoSendOnRecurringInspections: item?.alsoSendOnRecurringInspections,
     sendEvenWhenNotificationsDisabled: item?.sendEvenWhenNotificationsDisabled,
     sendDuringCertainHoursOnly: item?.sendDuringCertainHoursOnly,
     startTime: item?.startTime,
@@ -375,7 +375,7 @@ export default function ActionsList() {
                     sendDelay: editingAction.sendDelay,
                     sendDelayUnit: editingAction.sendDelayUnit,
                     onlyTriggerOnce: editingAction.onlyTriggerOnce,
-                    alsoSendOnRecurringInspections: editingAction.alsoSendOnRecurringInspections,
+                    // alsoSendOnRecurringInspections: editingAction.alsoSendOnRecurringInspections,
                     sendEvenWhenNotificationsDisabled: editingAction.sendEvenWhenNotificationsDisabled,
                     sendDuringCertainHoursOnly: editingAction.sendDuringCertainHoursOnly,
                     startTime: editingAction.startTime,

@@ -18,7 +18,7 @@ export interface TriggerConfig {
   sendDelay?: number;
   sendDelayUnit?: 'MINUTES' | 'HOURS' | 'DAYS' | 'WEEKS' | 'MONTHS';
   onlyTriggerOnce?: boolean;
-  alsoSendOnRecurringInspections?: boolean;
+  // alsoSendOnRecurringInspections?: boolean;
   sendEvenWhenNotificationsDisabled?: boolean;
   sendDuringCertainHoursOnly?: boolean;
   startTime?: string;
@@ -30,6 +30,139 @@ export interface TriggerConfig {
   emailFrom?: 'COMPANY' | 'INSPECTOR';
   emailSubject?: string;
   emailBody?: string;
+}
+
+/**
+ * Calculates execution time with all restrictions applied simultaneously
+ * Applies sendTiming, sendDelay, time window restrictions, and weekend restrictions
+ */
+export function calculateExecutionTimeWithRestrictions(
+  baseTime: Date,
+  triggerConfig: TriggerConfig
+): Date {
+  // Step 1: Calculate initial execution time based on sendTiming and delay
+  let executionTime = new Date(baseTime);
+  const delay = triggerConfig.sendDelay || 0;
+  const delayUnit = triggerConfig.sendDelayUnit || 'HOURS';
+
+  // Convert delay to milliseconds
+  let delayMs = 0;
+  switch (delayUnit) {
+    case 'MINUTES':
+      delayMs = delay * 60 * 1000;
+      break;
+    case 'HOURS':
+      delayMs = delay * 60 * 60 * 1000;
+      break;
+    case 'DAYS':
+      delayMs = delay * 24 * 60 * 60 * 1000;
+      break;
+    case 'WEEKS':
+      delayMs = delay * 7 * 24 * 60 * 60 * 1000;
+      break;
+    case 'MONTHS':
+      delayMs = delay * 30 * 24 * 60 * 60 * 1000; // Approximate
+      break;
+  }
+
+  if (triggerConfig.sendTiming === 'BEFORE') {
+    executionTime = new Date(baseTime.getTime() - delayMs);
+  } else {
+    // AFTER (default)
+    executionTime = new Date(baseTime.getTime() + delayMs);
+  }
+
+  // Step 2: Apply time window restrictions if enabled
+  if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
+    const [startHour, startMin] = triggerConfig.startTime.split(':').map(Number);
+    const [endHour, endMin] = triggerConfig.endTime.split(':').map(Number);
+    const startTimeMinutes = startHour * 60 + startMin;
+    const endTimeMinutes = endHour * 60 + endMin;
+
+    // Get execution time components
+    const execHour = executionTime.getHours();
+    const execMin = executionTime.getMinutes();
+    const execTimeMinutes = execHour * 60 + execMin;
+
+    // Check if execution time is within the time window
+    const isWithinWindow = execTimeMinutes >= startTimeMinutes && execTimeMinutes < endTimeMinutes;
+
+    if (!isWithinWindow) {
+      // Execution time is outside the window
+      if (execTimeMinutes < startTimeMinutes) {
+        // Before start time: schedule for same day at startTime
+        executionTime.setHours(startHour, startMin, 0, 0);
+      } else {
+        // After end time: schedule for next day at startTime
+        executionTime.setDate(executionTime.getDate() + 1);
+        executionTime.setHours(startHour, startMin, 0, 0);
+      }
+    }
+    // If within window, keep the calculated execution time (don't modify it)
+  }
+
+  // Step 3: Apply weekend restrictions if enabled
+  // This needs to be done iteratively until we find a valid day
+  if (triggerConfig.doNotSendOnWeekends) {
+    let maxIterations = 10; // Safety limit
+    let iterations = 0;
+    
+    while (iterations < maxIterations) {
+      const dayOfWeek = executionTime.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      
+      if (!isWeekend) {
+        break; // Found a weekday
+      }
+      
+      // Store the current time before moving to Monday
+      const currentHour = executionTime.getHours();
+      const currentMin = executionTime.getMinutes();
+      
+      // Move to next Monday
+      const daysUntilMonday = dayOfWeek === 0 ? 1 : 2; // Sunday -> Monday (1 day), Saturday -> Monday (2 days)
+      executionTime.setDate(executionTime.getDate() + daysUntilMonday);
+      
+      // If time window is enabled, set to startTime on Monday
+      // Otherwise, keep the calculated time but on Monday
+      if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime) {
+        const [startHour, startMin] = triggerConfig.startTime.split(':').map(Number);
+        executionTime.setHours(startHour, startMin, 0, 0);
+      } else {
+        // Keep the calculated time, just on Monday
+        executionTime.setHours(currentHour, currentMin, 0, 0);
+      }
+      
+      iterations++;
+    }
+  }
+
+  // Step 4: Final validation - ensure time window is still satisfied after weekend adjustments
+  if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
+    const [startHour, startMin] = triggerConfig.startTime.split(':').map(Number);
+    const [endHour, endMin] = triggerConfig.endTime.split(':').map(Number);
+    const execHour = executionTime.getHours();
+    const execMin = executionTime.getMinutes();
+    const execTimeMinutes = execHour * 60 + execMin;
+    const startTimeMinutes = startHour * 60 + startMin;
+    const endTimeMinutes = endHour * 60 + endMin;
+
+    if (execTimeMinutes < startTimeMinutes || execTimeMinutes >= endTimeMinutes) {
+      // Still outside window, move to startTime
+      executionTime.setHours(startHour, startMin, 0, 0);
+      
+      // If this pushes us to a weekend, move to Monday (recursive check)
+      if (triggerConfig.doNotSendOnWeekends) {
+        let dayOfWeek = executionTime.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          const daysUntilMonday = dayOfWeek === 0 ? 1 : 2;
+          executionTime.setDate(executionTime.getDate() + daysUntilMonday);
+        }
+      }
+    }
+  }
+
+  return executionTime;
 }
 
 /**
@@ -135,7 +268,7 @@ function shouldTriggerBasedOnTiming(
     }
   }
 
-  // For time-based triggers, calculate execution time
+  // For time-based triggers, calculate execution time using unified calculator
   const timeBasedTriggers = [
     // 'INSPECTION_START_TIME',
     // 'INSPECTION_END_TIME',
@@ -167,37 +300,8 @@ function shouldTriggerBasedOnTiming(
       return { shouldTrigger: false };
     }
 
-    // Calculate execution time based on sendTiming and delay
-    let executionTime = new Date(baseTime);
-    const delay = triggerConfig.sendDelay || 0;
-    const delayUnit = triggerConfig.sendDelayUnit || 'HOURS';
-
-    // Convert delay to milliseconds
-    let delayMs = 0;
-    switch (delayUnit) {
-      case 'MINUTES':
-        delayMs = delay * 60 * 1000;
-        break;
-      case 'HOURS':
-        delayMs = delay * 60 * 60 * 1000;
-        break;
-      case 'DAYS':
-        delayMs = delay * 24 * 60 * 60 * 1000;
-        break;
-      case 'WEEKS':
-        delayMs = delay * 7 * 24 * 60 * 60 * 1000;
-        break;
-      case 'MONTHS':
-        delayMs = delay * 30 * 24 * 60 * 60 * 1000; // Approximate
-        break;
-    }
-
-    if (triggerConfig.sendTiming === 'BEFORE') {
-      executionTime = new Date(baseTime.getTime() - delayMs);
-    } else {
-      // AFTER (default)
-      executionTime = new Date(baseTime.getTime() + delayMs);
-    }
+    // Calculate execution time with all restrictions applied
+    const executionTime = calculateExecutionTimeWithRestrictions(baseTime, triggerConfig);
 
     // Check if execution time is in the past (for immediate triggers) or future (for scheduled)
     const now = new Date();
@@ -206,17 +310,25 @@ function shouldTriggerBasedOnTiming(
       return { shouldTrigger: true };
     } else {
       // Queue for later
+      const delay = triggerConfig.sendDelay || 0;
+      const delayUnit = triggerConfig.sendDelayUnit || 'HOURS';
       const delayDescription = delay > 0 
         ? `${delay} ${delayUnit.toLowerCase()} ${triggerConfig.sendTiming === 'BEFORE' ? 'before' : 'after'} ${triggerConfig.automationTrigger}`
         : `at ${triggerConfig.automationTrigger}`;
       
-      console.log(`[Automation Trigger] Email scheduled due to delay:`);
+      console.log(`[Automation Trigger] Email scheduled due to delay and restrictions:`);
       console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
       console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
       console.log(`  Delay: ${delayDescription}`);
       console.log(`  Base time: ${baseTime.toLocaleString()}`);
       console.log(`  Current time: ${now.toLocaleString()}`);
       console.log(`  Scheduled to send at: ${executionTime.toLocaleString()}`);
+      if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
+        console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime}`);
+      }
+      if (triggerConfig.doNotSendOnWeekends) {
+        console.log(`  Weekend restriction: enabled`);
+      }
       if (delayUnit === 'WEEKS' || delayUnit === 'MONTHS' || delayUnit === 'DAYS') {
         const daysUntil = Math.ceil((executionTime.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         console.log(`  Days until send: ${daysUntil} day(s)`);
@@ -226,18 +338,52 @@ function shouldTriggerBasedOnTiming(
     }
   }
 
-  // For immediate triggers, execute now
+  // For immediate triggers (like INSPECTION_SCHEDULED), check if delay is configured
+  // If delay is set, calculate execution time using "now" as base time
+  const delay = triggerConfig.sendDelay || 0;
+  if (delay > 0) {
+    const now = new Date();
+    // Use "now" as base time and apply delay and restrictions
+    const executionTime = calculateExecutionTimeWithRestrictions(now, triggerConfig);
+    
+    // Check if execution time is in the future
+    if (executionTime > now) {
+      // Queue for later
+      const delayUnit = triggerConfig.sendDelayUnit || 'HOURS';
+      const delayDescription = `${delay} ${delayUnit.toLowerCase()} after trigger`;
+      
+      console.log(`[Automation Trigger] Email scheduled due to delay:`);
+      console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
+      console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
+      console.log(`  Delay: ${delayDescription}`);
+      console.log(`  Current time: ${now.toLocaleString()}`);
+      console.log(`  Scheduled to send at: ${executionTime.toLocaleString()}`);
+      if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
+        console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime}`);
+      }
+      if (triggerConfig.doNotSendOnWeekends) {
+        console.log(`  Weekend restriction: enabled`);
+      }
+      
+      return { shouldTrigger: true, executionTime };
+    }
+    // If execution time is in the past (shouldn't happen with delay > 0), execute immediately
+  }
+
+  // For immediate triggers without delay, execute now
   return { shouldTrigger: true };
 }
 
 /**
  * Processes a trigger - evaluates conditions and sends communication or queues for later
+ * @param skipTimingCheck - If true, skip timing checks (for queued triggers that are already due)
  */
 export async function processTrigger(
   inspectionId: string | mongoose.Types.ObjectId,
   triggerIndex: number,
   triggerConfig: TriggerConfig,
-  triggerEvent: string
+  triggerEvent: string,
+  skipTimingCheck?: boolean
 ): Promise<{
   success: boolean;
   queued: boolean;
@@ -284,28 +430,30 @@ export async function processTrigger(
       };
     }
 
-    // Check timing rules
-    const timingCheck = shouldTriggerBasedOnTiming(triggerConfig, inspection, triggerEvent);
-    if (!timingCheck.shouldTrigger) {
-      return {
-        success: false,
-        queued: false,
-        error: 'Trigger conditions not met (timing)',
-      };
-    }
+    // Check timing rules (skip for queued triggers that are already due)
+    if (!skipTimingCheck) {
+      const timingCheck = shouldTriggerBasedOnTiming(triggerConfig, inspection, triggerEvent);
+      if (!timingCheck.shouldTrigger) {
+        return {
+          success: false,
+          queued: false,
+          error: 'Trigger conditions not met (timing)',
+        };
+      }
 
-    // If execution time is in the future, queue it
-    if (timingCheck.executionTime && timingCheck.executionTime > new Date()) {
-      await queueTrigger(
-        inspectionId.toString(),
-        triggerIndex,
-        timingCheck.executionTime,
-        triggerConfig.automationTrigger
-      );
-      return {
-        success: true,
-        queued: true,
-      };
+      // If execution time is in the future, queue it
+      if (timingCheck.executionTime && timingCheck.executionTime > new Date()) {
+        await queueTrigger(
+          inspectionId.toString(),
+          triggerIndex,
+          timingCheck.executionTime,
+          triggerConfig.automationTrigger
+        );
+        return {
+          success: true,
+          queued: true,
+        };
+      }
     }
 
     // Evaluate conditions

@@ -322,7 +322,7 @@ const formatInspection = (doc: IInspection | null) => {
         sendDelay: trigger.sendDelay || null,
         sendDelayUnit: trigger.sendDelayUnit || null,
         onlyTriggerOnce: trigger.onlyTriggerOnce || false,
-        alsoSendOnRecurringInspections: trigger.alsoSendOnRecurringInspections || false,
+        // alsoSendOnRecurringInspections: trigger.alsoSendOnRecurringInspections || false,
         sendEvenWhenNotificationsDisabled: trigger.sendEvenWhenNotificationsDisabled || false,
         sendDuringCertainHoursOnly: trigger.sendDuringCertainHoursOnly || false,
         startTime: trigger.startTime || null,

@@ -93,7 +93,7 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       sendDelay,
       sendDelayUnit,
       onlyTriggerOnce,
-      alsoSendOnRecurringInspections,
+      // alsoSendOnRecurringInspections,
       sendEvenWhenNotificationsDisabled,
       sendDuringCertainHoursOnly,
       startTime,
@@ -336,9 +336,9 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       action.onlyTriggerOnce = Boolean(onlyTriggerOnce);
     }
 
-    if (alsoSendOnRecurringInspections !== undefined) {
-      action.alsoSendOnRecurringInspections = Boolean(alsoSendOnRecurringInspections);
-    }
+    // if (alsoSendOnRecurringInspections !== undefined) {
+    //   action.alsoSendOnRecurringInspections = Boolean(alsoSendOnRecurringInspections);
+    // }
 
     if (sendEvenWhenNotificationsDisabled !== undefined) {
       action.sendEvenWhenNotificationsDisabled = Boolean(sendEvenWhenNotificationsDisabled);

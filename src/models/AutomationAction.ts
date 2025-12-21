@@ -47,7 +47,7 @@ export interface IAutomationAction extends Document {
   sendDelay?: number;
   sendDelayUnit?: 'MINUTES' | 'HOURS' | 'DAYS' | 'WEEKS' | 'MONTHS';
   onlyTriggerOnce?: boolean;
-  alsoSendOnRecurringInspections?: boolean;
+  // alsoSendOnRecurringInspections?: boolean;
   sendEvenWhenNotificationsDisabled?: boolean;
   sendDuringCertainHoursOnly?: boolean;
   startTime?: string;
@@ -190,10 +190,10 @@ const AutomationActionSchema = new Schema<IAutomationAction>(
       type: Boolean,
       default: false,
     },
-    alsoSendOnRecurringInspections: {
-      type: Boolean,
-      default: false,
-    },
+    // alsoSendOnRecurringInspections: {
+    //   type: Boolean,
+    //   default: false,
+    // },
     sendEvenWhenNotificationsDisabled: {
       type: Boolean,
       default: false,

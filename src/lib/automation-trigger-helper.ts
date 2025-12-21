@@ -4,7 +4,7 @@
 
 import mongoose from 'mongoose';
 import Inspection from '@/src/models/Inspection';
-import { processTrigger, wasTriggerAlreadySent } from './automation-trigger-service';
+import { processTrigger, wasTriggerAlreadySent, calculateExecutionTimeWithRestrictions } from './automation-trigger-service';
 import { queueTrigger } from './automation-queue';
 import { requiresConfirmedInspection } from './automation-triggers';
 
@@ -94,6 +94,11 @@ export async function queueTimeBasedTriggers(
         continue;
       }
 
+      // Check if already sent and onlyTriggerOnce is true
+      if (triggerConfig.onlyTriggerOnce && triggerConfig.sentAt) {
+        continue;
+      }
+
       // Calculate execution time
       let baseTime: Date | null = null;
 
@@ -118,39 +123,15 @@ export async function queueTimeBasedTriggers(
         continue;
       }
 
-      // Calculate execution time based on sendTiming and delay
-      let executionTime = new Date(baseTime);
-      const delay = triggerConfig.sendDelay || 0;
-      const delayUnit = triggerConfig.sendDelayUnit || 'HOURS';
-
-      // Convert delay to milliseconds
-      let delayMs = 0;
-      switch (delayUnit) {
-        case 'MINUTES':
-          delayMs = delay * 60 * 1000;
-          break;
-        case 'HOURS':
-          delayMs = delay * 60 * 60 * 1000;
-          break;
-        case 'DAYS':
-          delayMs = delay * 24 * 60 * 60 * 1000;
-          break;
-        case 'WEEKS':
-          delayMs = delay * 7 * 24 * 60 * 60 * 1000;
-          break;
-        case 'MONTHS':
-          delayMs = delay * 30 * 24 * 60 * 60 * 1000; // Approximate
-          break;
-      }
-
-      if (triggerConfig.sendTiming === 'BEFORE') {
-        executionTime = new Date(baseTime.getTime() - delayMs);
-      } else {
-        // AFTER (default)
-        executionTime = new Date(baseTime.getTime() + delayMs);
-      }
+      // Calculate execution time with all restrictions applied
+      const executionTime = calculateExecutionTimeWithRestrictions(
+        baseTime,
+        triggerConfig as any
+      );
 
       // Only queue if execution time is in the future
+      // Note: Even if execution time is in the past, we still queue it
+      // as it represents the next valid time based on restrictions
       if (executionTime > new Date()) {
         await queueTrigger(
           inspectionId.toString(),

@@ -59,12 +59,6 @@ export async function PUT(
     await dbConnect();
     
     const { inspectionId } = await params;
-
-
-    if (inspectionId) {
-      console.log("trigger api called")
-      await checkAndProcessTriggers(inspectionId, 'INSPECTION_SCHEDULED');
-    }
     
     console.log('Updating inspection ID:', inspectionId);
     

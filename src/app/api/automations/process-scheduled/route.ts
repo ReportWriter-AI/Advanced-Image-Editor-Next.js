@@ -72,12 +72,13 @@ async function processScheduledTriggers() {
           continue;
         }
 
-        // Process the trigger
+        // Process the trigger (skip timing check since it's already due)
         const result = await processTrigger(
           queuedTrigger.inspectionId,
           queuedTrigger.triggerIndex,
           triggerConfig as any,
-          queuedTrigger.triggerKey
+          queuedTrigger.triggerKey,
+          true // skipTimingCheck = true for queued triggers
         );
 
         if (result.success) {

@@ -131,7 +131,7 @@ export interface IInspection extends Document {
     sendDelay?: number;
     sendDelayUnit?: 'MINUTES' | 'HOURS' | 'DAYS' | 'WEEKS' | 'MONTHS';
     onlyTriggerOnce?: boolean;
-    alsoSendOnRecurringInspections?: boolean;
+    // alsoSendOnRecurringInspections?: boolean;
     sendEvenWhenNotificationsDisabled?: boolean;
     sendDuringCertainHoursOnly?: boolean;
     startTime?: string;
@@ -592,10 +592,10 @@ const InspectionSchema = new Schema<IInspection>(
         type: Boolean,
         default: false,
       },
-      alsoSendOnRecurringInspections: {
-        type: Boolean,
-        default: false,
-      },
+      // alsoSendOnRecurringInspections: {
+      //   type: Boolean,
+      //   default: false,
+      // },
       sendEvenWhenNotificationsDisabled: {
         type: Boolean,
         default: false,

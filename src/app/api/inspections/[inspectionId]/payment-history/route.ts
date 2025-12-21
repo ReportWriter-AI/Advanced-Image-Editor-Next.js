@@ -268,7 +268,7 @@ export async function POST(
 
     // Check if inspection is now fully paid and trigger automation
     if (newIsPaid) {
-      const { checkAndProcessTriggers } = await import('@/lib/automation-trigger-helper');
+      const { checkAndProcessTriggers } = await import('@/src/lib/automation-trigger-helper');
       await checkAndProcessTriggers(inspectionId, 'INSPECTION_FULLY_PAID');
       
       // Also check if all agreements are signed for combined trigger

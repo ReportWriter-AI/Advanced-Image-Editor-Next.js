@@ -110,7 +110,7 @@ export async function PUT(
     // Check if inspection is confirmed before triggering automation
     const inspection = await Inspection.findById(inspectionId).lean();
     if (inspection?.confirmedInspection) {
-      const { checkAndProcessTriggers } = await import('@/lib/automation-trigger-helper');
+      const { checkAndProcessTriggers } = await import('@/src/lib/automation-trigger-helper');
       await checkAndProcessTriggers(inspectionId, 'INSPECTION_EVENT_UPDATED');
     }
 
@@ -164,7 +164,7 @@ export async function DELETE(
     // Check if inspection is confirmed before triggering automation
     const inspection = await Inspection.findById(inspectionId).lean();
     if (inspection?.confirmedInspection) {
-      const { checkAndProcessTriggers } = await import('@/lib/automation-trigger-helper');
+      const { checkAndProcessTriggers } = await import('@/src/lib/automation-trigger-helper');
       await checkAndProcessTriggers(inspectionId, 'INSPECTION_EVENT_DELETED');
     }
 

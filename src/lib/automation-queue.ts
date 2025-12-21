@@ -89,11 +89,14 @@ export async function getDueTriggers(currentTime: Date = new Date()): Promise<Qu
   const triggers: QueuedTrigger[] = [];
   for (const member of members) {
     const dataKey = `${TRIGGER_DATA_PREFIX}${member}`;
-    const data = await redis.get<string>(dataKey);
+    const data = await redis.get<string | QueuedTrigger>(dataKey);
 
     if (data) {
       try {
-        const trigger = JSON.parse(data) as QueuedTrigger;
+        // Handle both cases: data might be a string (needs parsing) or already an object
+        const trigger: QueuedTrigger = typeof data === 'string' 
+          ? JSON.parse(data) as QueuedTrigger
+          : data as QueuedTrigger;
         triggers.push(trigger);
       } catch (error) {
         console.error(`Error parsing trigger data for ${member}:`, error);

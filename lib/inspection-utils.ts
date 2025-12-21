@@ -193,7 +193,7 @@ export async function attachAutomationActionsToInspection(
       sendDelay: action.sendDelay,
       sendDelayUnit: action.sendDelayUnit,
       onlyTriggerOnce: action.onlyTriggerOnce,
-      alsoSendOnRecurringInspections: action.alsoSendOnRecurringInspections,
+      // alsoSendOnRecurringInspections: action.alsoSendOnRecurringInspections,
       sendEvenWhenNotificationsDisabled: action.sendEvenWhenNotificationsDisabled,
       sendDuringCertainHoursOnly: action.sendDuringCertainHoursOnly,
       startTime: action.startTime,

@@ -79,7 +79,7 @@ const actionFormSchema = z.object({
   sendDelay: z.number().min(0).optional(),
   sendDelayUnit: z.enum(["MINUTES", "HOURS", "DAYS", "WEEKS", "MONTHS"]).optional(),
   onlyTriggerOnce: z.boolean().optional(),
-  alsoSendOnRecurringInspections: z.boolean().optional(),
+  // alsoSendOnRecurringInspections: z.boolean().optional(),
   sendEvenWhenNotificationsDisabled: z.boolean().optional(),
   sendDuringCertainHoursOnly: z.boolean().optional(),
   startTime: z.string().optional(),
@@ -171,7 +171,7 @@ export type ActionFormNormalizedValues = {
   sendDelay?: number;
   sendDelayUnit?: "MINUTES" | "HOURS" | "DAYS" | "WEEKS" | "MONTHS";
   onlyTriggerOnce?: boolean;
-  alsoSendOnRecurringInspections?: boolean;
+  // alsoSendOnRecurringInspections?: boolean;
   sendEvenWhenNotificationsDisabled?: boolean;
   sendDuringCertainHoursOnly?: boolean;
   startTime?: string;
@@ -365,7 +365,7 @@ export function ActionForm({
       sendDelay: initialValues?.sendDelay,
       sendDelayUnit: initialValues?.sendDelayUnit || "HOURS",
       onlyTriggerOnce: initialValues?.onlyTriggerOnce !== undefined ? initialValues.onlyTriggerOnce : true,
-      alsoSendOnRecurringInspections: initialValues?.alsoSendOnRecurringInspections || false,
+      // alsoSendOnRecurringInspections: initialValues?.alsoSendOnRecurringInspections || false,
       sendEvenWhenNotificationsDisabled: initialValues?.sendEvenWhenNotificationsDisabled || false,
       sendDuringCertainHoursOnly: initialValues?.sendDuringCertainHoursOnly || false,
       startTime: initialValues?.startTime || "00:00",
@@ -448,7 +448,7 @@ export function ActionForm({
         sendDelay: initialValues.sendDelay,
         sendDelayUnit: initialValues.sendDelayUnit || "HOURS",
         onlyTriggerOnce: initialValues.onlyTriggerOnce !== undefined ? initialValues.onlyTriggerOnce : true,
-        alsoSendOnRecurringInspections: initialValues.alsoSendOnRecurringInspections || false,
+        // alsoSendOnRecurringInspections: initialValues.alsoSendOnRecurringInspections || false,
         sendEvenWhenNotificationsDisabled: initialValues.sendEvenWhenNotificationsDisabled || false,
         sendDuringCertainHoursOnly: initialValues.sendDuringCertainHoursOnly || false,
         startTime: initialValues.startTime || "00:00",
@@ -525,7 +525,7 @@ export function ActionForm({
       sendDelay: values.communicationType && values.sendDelay ? values.sendDelay : undefined,
       sendDelayUnit: values.communicationType && values.sendDelayUnit ? values.sendDelayUnit : undefined,
       onlyTriggerOnce: values.communicationType ? (values.onlyTriggerOnce || false) : undefined,
-      alsoSendOnRecurringInspections: values.communicationType ? (values.alsoSendOnRecurringInspections || false) : undefined,
+      // alsoSendOnRecurringInspections: values.communicationType ? (values.alsoSendOnRecurringInspections || false) : undefined,
       sendEvenWhenNotificationsDisabled: values.communicationType ? (values.sendEvenWhenNotificationsDisabled || false) : undefined,
       sendDuringCertainHoursOnly: values.communicationType ? (values.sendDuringCertainHoursOnly || false) : undefined,
       startTime: values.communicationType && values.sendDuringCertainHoursOnly ? values.startTime : undefined,
@@ -1320,7 +1320,7 @@ export function ActionForm({
                   </div>
                 </div>
 
-                <div className="flex items-start space-x-2">
+                {/* <div className="flex items-start space-x-2">
                   <Controller
                     name="alsoSendOnRecurringInspections"
                     control={form.control}
@@ -1344,7 +1344,7 @@ export function ActionForm({
                       Enable to trigger this automation for recurring scheduled inspections.
                     </p>
                   </div>
-                </div>
+                </div> */}
 
                 <div className="flex items-start space-x-2">
                   <Controller

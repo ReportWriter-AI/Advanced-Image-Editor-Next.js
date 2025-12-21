@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       sendDelay,
       sendDelayUnit,
       onlyTriggerOnce,
-      alsoSendOnRecurringInspections,
+      // alsoSendOnRecurringInspections,
       sendEvenWhenNotificationsDisabled,
       sendDuringCertainHoursOnly,
       startTime,
@@ -420,9 +420,9 @@ export async function POST(request: NextRequest) {
     if (onlyTriggerOnce !== undefined) {
       actionData.onlyTriggerOnce = Boolean(onlyTriggerOnce);
     }
-    if (alsoSendOnRecurringInspections !== undefined) {
-      actionData.alsoSendOnRecurringInspections = Boolean(alsoSendOnRecurringInspections);
-    }
+    // if (alsoSendOnRecurringInspections !== undefined) {
+    //   actionData.alsoSendOnRecurringInspections = Boolean(alsoSendOnRecurringInspections);
+    // }
     if (sendEvenWhenNotificationsDisabled !== undefined) {
       actionData.sendEvenWhenNotificationsDisabled = Boolean(sendEvenWhenNotificationsDisabled);
     }
