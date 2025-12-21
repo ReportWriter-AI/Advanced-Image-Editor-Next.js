@@ -76,6 +76,8 @@ export interface IInspection extends Document {
   disableAutomatedNotifications?: boolean;
   internalNotes?: string;
   clientNote?: string;
+  cancellationReason?: string;
+  cancelInspection?: boolean;
   clientAgreedToTerms?: boolean;
   token?: string;
   customData?: Record<string, any>;
@@ -409,6 +411,14 @@ const InspectionSchema = new Schema<IInspection>(
     clientNote: {
       type: String,
       trim: true,
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+    },
+    cancelInspection: {
+      type: Boolean,
+      default: false,
     },
     clientAgreedToTerms: {
       type: Boolean,

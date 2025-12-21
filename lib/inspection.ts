@@ -370,6 +370,8 @@ const formatInspection = (doc: IInspection | null) => {
     referralSource: doc.referralSource ?? null,
     confirmedInspection: doc.confirmedInspection ?? true,
     disableAutomatedNotifications: doc.disableAutomatedNotifications ?? false,
+    cancellationReason: doc.cancellationReason ?? null,
+    cancelInspection: doc.cancelInspection ?? false,
     internalNotes: doc.internalNotes ?? null,
     clientNote: doc.clientNote ?? null,
     token: doc.token ?? null,
@@ -770,6 +772,10 @@ export async function updateInspection(inspectionId: string, data: Partial<{
   }; // pricing items (services and addons)
   customData: Record<string, any>; // custom field data
   internalNotes: string; // internal notes
+  cancellationReason: string; // cancellation reason
+  cancelInspection: boolean; // cancel inspection flag
+  confirmedInspection: boolean; // confirmed inspection flag
+  disableAutomatedNotifications: boolean; // disable automated notifications flag
   closingDate: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // closing date with metadata
   endOfInspectionPeriod: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // end of inspection period with metadata
   agreements: Array<{
@@ -788,8 +794,12 @@ export async function updateInspection(inspectionId: string, data: Partial<{
   const updateData = Object.entries(data).reduce((acc, [key, value]) => {
     if (value !== undefined) {
       // Convert IDs to ObjectId for reference fields
-      if (key === 'inspector' && value && mongoose.Types.ObjectId.isValid(value as string)) {
-        acc[key] = new mongoose.Types.ObjectId(value as string);
+      if (key === 'inspector') {
+        if (value === null || value === undefined) {
+          acc[key] = null; // Explicitly handle null/undefined to unset inspector
+        } else if (mongoose.Types.ObjectId.isValid(value as string)) {
+          acc[key] = new mongoose.Types.ObjectId(value as string);
+        }
       } else if (key === 'discountCode' && value && mongoose.Types.ObjectId.isValid(value as string)) {
         acc[key] = new mongoose.Types.ObjectId(value as string);
       } else if ((key === 'clients' || key === 'agents' || key === 'listingAgent') && Array.isArray(value)) {

@@ -127,6 +127,7 @@ export default function InspectionEditPage() {
     headerAddress?: string;
     hidePricing?: boolean;
     date?: string;
+    status?: string;
     inspector?: any;
     inspectorId?: string;
     clients?: any[];
@@ -140,6 +141,10 @@ export default function InspectionEditPage() {
     customData?: Record<string, any>;
     internalNotes?: string;
     clientNote?: string;
+    cancellationReason?: string;
+    cancelInspection?: boolean;
+    confirmedInspection?: boolean;
+    disableAutomatedNotifications?: boolean;
     requestedAddons?: any[];
     services?: Array<{
       serviceId: string;
@@ -252,10 +257,21 @@ export default function InspectionEditPage() {
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
   const [officeNoteToDelete, setOfficeNoteToDelete] = useState<string | null>(null);
   const [clientNoteToDelete, setClientNoteToDelete] = useState<boolean>(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState<{ serviceIndex: number; serviceName: string; serviceId: string | number } | null>(null);
   const [addonToDelete, setAddonToDelete] = useState<{ serviceIndex: number; addonIndex: number; addonName: string; serviceName: string; serviceId: string | number } | null>(null);
   const [deletingService, setDeletingService] = useState(false);
   const [deletingAddon, setDeletingAddon] = useState(false);
+
+  // Reschedule state
+  const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState<string>('');
+  const [rescheduleTime, setRescheduleTime] = useState<string>('');
+  const [rescheduling, setRescheduling] = useState(false);
+  const [dateError, setDateError] = useState<string>('');
+  const [timeError, setTimeError] = useState<string>('');
 
   // Events state
   const [events, setEvents] = useState<any[]>([]);
@@ -1566,6 +1582,240 @@ export default function InspectionEditPage() {
     }
   };
 
+  const handleConfirmWithNotifications = async () => {
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirmWithNotifications: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to confirm inspection');
+      }
+
+      toast.success('Inspection confirmed with notifications enabled');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error confirming inspection:', error);
+      toast.error(error.message || 'Failed to confirm inspection');
+    }
+  };
+
+  const handleConfirmWithoutNotifications = async () => {
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirmWithoutNotifications: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to confirm inspection');
+      }
+
+      toast.success('Inspection confirmed with notifications disabled');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error confirming inspection:', error);
+      toast.error(error.message || 'Failed to confirm inspection');
+    }
+  };
+
+  const handleEnableNotifications = async () => {
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          disableAutomatedNotifications: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to enable notifications');
+      }
+
+      toast.success('Notifications enabled successfully');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error enabling notifications:', error);
+      toast.error(error.message || 'Failed to enable notifications');
+    }
+  };
+
+  const handleDisableNotifications = async () => {
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          disableAutomatedNotifications: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to disable notifications');
+      }
+
+      toast.success('Notifications disabled successfully');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error disabling notifications:', error);
+      toast.error(error.message || 'Failed to disable notifications');
+    }
+  };
+
+  // Validation helper functions
+  const validateFutureDate = (dateStr: string): { valid: boolean; error?: string } => {
+    if (!dateStr) {
+      return { valid: false, error: 'Please select a date' };
+    }
+    
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateStr)) {
+      return { valid: false, error: 'Invalid date format. Please use YYYY-MM-DD format' };
+    }
+    
+    const selectedDate = new Date(dateStr + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (isNaN(selectedDate.getTime())) {
+      return { valid: false, error: 'Invalid date. Please select a valid date' };
+    }
+    
+    if (selectedDate <= today) {
+      return { valid: false, error: 'Reschedule date must be in the future' };
+    }
+    
+    return { valid: true };
+  };
+
+  const validateTimeFormat = (timeStr: string): { valid: boolean; error?: string } => {
+    if (!timeStr) {
+      return { valid: false, error: 'Please select a time' };
+    }
+    
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (!timeRegex.test(timeStr)) {
+      return { valid: false, error: 'Please enter a valid time in HH:MM format (24-hour)' };
+    }
+    
+    return { valid: true };
+  };
+
+  const validateDateTimeCombination = (dateStr: string, timeStr: string): { valid: boolean; error?: string } => {
+    try {
+      const combinedDateTime = new Date(`${dateStr}T${timeStr}`);
+      
+      if (isNaN(combinedDateTime.getTime())) {
+        return { valid: false, error: 'Invalid date and time combination' };
+      }
+      
+      // Check if the combined datetime is in the future
+      const now = new Date();
+      if (combinedDateTime <= now) {
+        return { valid: false, error: 'Rescheduled date and time must be in the future' };
+      }
+      
+      return { valid: true };
+    } catch (error) {
+      return { valid: false, error: 'Error validating date and time combination' };
+    }
+  };
+
+  const handleReschedule = async () => {
+    // Validate date
+    const dateValidation = validateFutureDate(rescheduleDate);
+    if (!dateValidation.valid) {
+      toast.error(dateValidation.error || 'Invalid date');
+      return;
+    }
+
+    // Validate time
+    const timeValidation = validateTimeFormat(rescheduleTime);
+    if (!timeValidation.valid) {
+      toast.error(timeValidation.error || 'Invalid time');
+      return;
+    }
+
+    // Validate date/time combination
+    const combinedValidation = validateDateTimeCombination(rescheduleDate, rescheduleTime);
+    if (!combinedValidation.valid) {
+      toast.error(combinedValidation.error || 'Invalid date and time combination');
+      return;
+    }
+
+    setRescheduling(true);
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rescheduleDate,
+          rescheduleTime,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to reschedule inspection');
+      }
+
+      toast.success('Inspection rescheduled successfully');
+      setRescheduleDialogOpen(false);
+      setRescheduleDate('');
+      setRescheduleTime('');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error rescheduling inspection:', error);
+      toast.error(error.message || 'Failed to reschedule inspection');
+    } finally {
+      setRescheduling(false);
+    }
+  };
+
+  const handleCancelInspection = async () => {
+    setCancelling(true);
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'Unconfirmed',
+          confirmedInspection: false,
+          disableAutomatedNotifications: true,
+          inspector: null, // Remove inspector when cancelling
+          cancellationReason: cancellationReason || '',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to cancel inspection');
+      }
+
+      toast.success('Inspection cancelled successfully');
+      setCancelDialogOpen(false);
+      setCancellationReason('');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error cancelling inspection:', error);
+      toast.error(error.message || 'Failed to cancel inspection');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   // Addon request handlers
   const handleApproveAddon = async (requestIndex: number) => {
     try {
@@ -2198,6 +2448,41 @@ export default function InspectionEditPage() {
       }
     };
   }, []);
+
+  // Pre-populate reschedule dialog when opened
+  useEffect(() => {
+    if (rescheduleDialogOpen && inspectionDetails.date) {
+      try {
+        const inspectionDate = new Date(inspectionDetails.date);
+        if (!isNaN(inspectionDate.getTime())) {
+          // Format date as YYYY-MM-DD
+          const year = inspectionDate.getFullYear();
+          const month = String(inspectionDate.getMonth() + 1).padStart(2, '0');
+          const day = String(inspectionDate.getDate()).padStart(2, '0');
+          const formattedDate = `${year}-${month}-${day}`;
+          
+          // Format time as HH:MM
+          const hours = String(inspectionDate.getHours()).padStart(2, '0');
+          const minutes = String(inspectionDate.getMinutes()).padStart(2, '0');
+          const formattedTime = `${hours}:${minutes}`;
+          
+          setRescheduleDate(formattedDate);
+          setRescheduleTime(formattedTime);
+        }
+      } catch (error) {
+        console.error('Error pre-populating reschedule dialog:', error);
+        // If there's an error, start with empty fields
+        setRescheduleDate('');
+        setRescheduleTime('');
+      }
+    } else if (!rescheduleDialogOpen) {
+      // Clear fields and errors when dialog closes
+      setRescheduleDate('');
+      setRescheduleTime('');
+      setDateError('');
+      setTimeError('');
+    }
+  }, [rescheduleDialogOpen, inspectionDetails.date]);
 
   const saveEdited = async () => {
     if (!editingId) return;
@@ -3858,6 +4143,106 @@ export default function InspectionEditPage() {
                 )}
               </div>
 
+              {/* Confirmation Buttons Section */}
+              {!inspectionDetails.confirmedInspection && !inspectionDetails.cancelInspection && (
+                <div className="p-4 border rounded-lg bg-muted/50 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg">Confirm Inspection</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Confirm this inspection and choose whether to enable or disable automated notifications.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button
+                      onClick={handleConfirmWithNotifications}
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                    >
+                      <i className="fas fa-check-circle mr-2"></i>
+                      Confirm with notification enabled
+                    </Button>
+                    <Button
+                      onClick={handleConfirmWithoutNotifications}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      <i className="fas fa-check mr-2"></i>
+                      Confirm with notification disabled
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Notification Toggle Section - Only for confirmed inspections */}
+              {inspectionDetails.confirmedInspection && !inspectionDetails.cancelInspection && (
+                <div className="p-4 border rounded-lg bg-muted/50 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg">Notification Settings</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {inspectionDetails.disableAutomatedNotifications 
+                      ? 'Automated notifications are currently disabled for this inspection.'
+                      : 'Automated notifications are currently enabled for this inspection.'}
+                  </p>
+                  {inspectionDetails.disableAutomatedNotifications ? (
+                    <Button
+                      onClick={handleEnableNotifications}
+                      className="w-full bg-green-600 hover:bg-green-700"
+                    >
+                      <i className="fas fa-bell mr-2"></i>
+                      Enable Notifications
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleDisableNotifications}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <i className="fas fa-bell-slash mr-2"></i>
+                      Disable Notifications
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* Reschedule Section */}
+              {inspectionDetails.cancelInspection && (
+                <div className="p-4 border rounded-lg bg-muted/50 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg">Reschedule Inspection</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    This inspection has been cancelled. Select a new date and time to reschedule.
+                  </p>
+                  <Button
+                    onClick={() => setRescheduleDialogOpen(true)}
+                    className="w-full bg-primary hover:bg-primary/90"
+                  >
+                    <i className="fas fa-calendar-alt mr-2"></i>
+                    Reschedule
+                  </Button>
+                </div>
+              )}
+
+              {/* Cancel Inspection Section */}
+              { !inspectionDetails.cancelInspection && (
+                <div className="p-4 border rounded-lg bg-muted/50 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg">Cancel Inspection</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Cancel this inspection to set it to unconfirmed status and disable automated notifications.
+                  </p>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setCancelDialogOpen(true)}
+                    className="w-full"
+                  >
+                    <i className="fas fa-times-circle mr-2"></i>
+                    Cancel Inspection
+                  </Button>
+                </div>
+              )}
+
               <div className="p-4 border rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="font-semibold text-lg">Inspection Information</h3>
@@ -5096,6 +5481,202 @@ export default function InspectionEditPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Cancel Inspection Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={(open) => {
+        setCancelDialogOpen(open);
+        if (!open) {
+          setCancellationReason('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Inspection</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground mb-4">
+              Are you sure you want to cancel this inspection? This will set the status to "Unconfirmed", set confirmed inspection to false, and disable automated notifications.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="cancellationReason" className="text-sm font-semibold">
+                Reason for Cancellation (Optional)
+              </Label>
+              <Textarea
+                id="cancellationReason"
+                value={cancellationReason}
+                onChange={(e) => setCancellationReason(e.target.value)}
+                placeholder="Enter reason for cancellation..."
+                rows={4}
+                className="resize-none"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelDialogOpen(false);
+                setCancellationReason('');
+              }}
+              disabled={cancelling}
+            >
+              Close
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelInspection}
+              disabled={cancelling}
+            >
+              {cancelling ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Cancelling...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-times-circle mr-2"></i>
+                  Cancel Inspection
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reschedule Inspection Dialog */}
+      <Dialog open={rescheduleDialogOpen} onOpenChange={(open) => {
+        setRescheduleDialogOpen(open);
+        if (!open) {
+          setRescheduleDate('');
+          setRescheduleTime('');
+          setDateError('');
+          setTimeError('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reschedule Inspection</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground mb-4">
+              Select a new date and time for this inspection. The inspection will be confirmed and set to "Approved" status.
+            </p>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="rescheduleDate" className="text-sm font-semibold">
+                  Date
+                </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={`w-full justify-start text-left font-normal ${!rescheduleDate && 'text-muted-foreground'} ${dateError ? 'border-destructive' : ''}`}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {rescheduleDate ? format(new Date(rescheduleDate + 'T00:00:00'), 'PPP') : 'Pick a date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={rescheduleDate ? new Date(rescheduleDate + 'T00:00:00') : undefined}
+                      onSelect={(date) => {
+                        const dateStr = date ? format(date, 'yyyy-MM-dd') : '';
+                        setRescheduleDate(dateStr);
+                        // Validate date when selected
+                        if (dateStr) {
+                          const validation = validateFutureDate(dateStr);
+                          setDateError(validation.valid ? '' : (validation.error || ''));
+                        } else {
+                          setDateError('');
+                        }
+                        // Clear combined validation error if date changes
+                        if (rescheduleTime) {
+                          const combinedValidation = validateDateTimeCombination(dateStr, rescheduleTime);
+                          if (combinedValidation.valid) {
+                            setDateError('');
+                            setTimeError('');
+                          }
+                        }
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {dateError && (
+                  <p className="text-sm text-destructive">{dateError}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rescheduleTime" className="text-sm font-semibold">
+                  Time
+                </Label>
+                <Input
+                  id="rescheduleTime"
+                  type="time"
+                  value={rescheduleTime}
+                  onChange={(e) => {
+                    const timeStr = e.target.value;
+                    setRescheduleTime(timeStr);
+                    // Validate time when changed
+                    if (timeStr) {
+                      const validation = validateTimeFormat(timeStr);
+                      setTimeError(validation.valid ? '' : (validation.error || ''));
+                    } else {
+                      setTimeError('');
+                    }
+                    // Validate combined date/time if date exists
+                    if (rescheduleDate && timeStr) {
+                      const combinedValidation = validateDateTimeCombination(rescheduleDate, timeStr);
+                      if (!combinedValidation.valid) {
+                        setDateError(combinedValidation.error || '');
+                        setTimeError(combinedValidation.error || '');
+                      } else {
+                        setDateError('');
+                        setTimeError('');
+                      }
+                    }
+                  }}
+                  className={`w-full ${timeError ? 'border-destructive' : ''}`}
+                />
+                {timeError && (
+                  <p className="text-sm text-destructive">{timeError}</p>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRescheduleDialogOpen(false);
+                setRescheduleDate('');
+                setRescheduleTime('');
+              }}
+              disabled={rescheduling}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleReschedule}
+              disabled={rescheduling || !rescheduleDate || !rescheduleTime || !!dateError || !!timeError}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {rescheduling ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Rescheduling...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-calendar-check mr-2"></i>
+                  Reschedule
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Floating Scroll to Top Button */}
       {showScrollTop && (

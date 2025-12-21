@@ -73,6 +73,93 @@ export async function PUT(
     const inspectionBefore = await Inspection.findById(inspectionId).lean();
     
     const body = await req.json();
+    
+    // Handle confirmation with notifications enabled
+    if (body.confirmWithNotifications === true) {
+      body.confirmedInspection = true;
+      body.disableAutomatedNotifications = false;
+      body.status = 'Approved';
+      delete body.confirmWithNotifications;
+    }
+    
+    // Handle confirmation with notifications disabled
+    if (body.confirmWithoutNotifications === true) {
+      body.confirmedInspection = true;
+      body.disableAutomatedNotifications = true;
+      body.status = 'Approved';
+      delete body.confirmWithoutNotifications;
+    }
+    
+    // Handle reschedule action
+    if (body.rescheduleDate && body.rescheduleTime) {
+      // Validate date format (YYYY-MM-DD)
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(body.rescheduleDate)) {
+        return NextResponse.json(
+          { error: "Invalid date format. Please use YYYY-MM-DD format" },
+          { status: 400 }
+        );
+      }
+
+      // Validate time format (HH:MM)
+      const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+      if (!timeRegex.test(body.rescheduleTime)) {
+        return NextResponse.json(
+          { error: "Invalid time format. Please use HH:MM format (24-hour)" },
+          { status: 400 }
+        );
+      }
+
+      // Combine date and time into a single Date object
+      const dateStr = body.rescheduleDate;
+      const timeStr = body.rescheduleTime;
+      const combinedDateTime = new Date(`${dateStr}T${timeStr}`);
+      
+      // Validate that the combined date/time is valid
+      if (isNaN(combinedDateTime.getTime())) {
+        return NextResponse.json(
+          { error: "Invalid date and time combination" },
+          { status: 400 }
+        );
+      }
+
+      // Validate that the date is in the future
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selectedDate = new Date(dateStr + 'T00:00:00');
+      if (selectedDate <= today) {
+        return NextResponse.json(
+          { error: "Reschedule date must be in the future" },
+          { status: 400 }
+        );
+      }
+
+      // Validate that the combined datetime is in the future
+      const now = new Date();
+      if (combinedDateTime <= now) {
+        return NextResponse.json(
+          { error: "Rescheduled date and time must be in the future" },
+          { status: 400 }
+        );
+      }
+      
+      body.date = combinedDateTime;
+      body.confirmedInspection = true;
+      body.status = 'Approved';
+      body.cancelInspection = false;
+      delete body.rescheduleDate;
+      delete body.rescheduleTime;
+    }
+    
+    // Handle cancellation: when status is set to "Unconfirmed", also set other fields
+    if (body.status === 'Unconfirmed') {
+      body.confirmedInspection = false;
+      body.disableAutomatedNotifications = true;
+      body.cancelInspection = true;
+      body.inspector = null; // Remove inspector when cancelling
+      // cancellationReason is already in body if provided
+    }
+    
     const result = await updateInspection(inspectionId, body);
 
     if (result.matchedCount === 0) {
