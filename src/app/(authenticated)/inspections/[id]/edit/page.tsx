@@ -191,6 +191,17 @@ export default function InspectionEditPage() {
         profileImageUrl?: string;
       };
     }>;
+    location?: {
+      address?: string;
+      unit?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+      county?: string;
+      squareFeet?: number;
+      yearBuild?: number;
+      foundation?: string;
+    };
   }>({});
   const [savingHeaderImage, setSavingHeaderImage] = useState(false);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
@@ -3743,6 +3754,110 @@ export default function InspectionEditPage() {
             
             {/* Right Grid - Combined Card - 2/3 width on desktop */}
             <div className="space-y-6 lg:col-span-2 order-1 lg:order-2">
+              {/* Address Section */}
+              <div className="p-4 border rounded-lg bg-muted/50">
+                <h3 className="font-semibold text-lg mb-4">Address</h3>
+                {inspectionDetails.location && (() => {
+                  const loc = inspectionDetails.location;
+                  const hasAnyData = loc.address || loc.unit || loc.city || loc.state || loc.zip || loc.county || loc.squareFeet || loc.yearBuild || loc.foundation;
+                  
+                  if (!hasAnyData) {
+                    return (
+                      <div className="text-center py-8">
+                        <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                          <i className="fas fa-map-marker-alt text-2xl text-muted-foreground"></i>
+                        </div>
+                        <p className="text-sm text-muted-foreground">No address information available</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-0">
+                      {/* Address and Unit Row */}
+                      {(loc.address || loc.unit) && (
+                        <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 ${(loc.city || loc.state || loc.zip || loc.county || loc.squareFeet || loc.yearBuild || loc.foundation) ? 'border-b' : ''}`}>
+                          {loc.address && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">Address</p>
+                              <p className="text-sm">{loc.address}</p>
+                            </div>
+                          )}
+                          {loc.unit && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">Unit</p>
+                              <p className="text-sm">{loc.unit}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* City, State, ZIP Row */}
+                      {(loc.city || loc.state || loc.zip) && (
+                        <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 ${(loc.address || loc.unit) ? 'pt-4' : ''} ${(loc.county || loc.squareFeet || loc.yearBuild || loc.foundation) ? 'pb-4 border-b' : ''}`}>
+                          {loc.city && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">City</p>
+                              <p className="text-sm">{loc.city}</p>
+                            </div>
+                          )}
+                          {loc.state && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">State</p>
+                              <p className="text-sm">{loc.state}</p>
+                            </div>
+                          )}
+                          {loc.zip && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">ZIP Code</p>
+                              <p className="text-sm">{loc.zip}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Additional Details Row */}
+                      {(loc.county || loc.squareFeet || loc.yearBuild || loc.foundation) && (
+                        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 ${(loc.address || loc.unit || loc.city || loc.state || loc.zip) ? 'pt-4' : ''}`}>
+                          {loc.county && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">County</p>
+                              <p className="text-sm">{loc.county}</p>
+                            </div>
+                          )}
+                          {loc.squareFeet && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">Square Feet</p>
+                              <p className="text-sm">{loc.squareFeet.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {loc.yearBuild && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">Year Built</p>
+                              <p className="text-sm">{loc.yearBuild}</p>
+                            </div>
+                          )}
+                          {loc.foundation && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1 font-medium">Foundation</p>
+                              <p className="text-sm">{loc.foundation}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {!inspectionDetails.location && (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                      <i className="fas fa-map-marker-alt text-2xl text-muted-foreground"></i>
+                    </div>
+                    <p className="text-sm text-muted-foreground">No address information available</p>
+                  </div>
+                )}
+              </div>
+
               <div className="p-4 border rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="font-semibold text-lg">Inspection Information</h3>
