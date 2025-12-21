@@ -7,6 +7,14 @@ import Inspection from '@/src/models/Inspection';
 import { evaluateConditions, Condition } from './automation-executor';
 import { sendAutomationEmail, sendAutomationSMS } from './automation-communication';
 import { queueTrigger, removeQueuedTrigger } from './automation-queue';
+import {
+  getCurrentTimeInCT,
+  getTimeComponentsInCT,
+  setTimeInCT,
+  getDayOfWeekInCT,
+  isCurrentTimeInWindow,
+  formatInCT,
+} from './timezone-utils';
 
 export interface TriggerConfig {
   actionId: mongoose.Types.ObjectId;
@@ -79,9 +87,8 @@ export function calculateExecutionTimeWithRestrictions(
     const startTimeMinutes = startHour * 60 + startMin;
     const endTimeMinutes = endHour * 60 + endMin;
 
-    // Get execution time components
-    const execHour = executionTime.getHours();
-    const execMin = executionTime.getMinutes();
+    // Get execution time components in Central Time
+    const { hour: execHour, minute: execMin } = getTimeComponentsInCT(executionTime);
     const execTimeMinutes = execHour * 60 + execMin;
 
     // Check if execution time is within the time window
@@ -90,12 +97,13 @@ export function calculateExecutionTimeWithRestrictions(
     if (!isWithinWindow) {
       // Execution time is outside the window
       if (execTimeMinutes < startTimeMinutes) {
-        // Before start time: schedule for same day at startTime
-        executionTime.setHours(startHour, startMin, 0, 0);
+        // Before start time: schedule for same day at startTime in CT
+        executionTime = setTimeInCT(executionTime, startHour, startMin);
       } else {
-        // After end time: schedule for next day at startTime
-        executionTime.setDate(executionTime.getDate() + 1);
-        executionTime.setHours(startHour, startMin, 0, 0);
+        // After end time: schedule for next day at startTime in CT
+        const nextDay = new Date(executionTime);
+        nextDay.setDate(nextDay.getDate() + 1);
+        executionTime = setTimeInCT(nextDay, startHour, startMin);
       }
     }
     // If within window, keep the calculated execution time (don't modify it)
@@ -108,29 +116,28 @@ export function calculateExecutionTimeWithRestrictions(
     let iterations = 0;
     
     while (iterations < maxIterations) {
-      const dayOfWeek = executionTime.getDay();
+      const dayOfWeek = getDayOfWeekInCT(executionTime);
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       
       if (!isWeekend) {
         break; // Found a weekday
       }
       
-      // Store the current time before moving to Monday
-      const currentHour = executionTime.getHours();
-      const currentMin = executionTime.getMinutes();
+      // Store the current time in CT before moving to Monday
+      const { hour: currentHour, minute: currentMin } = getTimeComponentsInCT(executionTime);
       
       // Move to next Monday
       const daysUntilMonday = dayOfWeek === 0 ? 1 : 2; // Sunday -> Monday (1 day), Saturday -> Monday (2 days)
       executionTime.setDate(executionTime.getDate() + daysUntilMonday);
       
-      // If time window is enabled, set to startTime on Monday
+      // If time window is enabled, set to startTime on Monday in CT
       // Otherwise, keep the calculated time but on Monday
       if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime) {
         const [startHour, startMin] = triggerConfig.startTime.split(':').map(Number);
-        executionTime.setHours(startHour, startMin, 0, 0);
+        executionTime = setTimeInCT(executionTime, startHour, startMin);
       } else {
-        // Keep the calculated time, just on Monday
-        executionTime.setHours(currentHour, currentMin, 0, 0);
+        // Keep the calculated time, just on Monday in CT
+        executionTime = setTimeInCT(executionTime, currentHour, currentMin);
       }
       
       iterations++;
@@ -141,19 +148,18 @@ export function calculateExecutionTimeWithRestrictions(
   if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
     const [startHour, startMin] = triggerConfig.startTime.split(':').map(Number);
     const [endHour, endMin] = triggerConfig.endTime.split(':').map(Number);
-    const execHour = executionTime.getHours();
-    const execMin = executionTime.getMinutes();
+    const { hour: execHour, minute: execMin } = getTimeComponentsInCT(executionTime);
     const execTimeMinutes = execHour * 60 + execMin;
     const startTimeMinutes = startHour * 60 + startMin;
     const endTimeMinutes = endHour * 60 + endMin;
 
     if (execTimeMinutes < startTimeMinutes || execTimeMinutes >= endTimeMinutes) {
-      // Still outside window, move to startTime
-      executionTime.setHours(startHour, startMin, 0, 0);
+      // Still outside window, move to startTime in CT
+      executionTime = setTimeInCT(executionTime, startHour, startMin);
       
       // If this pushes us to a weekend, move to Monday (recursive check)
       if (triggerConfig.doNotSendOnWeekends) {
-        let dayOfWeek = executionTime.getDay();
+        let dayOfWeek = getDayOfWeekInCT(executionTime);
         if (dayOfWeek === 0 || dayOfWeek === 6) {
           const daysUntilMonday = dayOfWeek === 0 ? 1 : 2;
           executionTime.setDate(executionTime.getDate() + daysUntilMonday);
@@ -186,44 +192,39 @@ function shouldTriggerBasedOnTiming(
 
   // Check time window restriction
   if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    const nowCT = getCurrentTimeInCT();
+    const now = new Date(); // Keep UTC date for logging
     
-    // Parse start and end times
+    // Check if current CT time is within window
+    const isWithinWindow = isCurrentTimeInWindow(triggerConfig.startTime, triggerConfig.endTime);
+    
+    // Parse start and end times for scheduling
     const [startHour, startMin] = triggerConfig.startTime.split(':').map(Number);
-    const [endHour, endMin] = triggerConfig.endTime.split(':').map(Number);
-    const startTimeMinutes = startHour * 60 + startMin;
-    const endTimeMinutes = endHour * 60 + endMin;
     
-    // Check if current time is within window
-    const isWithinWindow = currentTimeMinutes >= startTimeMinutes && currentTimeMinutes < endTimeMinutes;
-    
-    // Check if it's a weekend and doNotSendOnWeekends is enabled
-    const dayOfWeek = now.getDay();
+    // Check if it's a weekend in CT and doNotSendOnWeekends is enabled
+    const dayOfWeek = getDayOfWeekInCT(nowCT);
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     
     if (!isWithinWindow || (isWeekend && triggerConfig.doNotSendOnWeekends)) {
-      // Schedule for next available time
-      const nextExecution = new Date(now);
+      // Schedule for next available time in CT
+      let nextExecution = new Date(nowCT);
       
       if (!isWithinWindow) {
-        // Outside window: schedule for next day at startTime
+        // Outside window: schedule for next day at startTime in CT
         nextExecution.setDate(nextExecution.getDate() + 1);
       } else {
-        // Within window but weekend: schedule for Monday at startTime
+        // Within window but weekend: schedule for Monday at startTime in CT
         if (isWeekend && triggerConfig.doNotSendOnWeekends) {
           const daysUntilMonday = dayOfWeek === 0 ? 1 : 2; // Sunday -> Monday (1 day), Saturday -> Monday (2 days)
           nextExecution.setDate(nextExecution.getDate() + daysUntilMonday);
         }
       }
       
-      nextExecution.setHours(startHour, startMin, 0, 0);
+      nextExecution = setTimeInCT(nextExecution, startHour, startMin);
       
       // Double-check: if scheduled day is still a weekend, move to Monday
       if (triggerConfig.doNotSendOnWeekends) {
-        const scheduledDayOfWeek = nextExecution.getDay();
+        const scheduledDayOfWeek = getDayOfWeekInCT(nextExecution);
         if (scheduledDayOfWeek === 0 || scheduledDayOfWeek === 6) {
           const daysUntilMonday = scheduledDayOfWeek === 0 ? 1 : 2;
           nextExecution.setDate(nextExecution.getDate() + daysUntilMonday);
@@ -231,16 +232,16 @@ function shouldTriggerBasedOnTiming(
       }
       
       const reason = !isWithinWindow 
-        ? `Current time (${now.toLocaleString()}) is outside the allowed time window (${triggerConfig.startTime} - ${triggerConfig.endTime})`
+        ? `Current time (${formatInCT(now, 'PPpp')} CT) is outside the allowed time window (${triggerConfig.startTime} - ${triggerConfig.endTime} CT)`
         : `Current time is within window but it's a weekend and "Do not send on weekends" is enabled`;
       
       console.log(`[Automation Trigger] Email scheduled due to time window restriction:`);
       console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
       console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
       console.log(`  Reason: ${reason}`);
-      console.log(`  Current time: ${now.toLocaleString()}`);
-      console.log(`  Scheduled to send at: ${nextExecution.toLocaleString()}`);
-      console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime}`);
+      console.log(`  Current time: ${formatInCT(now, 'PPpp')} CT`);
+      console.log(`  Scheduled to send at: ${formatInCT(nextExecution, 'PPpp')} CT`);
+      console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime} CT`);
       
       return { shouldTrigger: true, executionTime: nextExecution };
     }
@@ -248,21 +249,22 @@ function shouldTriggerBasedOnTiming(
 
   // Check weekend restriction (only for immediate execution when time window is not enabled)
   if (triggerConfig.doNotSendOnWeekends && !triggerConfig.sendDuringCertainHoursOnly) {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
+    const nowCT = getCurrentTimeInCT();
+    const now = new Date(); // Keep UTC date for logging
+    const dayOfWeek = getDayOfWeekInCT(nowCT);
     if (dayOfWeek === 0 || dayOfWeek === 6) {
       // Sunday or Saturday - schedule for Monday instead of blocking
-      const mondayExecution = new Date(now);
+      let mondayExecution = new Date(nowCT);
       const daysUntilMonday = dayOfWeek === 0 ? 1 : 2; // Sunday -> Monday (1 day), Saturday -> Monday (2 days)
       mondayExecution.setDate(mondayExecution.getDate() + daysUntilMonday);
-      mondayExecution.setHours(0, 0, 0, 0); // Start of Monday
+      mondayExecution = setTimeInCT(mondayExecution, 0, 0); // Start of Monday in CT
       
       console.log(`[Automation Trigger] Email scheduled due to weekend restriction:`);
       console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
       console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
       console.log(`  Reason: Current day is ${dayOfWeek === 0 ? 'Sunday' : 'Saturday'} and "Do not send on weekends" is enabled`);
-      console.log(`  Current time: ${now.toLocaleString()}`);
-      console.log(`  Scheduled to send at: ${mondayExecution.toLocaleString()} (Monday)`);
+      console.log(`  Current time: ${formatInCT(now, 'PPpp')} CT`);
+      console.log(`  Scheduled to send at: ${formatInCT(mondayExecution, 'PPpp')} CT (Monday)`);
       
       return { shouldTrigger: true, executionTime: mondayExecution };
     }
@@ -320,11 +322,11 @@ function shouldTriggerBasedOnTiming(
       console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
       console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
       console.log(`  Delay: ${delayDescription}`);
-      console.log(`  Base time: ${baseTime.toLocaleString()}`);
-      console.log(`  Current time: ${now.toLocaleString()}`);
-      console.log(`  Scheduled to send at: ${executionTime.toLocaleString()}`);
+      console.log(`  Base time: ${formatInCT(baseTime, 'PPpp')} CT`);
+      console.log(`  Current time: ${formatInCT(now, 'PPpp')} CT`);
+      console.log(`  Scheduled to send at: ${formatInCT(executionTime, 'PPpp')} CT`);
       if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
-        console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime}`);
+        console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime} CT`);
       }
       if (triggerConfig.doNotSendOnWeekends) {
         console.log(`  Weekend restriction: enabled`);
@@ -356,10 +358,10 @@ function shouldTriggerBasedOnTiming(
       console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
       console.log(`  Trigger: ${triggerConfig.automationTrigger}`);
       console.log(`  Delay: ${delayDescription}`);
-      console.log(`  Current time: ${now.toLocaleString()}`);
-      console.log(`  Scheduled to send at: ${executionTime.toLocaleString()}`);
+      console.log(`  Current time: ${formatInCT(now, 'PPpp')} CT`);
+      console.log(`  Scheduled to send at: ${formatInCT(executionTime, 'PPpp')} CT`);
       if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime && triggerConfig.endTime) {
-        console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime}`);
+        console.log(`  Time window: ${triggerConfig.startTime} - ${triggerConfig.endTime} CT`);
       }
       if (triggerConfig.doNotSendOnWeekends) {
         console.log(`  Weekend restriction: enabled`);

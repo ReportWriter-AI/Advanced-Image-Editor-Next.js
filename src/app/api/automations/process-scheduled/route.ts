@@ -32,6 +32,7 @@ async function processScheduledTriggers() {
   try {
     await dbConnect();
 
+    // Get triggers that are due (execution times are stored as UTC timestamps)
     const dueTriggers = await getDueTriggers();
 
     if (dueTriggers.length === 0) {

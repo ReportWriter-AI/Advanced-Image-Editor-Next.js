@@ -69,6 +69,7 @@ export async function removeQueuedTrigger(
 
 /**
  * Gets all triggers that are due for execution
+ * Note: Execution times are stored as UTC timestamps, so we compare directly with UTC current time
  */
 export async function getDueTriggers(currentTime: Date = new Date()): Promise<QueuedTrigger[]> {
   const currentTimestamp = currentTime.getTime();
