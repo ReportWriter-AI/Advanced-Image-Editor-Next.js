@@ -131,13 +131,13 @@ export function calculateExecutionTimeWithRestrictions(
       executionTime.setDate(executionTime.getDate() + daysUntilMonday);
       
       // If time window is enabled, set to startTime on Monday in CT
-      // Otherwise, keep the calculated time but on Monday
+      // Otherwise, set to 9 AM on Monday in CT
       if (triggerConfig.sendDuringCertainHoursOnly && triggerConfig.startTime) {
         const [startHour, startMin] = triggerConfig.startTime.split(':').map(Number);
         executionTime = setTimeInCT(executionTime, startHour, startMin);
       } else {
-        // Keep the calculated time, just on Monday in CT
-        executionTime = setTimeInCT(executionTime, currentHour, currentMin);
+        // Set to 9 AM on Monday in CT
+        executionTime = setTimeInCT(executionTime, 9, 0);
       }
       
       iterations++;
@@ -257,7 +257,7 @@ function shouldTriggerBasedOnTiming(
       let mondayExecution = new Date(nowCT);
       const daysUntilMonday = dayOfWeek === 0 ? 1 : 2; // Sunday -> Monday (1 day), Saturday -> Monday (2 days)
       mondayExecution.setDate(mondayExecution.getDate() + daysUntilMonday);
-      mondayExecution = setTimeInCT(mondayExecution, 0, 0); // Start of Monday in CT
+      mondayExecution = setTimeInCT(mondayExecution, 9, 0); // 9 AM on Monday in CT
       
       console.log(`[Automation Trigger] Email scheduled due to weekend restriction:`);
       console.log(`  Inspection ID: ${inspection._id || inspection.id || 'N/A'}`);
