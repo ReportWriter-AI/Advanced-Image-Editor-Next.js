@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { deleteInspection, updateInspection, getInspection } from "@/lib/inspection";
 import dbConnect from "@/lib/db";
 import Inspection from "@/src/models/Inspection";
@@ -7,6 +7,8 @@ import InspectionInformationBlock from "@/src/models/InspectionInformationBlock"
 import mongoose from "mongoose";
 import { extractR2KeyFromUrl, deleteFromR2 } from "@/lib/r2";
 import { checkAndProcessTriggers, queueTimeBasedTriggers } from "@/src/lib/automation-trigger-helper";
+import { getCurrentUser } from "@/lib/auth-helpers";
+import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
 
 export async function GET(
   req: Request,
@@ -52,7 +54,7 @@ export async function GET(
 }
 
 export async function PUT(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ inspectionId: string }> }
 ) {
   try {
@@ -158,6 +160,81 @@ export async function PUT(
       body.cancelInspection = true;
       body.inspector = null; // Remove inspector when cancelling
       // cancellationReason is already in body if provided
+    }
+    
+    // Handle clients, agents, and listingAgents - support both IDs and data objects
+    const currentUser = await getCurrentUser(req);
+    if (!currentUser || !currentUser.company) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    // Process clients if provided
+    if (body.clients && Array.isArray(body.clients)) {
+      const clientIds: string[] = [];
+      for (const clientData of body.clients) {
+        if (typeof clientData === 'string') {
+          // It's an ID, use directly
+          clientIds.push(clientData);
+        } else if (typeof clientData === 'object' && clientData !== null) {
+          // It's an object, create or update
+          const clientId = await createOrUpdateClient(
+            clientData,
+            currentUser.company as mongoose.Types.ObjectId,
+            currentUser._id as mongoose.Types.ObjectId
+          );
+          if (clientId) {
+            clientIds.push(clientId.toString());
+          }
+        }
+      }
+      body.clients = clientIds; // Convert to IDs for updateInspection
+    }
+
+    // Process agents if provided
+    if (body.agents && Array.isArray(body.agents)) {
+      const agentIds: string[] = [];
+      for (const agentData of body.agents) {
+        if (typeof agentData === 'string') {
+          // It's an ID, use directly
+          agentIds.push(agentData);
+        } else if (typeof agentData === 'object' && agentData !== null) {
+          // It's an object, create or update
+          const agentId = await createOrUpdateAgent(
+            agentData,
+            currentUser.company as mongoose.Types.ObjectId,
+            currentUser._id as mongoose.Types.ObjectId
+          );
+          if (agentId) {
+            agentIds.push(agentId.toString());
+          }
+        }
+      }
+      body.agents = agentIds; // Convert to IDs for updateInspection
+    }
+
+    // Process listingAgents if provided
+    if (body.listingAgents && Array.isArray(body.listingAgents)) {
+      const listingAgentIds: string[] = [];
+      for (const agentData of body.listingAgents) {
+        if (typeof agentData === 'string') {
+          // It's an ID, use directly
+          listingAgentIds.push(agentData);
+        } else if (typeof agentData === 'object' && agentData !== null) {
+          // It's an object, create or update
+          const agentId = await createOrUpdateAgent(
+            agentData,
+            currentUser.company as mongoose.Types.ObjectId,
+            currentUser._id as mongoose.Types.ObjectId
+          );
+          if (agentId) {
+            listingAgentIds.push(agentId.toString());
+          }
+        }
+      }
+      body.listingAgent = listingAgentIds; // Convert to IDs for updateInspection (note: field name is listingAgent, not listingAgents)
     }
     
     const result = await updateInspection(inspectionId, body);

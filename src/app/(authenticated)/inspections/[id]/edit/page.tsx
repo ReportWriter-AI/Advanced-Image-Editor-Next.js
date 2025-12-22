@@ -36,6 +36,8 @@ import ServiceSelectionDialog from './_components/ServiceSelectionDialog';
 import PricingModal from './_components/PricingModal';
 import PaymentManagementModal from './_components/PaymentManagementModal';
 import EventsManager from '@/components/EventsManager';
+import AddClientDialog from './_components/AddClientDialog';
+import AddAgentDialog from './_components/AddAgentDialog';
 
 const InformationSections = dynamic(() => import('../../../../../../components/InformationSections'), { 
   ssr: false,
@@ -304,6 +306,17 @@ export default function InspectionEditPage() {
   const [agreementToDelete, setAgreementToDelete] = useState<string | null>(null);
   const [deletingAgreement, setDeletingAgreement] = useState(false);
   const [addAgreementDialogOpen, setAddAgreementDialogOpen] = useState(false);
+
+  // Client/Agent management state
+  const [addClientDialogOpen, setAddClientDialogOpen] = useState(false);
+  const [addAgentDialogOpen, setAddAgentDialogOpen] = useState(false);
+  const [addListingAgentDialogOpen, setAddListingAgentDialogOpen] = useState(false);
+  const [clientToRemove, setClientToRemove] = useState<string | null>(null);
+  const [agentToRemove, setAgentToRemove] = useState<string | null>(null);
+  const [listingAgentToRemove, setListingAgentToRemove] = useState<string | null>(null);
+  const [removingClient, setRemovingClient] = useState(false);
+  const [removingAgent, setRemovingAgent] = useState(false);
+  const [removingListingAgent, setRemovingListingAgent] = useState(false);
 
   // Service selection dialog state
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
@@ -2550,6 +2563,202 @@ export default function InspectionEditPage() {
     }
   };
 
+  // Client/Agent management handlers
+  const handleAddClient = async (clientData: any) => {
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          clients: [
+            ...(inspectionDetails.clients || []).map((c: any) => c._id || c),
+            clientData, // Send as object, API will handle createOrUpdate
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add client');
+      }
+
+      toast.success('Client added successfully');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error adding client:', error);
+      toast.error(error.message || 'Failed to add client');
+      throw error;
+    }
+  };
+
+  const handleAddAgent = async (agentData: any) => {
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          agents: [
+            ...(inspectionDetails.agents || []).map((a: any) => a._id || a),
+            agentData, // Send as object, API will handle createOrUpdate
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add agent');
+      }
+
+      toast.success('Agent added successfully');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error adding agent:', error);
+      toast.error(error.message || 'Failed to add agent');
+      throw error;
+    }
+  };
+
+  const handleAddListingAgent = async (agentData: any) => {
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          listingAgents: [
+            ...(inspectionDetails.listingAgent || []).map((a: any) => a._id || a),
+            agentData, // Send as object, API will handle createOrUpdate
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add listing agent');
+      }
+
+      toast.success('Listing agent added successfully');
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error adding listing agent:', error);
+      toast.error(error.message || 'Failed to add listing agent');
+      throw error;
+    }
+  };
+
+  const handleRemoveClient = async () => {
+    if (!clientToRemove) return;
+
+    setRemovingClient(true);
+    try {
+      const currentClientIds = (inspectionDetails.clients || [])
+        .map((c: any) => {
+          const id = c._id || c;
+          return typeof id === 'string' ? id : String(id);
+        })
+        .filter((id: string) => id !== String(clientToRemove));
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          clients: currentClientIds,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove client');
+      }
+
+      toast.success('Client removed successfully');
+      setClientToRemove(null);
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error removing client:', error);
+      toast.error(error.message || 'Failed to remove client');
+    } finally {
+      setRemovingClient(false);
+    }
+  };
+
+  const handleRemoveAgent = async () => {
+    if (!agentToRemove) return;
+
+    setRemovingAgent(true);
+    try {
+      const currentAgentIds = (inspectionDetails.agents || [])
+        .map((a: any) => {
+          const id = a._id || a;
+          return typeof id === 'string' ? id : String(id);
+        })
+        .filter((id: string) => id !== String(agentToRemove));
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          agents: currentAgentIds,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove agent');
+      }
+
+      toast.success('Agent removed successfully');
+      setAgentToRemove(null);
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error removing agent:', error);
+      toast.error(error.message || 'Failed to remove agent');
+    } finally {
+      setRemovingAgent(false);
+    }
+  };
+
+  const handleRemoveListingAgent = async () => {
+    if (!listingAgentToRemove) return;
+
+    setRemovingListingAgent(true);
+    try {
+      const currentListingAgentIds = (inspectionDetails.listingAgent || [])
+        .map((a: any) => {
+          const id = a._id || a;
+          return typeof id === 'string' ? id : String(id);
+        })
+        .filter((id: string) => id !== String(listingAgentToRemove));
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          listingAgent: currentListingAgentIds,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove listing agent');
+      }
+
+      toast.success('Listing agent removed successfully');
+      setListingAgentToRemove(null);
+      await fetchInspectionDetails();
+    } catch (error: any) {
+      console.error('Error removing listing agent:', error);
+      toast.error(error.message || 'Failed to remove listing agent');
+    } finally {
+      setRemovingListingAgent(false);
+    }
+  };
+
   const startEditing = (defect: Defect) => {
     setEditingId(defect._id);
     setEditedValues({ ...defect });
@@ -3459,16 +3668,30 @@ export default function InspectionEditPage() {
 
               {/* Combined People Section */}
               <div className="p-4 border rounded-lg bg-muted/50">
-                <h3 className="font-semibold text-lg mb-4">People</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-lg">People</h3>
+                </div>
                 
                 {/* Clients */}
-                {inspectionDetails.clients && inspectionDetails.clients.length > 0 && (
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 mb-3">
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 flex-1">
                       <div className="h-px flex-1 bg-border"></div>
-                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Clients ({inspectionDetails.clients.length})</h4>
+                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Clients ({inspectionDetails.clients?.length || 0})
+                      </h4>
                       <div className="h-px flex-1 bg-border"></div>
                     </div>
+                    <Button
+                      size="sm"
+                      onClick={() => setAddClientDialogOpen(true)}
+                      className="gap-2 ml-4"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add
+                    </Button>
+                  </div>
+                  {inspectionDetails.clients && inspectionDetails.clients.length > 0 ? (
                     <div className="space-y-3">
                       {inspectionDetails.clients.map((client, index) => (
                         <div key={client._id || index} className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow">
@@ -3497,21 +3720,52 @@ export default function InspectionEditPage() {
                                 )}
                               </div>
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                const clientId = client._id || (typeof client === 'string' ? client : '');
+                                setClientToRemove(typeof clientId === 'string' ? clientId : String(clientId));
+                              }}
+                              disabled={removingClient}
+                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Remove client"
+                            >
+                              {removingClient && clientToRemove === String(client._id || (typeof client === 'string' ? client : '')) ? (
+                                <i className="fas fa-spinner fa-spin text-xs"></i>
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
                           </div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No clients added yet</p>
+                  )}
+                </div>
 
                 {/* Client's Agents */}
-                {inspectionDetails.agents && inspectionDetails.agents.length > 0 && (
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 mb-3">
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 flex-1">
                       <div className="h-px flex-1 bg-border"></div>
-                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Client's Agents ({inspectionDetails.agents.length})</h4>
+                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Client's Agents ({inspectionDetails.agents?.length || 0})
+                      </h4>
                       <div className="h-px flex-1 bg-border"></div>
                     </div>
+                    <Button
+                      size="sm"
+                      onClick={() => setAddAgentDialogOpen(true)}
+                      className="gap-2 ml-4"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add
+                    </Button>
+                  </div>
+                  {inspectionDetails.agents && inspectionDetails.agents.length > 0 ? (
                     <div className="space-y-3">
                       {inspectionDetails.agents.map((agent, index) => (
                         <div key={agent._id || index} className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow">
@@ -3547,21 +3801,52 @@ export default function InspectionEditPage() {
                                 )}
                               </div>
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                const agentId = agent._id || (typeof agent === 'string' ? agent : '');
+                                setAgentToRemove(typeof agentId === 'string' ? agentId : String(agentId));
+                              }}
+                              disabled={removingAgent}
+                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Remove agent"
+                            >
+                              {removingAgent && agentToRemove === String(agent._id || (typeof agent === 'string' ? agent : '')) ? (
+                                <i className="fas fa-spinner fa-spin text-xs"></i>
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
                           </div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No client's agents added yet</p>
+                  )}
+                </div>
 
                 {/* Listing Agents */}
-                {inspectionDetails.listingAgent && inspectionDetails.listingAgent.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 flex-1">
                       <div className="h-px flex-1 bg-border"></div>
-                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Listing Agents ({inspectionDetails.listingAgent.length})</h4>
+                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Listing Agents ({inspectionDetails.listingAgent?.length || 0})
+                      </h4>
                       <div className="h-px flex-1 bg-border"></div>
                     </div>
+                    <Button
+                      size="sm"
+                      onClick={() => setAddListingAgentDialogOpen(true)}
+                      className="gap-2 ml-4"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add
+                    </Button>
+                  </div>
+                  {inspectionDetails.listingAgent && inspectionDetails.listingAgent.length > 0 ? (
                     <div className="space-y-3">
                       {inspectionDetails.listingAgent.map((agent, index) => (
                         <div key={agent._id || index} className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow">
@@ -3597,24 +3882,31 @@ export default function InspectionEditPage() {
                                 )}
                               </div>
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                const agentId = agent._id || (typeof agent === 'string' ? agent : '');
+                                setListingAgentToRemove(typeof agentId === 'string' ? agentId : String(agentId));
+                              }}
+                              disabled={removingListingAgent}
+                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Remove listing agent"
+                            >
+                              {removingListingAgent && listingAgentToRemove === String(agent._id || (typeof agent === 'string' ? agent : '')) ? (
+                                <i className="fas fa-spinner fa-spin text-xs"></i>
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
                           </div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {/* Empty state */}
-                {(!inspectionDetails.clients || inspectionDetails.clients.length === 0) && 
-                 (!inspectionDetails.agents || inspectionDetails.agents.length === 0) && 
-                 (!inspectionDetails.listingAgent || inspectionDetails.listingAgent.length === 0) && (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
-                      <i className="fas fa-users text-2xl text-muted-foreground"></i>
-                    </div>
-                    <p className="text-sm text-muted-foreground">No clients or agents associated with this inspection</p>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No listing agents added yet</p>
+                  )}
+                </div>
               </div>
 
               {/* Agreements Section */}
@@ -5537,6 +5829,116 @@ export default function InspectionEditPage() {
           fetchPaymentInfo();
         }}
       />
+
+      {/* Add Client Dialog */}
+      <AddClientDialog
+        open={addClientDialogOpen}
+        onOpenChange={setAddClientDialogOpen}
+        onSave={handleAddClient}
+      />
+
+      {/* Add Agent Dialog */}
+      <AddAgentDialog
+        open={addAgentDialogOpen}
+        onOpenChange={setAddAgentDialogOpen}
+        onSave={handleAddAgent}
+        title="Add Client's Agent"
+      />
+
+      {/* Add Listing Agent Dialog */}
+      <AddAgentDialog
+        open={addListingAgentDialogOpen}
+        onOpenChange={setAddListingAgentDialogOpen}
+        onSave={handleAddListingAgent}
+        title="Add Listing Agent"
+      />
+
+      {/* Remove Client Confirmation Dialog */}
+      <AlertDialog open={!!clientToRemove} onOpenChange={(open) => !open && setClientToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Client</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this client from the inspection? This will only remove the association, not delete the client record.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingClient}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveClient}
+              disabled={removingClient}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removingClient ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Removing...
+                </>
+              ) : (
+                'Remove Client'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Agent Confirmation Dialog */}
+      <AlertDialog open={!!agentToRemove} onOpenChange={(open) => !open && setAgentToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Agent</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this client's agent from the inspection? This will only remove the association, not delete the agent record.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingAgent}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveAgent}
+              disabled={removingAgent}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removingAgent ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Removing...
+                </>
+              ) : (
+                'Remove Agent'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Listing Agent Confirmation Dialog */}
+      <AlertDialog open={!!listingAgentToRemove} onOpenChange={(open) => !open && setListingAgentToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Listing Agent</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this listing agent from the inspection? This will only remove the association, not delete the agent record.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingListingAgent}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveListingAgent}
+              disabled={removingListingAgent}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removingListingAgent ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Removing...
+                </>
+              ) : (
+                'Remove Listing Agent'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Remove Inspector Confirmation Dialog */}
       <AlertDialog open={showRemoveInspectorDialog} onOpenChange={(open) => !open && setShowRemoveInspectorDialog(false)}>
