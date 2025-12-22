@@ -11,6 +11,25 @@ import { getCurrentUser } from "@/lib/auth-helpers";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
 import { recalculateAndUpdateIsPaid } from "./payment-history/route";
 
+/**
+ * Normalizes a date value to an ISO string for consistent comparison.
+ * Handles Date objects, ISO strings, and null/undefined values.
+ * @param date - Date object, ISO string, or null/undefined
+ * @returns ISO string representation or null
+ */
+function normalizeDateToString(date: Date | string | null | undefined): string | null {
+  if (!date) return null;
+  if (typeof date === 'string') {
+    // If it's already a string, try to parse and normalize it
+    const parsed = new Date(date);
+    return isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+  if (date instanceof Date) {
+    return isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  return null;
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ inspectionId: string }> }
@@ -288,9 +307,9 @@ export async function PUT(
       }
 
       // Closing date change
-      const closingDateBefore = inspectionBefore.closingDate?.date?.toString();
-      const closingDateAfter = inspectionAfter.closingDate?.date?.toString();
       if (body.closingDate !== undefined) {
+        const closingDateBefore = normalizeDateToString(inspectionBefore.closingDate?.date);
+        const closingDateAfter = normalizeDateToString(inspectionAfter.closingDate?.date);
         // Date was set, changed, or cleared
         if (closingDateBefore !== closingDateAfter) {
           await queueTimeBasedTriggers(inspectionId);
@@ -298,9 +317,9 @@ export async function PUT(
       }
 
       // End of period date change
-      const endOfPeriodBefore = inspectionBefore.endOfInspectionPeriod?.date?.toString();
-      const endOfPeriodAfter = inspectionAfter.endOfInspectionPeriod?.date?.toString();
       if (body.endOfInspectionPeriod !== undefined) {
+        const endOfPeriodBefore = normalizeDateToString(inspectionBefore.endOfInspectionPeriod?.date);
+        const endOfPeriodAfter = normalizeDateToString(inspectionAfter.endOfInspectionPeriod?.date);
         // Date was set, changed, or cleared
         if (endOfPeriodBefore !== endOfPeriodAfter) {
           await queueTimeBasedTriggers(inspectionId);

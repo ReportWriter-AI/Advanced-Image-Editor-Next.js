@@ -9,6 +9,18 @@ import { queueTrigger } from './automation-queue';
 import { requiresConfirmedInspection, AutomationTriggerKey } from './automation-triggers';
 
 /**
+ * Checks if a date is today (same calendar day, ignoring time)
+ */
+function isToday(date: Date): boolean {
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+}
+
+/**
  * Checks and processes triggers for an inspection based on a trigger event
  */
 export async function checkAndProcessTriggers(
@@ -129,10 +141,19 @@ export async function queueTimeBasedTriggers(
         triggerConfig as any
       );
 
-      // Only queue if execution time is in the future
-      // Note: Even if execution time is in the past, we still queue it
-      // as it represents the next valid time based on restrictions
-      if (executionTime > new Date()) {
+      const now = new Date();
+      
+      // If execution time is today, process immediately
+      if (isToday(executionTime)) {
+        await processTrigger(
+          inspectionId,
+          i,
+          triggerConfig as any,
+          triggerConfig.automationTrigger
+        );
+      }
+      // If execution time is in the future, queue it
+      else if (executionTime > now) {
         await queueTrigger(
           inspectionId.toString(),
           i,
@@ -140,6 +161,7 @@ export async function queueTimeBasedTriggers(
           triggerConfig.automationTrigger
         );
       }
+      // If execution time is in the past (and not today), ignore it
     }
   } catch (error) {
     console.error('Error queueing time-based triggers:', error);
