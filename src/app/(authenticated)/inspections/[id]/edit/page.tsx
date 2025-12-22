@@ -4582,9 +4582,112 @@ export default function InspectionEditPage() {
               </div>
 
             </div>
+
+            
             
             {/* Right Grid - Combined Card - 2/3 width on desktop */}
             <div className="space-y-6 lg:col-span-2 order-1 lg:order-2">
+
+
+                {/* Confirmation Buttons Section */}
+                {!inspectionDetails.confirmedInspection && !inspectionDetails.cancelInspection && (
+                  <div className="p-4 border rounded-lg bg-muted/50 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-lg">Confirm Inspection</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Confirm this inspection and choose whether to enable or disable automated notifications.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        onClick={handleConfirmWithNotifications}
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                      >
+                        <i className="fas fa-check-circle mr-2"></i>
+                        Confirm with notification enabled
+                      </Button>
+                      <Button
+                        onClick={handleConfirmWithoutNotifications}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        <i className="fas fa-check mr-2"></i>
+                        Confirm with notification disabled
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Notification Toggle Section - Only for confirmed inspections */}
+                {inspectionDetails.confirmedInspection && !inspectionDetails.cancelInspection && (
+                  <div className="p-4 border rounded-lg bg-muted/50 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-lg">Notification Settings</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {inspectionDetails.disableAutomatedNotifications
+                        ? 'Automated notifications are currently disabled for this inspection.'
+                        : 'Automated notifications are currently enabled for this inspection.'}
+                    </p>
+                    {inspectionDetails.disableAutomatedNotifications ? (
+                      <Button
+                        onClick={handleEnableNotifications}
+                        className="w-full bg-green-600 hover:bg-green-700"
+                      >
+                        <i className="fas fa-bell mr-2"></i>
+                        Enable Notifications
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleDisableNotifications}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        <i className="fas fa-bell-slash mr-2"></i>
+                        Disable Notifications
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {/* Reschedule Section */}
+                {inspectionDetails.cancelInspection && (
+                  <div className="p-4 border rounded-lg bg-muted/50 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-lg">Reschedule Inspection</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      This inspection has been cancelled. Select a new date and time to reschedule.
+                    </p>
+                    <Button
+                      onClick={() => setRescheduleDialogOpen(true)}
+                      className="w-full bg-primary hover:bg-primary/90"
+                    >
+                      <i className="fas fa-calendar-alt mr-2"></i>
+                      Reschedule
+                    </Button>
+                  </div>
+                )}
+
+                {/* Cancel Inspection Section */}
+                {!inspectionDetails.cancelInspection && (
+                  <div className="p-4 border rounded-lg bg-muted/50 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-lg">Cancel Inspection</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Cancel this inspection to set it to unconfirmed status and disable automated notifications.
+                    </p>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setCancelDialogOpen(true)}
+                      className="w-full"
+                    >
+                      <i className="fas fa-times-circle mr-2"></i>
+                      Cancel Inspection
+                    </Button>
+                  </div>
+                )}
               {/* Address Section */}
               <div className="p-4 border rounded-lg bg-muted/50">
                 <h3 className="font-semibold text-lg mb-4">Address</h3>
@@ -4688,106 +4791,6 @@ export default function InspectionEditPage() {
                   </div>
                 )}
               </div>
-
-              {/* Confirmation Buttons Section */}
-              {!inspectionDetails.confirmedInspection && !inspectionDetails.cancelInspection && (
-                <div className="p-4 border rounded-lg bg-muted/50 mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-lg">Confirm Inspection</h3>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Confirm this inspection and choose whether to enable or disable automated notifications.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <Button
-                      onClick={handleConfirmWithNotifications}
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                    >
-                      <i className="fas fa-check-circle mr-2"></i>
-                      Confirm with notification enabled
-                    </Button>
-                    <Button
-                      onClick={handleConfirmWithoutNotifications}
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      <i className="fas fa-check mr-2"></i>
-                      Confirm with notification disabled
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Notification Toggle Section - Only for confirmed inspections */}
-              {inspectionDetails.confirmedInspection && !inspectionDetails.cancelInspection && (
-                <div className="p-4 border rounded-lg bg-muted/50 mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-lg">Notification Settings</h3>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {inspectionDetails.disableAutomatedNotifications 
-                      ? 'Automated notifications are currently disabled for this inspection.'
-                      : 'Automated notifications are currently enabled for this inspection.'}
-                  </p>
-                  {inspectionDetails.disableAutomatedNotifications ? (
-                    <Button
-                      onClick={handleEnableNotifications}
-                      className="w-full bg-green-600 hover:bg-green-700"
-                    >
-                      <i className="fas fa-bell mr-2"></i>
-                      Enable Notifications
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={handleDisableNotifications}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      <i className="fas fa-bell-slash mr-2"></i>
-                      Disable Notifications
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {/* Reschedule Section */}
-              {inspectionDetails.cancelInspection && (
-                <div className="p-4 border rounded-lg bg-muted/50 mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-lg">Reschedule Inspection</h3>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    This inspection has been cancelled. Select a new date and time to reschedule.
-                  </p>
-                  <Button
-                    onClick={() => setRescheduleDialogOpen(true)}
-                    className="w-full bg-primary hover:bg-primary/90"
-                  >
-                    <i className="fas fa-calendar-alt mr-2"></i>
-                    Reschedule
-                  </Button>
-                </div>
-              )}
-
-              {/* Cancel Inspection Section */}
-              { !inspectionDetails.cancelInspection && (
-                <div className="p-4 border rounded-lg bg-muted/50 mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-lg">Cancel Inspection</h3>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Cancel this inspection to set it to unconfirmed status and disable automated notifications.
-                  </p>
-                  <Button
-                    variant="destructive"
-                    onClick={() => setCancelDialogOpen(true)}
-                    className="w-full"
-                  >
-                    <i className="fas fa-times-circle mr-2"></i>
-                    Cancel Inspection
-                  </Button>
-                </div>
-              )}
 
               <div className="p-4 border rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between mb-6">
