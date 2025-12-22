@@ -4,6 +4,7 @@ import Inspection from '@/src/models/Inspection';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import mongoose from 'mongoose';
 import { checkAndProcessTriggers, detectPricingChanges, detectFeeChanges } from '@/src/lib/automation-trigger-helper';
+import { recalculateAndUpdateIsPaid } from '../payment-history/route';
 
 interface RouteParams {
   params: Promise<{
@@ -181,6 +182,9 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         await checkAndProcessTriggers(inspectionId, 'FEE_REMOVED_AFTER_CONFIRMATION');
       }
     }
+
+    // Recalculate and update isPaid status after pricing changes
+    await recalculateAndUpdateIsPaid(inspectionId);
 
     return NextResponse.json(
       {

@@ -9,6 +9,7 @@ import { extractR2KeyFromUrl, deleteFromR2 } from "@/lib/r2";
 import { checkAndProcessTriggers, queueTimeBasedTriggers, detectPricingChanges, detectAgreementChanges } from "@/src/lib/automation-trigger-helper";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
+import { recalculateAndUpdateIsPaid } from "./payment-history/route";
 
 export async function GET(
   req: Request,
@@ -320,6 +321,12 @@ export async function PUT(
         if (pricingChanges.servicesOrAddonsRemoved) {
           await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION');
         }
+      }
+
+      // Recalculate isPaid status if pricing, requestedAddons, or discountCode changed
+      // (all of these affect the total, so we need to recalculate isPaid)
+      if (body.pricing !== undefined || body.requestedAddons !== undefined || body.discountCode !== undefined) {
+        await recalculateAndUpdateIsPaid(inspectionId);
       }
 
       // Agreement change (agreements added or removed)

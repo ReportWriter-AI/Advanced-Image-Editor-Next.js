@@ -157,6 +157,46 @@ async function calculatePaymentTotals(inspectionId: string) {
   };
 }
 
+/**
+ * Recalculates and updates the isPaid status of an inspection based on current pricing and payment history
+ * This should be called whenever pricing changes (services/addons added/removed, discount codes updated, etc.)
+ */
+export async function recalculateAndUpdateIsPaid(inspectionId: string): Promise<{ isPaid: boolean; wasUpdated: boolean } | null> {
+  try {
+    const totals = await calculatePaymentTotals(inspectionId);
+    if (!totals) {
+      return null;
+    }
+
+    // Get current inspection to check if isPaid needs updating
+    const inspection = await Inspection.findById(inspectionId).lean();
+    if (!inspection) {
+      return null;
+    }
+
+    const currentIsPaid = inspection.isPaid === true;
+    const newIsPaid = totals.isPaid;
+
+    // Only update if the status has changed
+    if (currentIsPaid !== newIsPaid) {
+      await Inspection.findByIdAndUpdate(
+        inspectionId,
+        {
+          $set: {
+            isPaid: newIsPaid,
+          },
+        }
+      );
+      return { isPaid: newIsPaid, wasUpdated: true };
+    }
+
+    return { isPaid: newIsPaid, wasUpdated: false };
+  } catch (error) {
+    console.error('Error recalculating isPaid status:', error);
+    return null;
+  }
+}
+
 // POST /api/inspections/[inspectionId]/payment-history
 // Create a new payment entry
 export async function POST(
@@ -268,17 +308,8 @@ export async function POST(
 
     // Check if inspection is now fully paid and trigger automation
     if (newIsPaid) {
-      const { checkAndProcessTriggers } = await import('@/src/lib/automation-trigger-helper');
-      await checkAndProcessTriggers(inspectionId, 'INSPECTION_FULLY_PAID');
-      
-      // Also check if all agreements are signed for combined trigger
-      const inspectionWithAgreements = await Inspection.findById(inspectionId).lean();
-      if (inspectionWithAgreements?.agreements) {
-        const allAgreementsSigned = inspectionWithAgreements.agreements.every((a: any) => a.isSigned === true);
-        if (allAgreementsSigned && inspectionWithAgreements.agreements.length > 0) {
-          await checkAndProcessTriggers(inspectionId, 'ALL_AGREEMENTS_SIGNED_AND_FULLY_PAID');
-        }
-      }
+      const { checkPaymentTriggers } = await import('@/src/lib/automation-trigger-helper');
+      await checkPaymentTriggers(inspectionId);
     }
 
     // Return updated payment info
@@ -436,6 +467,12 @@ export async function PUT(
       );
     }
 
+    // Check and trigger automation events if inspection becomes fully paid
+    if (newIsPaid) {
+      const { checkPaymentTriggers } = await import('@/src/lib/automation-trigger-helper');
+      await checkPaymentTriggers(inspectionId);
+    }
+
     // Return updated payment info
     const updatedTotals = await calculatePaymentTotals(inspectionId);
     return NextResponse.json({
@@ -548,6 +585,10 @@ export async function DELETE(
         },
       }
     );
+
+    // Check and trigger automation events based on current status
+    const { checkPaymentTriggers } = await import('@/src/lib/automation-trigger-helper');
+    await checkPaymentTriggers(inspectionId);
 
     // Return updated payment info
     return NextResponse.json({

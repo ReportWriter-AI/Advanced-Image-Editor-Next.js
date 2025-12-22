@@ -501,12 +501,24 @@ export async function POST(
           const total = Math.max(0, subtotal - discountAmount);
           const isPaid = currentAmountPaid >= total;
 
+          // Check and trigger automation events if fully paid
+          if (isPaid) {
+            const { checkPaymentTriggers } = await import('@/src/lib/automation-trigger-helper');
+            await checkPaymentTriggers(inspectionId);
+          }
+
           return NextResponse.json({
             success: true,
             message: "Payment already confirmed (processed by webhook)",
             isPaid: isPaid,
           });
         }
+      }
+
+      // Check and trigger automation events if fully paid
+      if (isPaid) {
+        const { checkPaymentTriggers } = await import('@/src/lib/automation-trigger-helper');
+        await checkPaymentTriggers(inspectionId);
       }
 
       return NextResponse.json({

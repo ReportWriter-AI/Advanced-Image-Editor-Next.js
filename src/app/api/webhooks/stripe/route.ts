@@ -261,8 +261,8 @@ export async function POST(req: NextRequest) {
 
         // Check if inspection is now fully paid and trigger automation
         if (isPaid) {
-          const { checkAndProcessTriggers } = await import('@/src/lib/automation-trigger-helper');
-          await checkAndProcessTriggers(inspectionId, 'INSPECTION_FULLY_PAID');
+          const { checkPaymentTriggers } = await import('@/src/lib/automation-trigger-helper');
+          await checkPaymentTriggers(inspectionId);
         }
         break;
       }

@@ -364,3 +364,81 @@ export function detectAgreementChanges(
   };
 }
 
+/**
+ * Checks payment and agreement status from payment context and triggers appropriate automation events
+ * Used when: Payment is made/updated/deleted
+ * Logic:
+ * - If both agreements signed AND fully paid → trigger ONLY ALL_AGREEMENTS_SIGNED_AND_FULLY_PAID
+ * - If only payment fully paid (agreements not signed) → trigger ONLY INSPECTION_FULLY_PAID
+ * - If only agreements signed (payment not fully paid) → no trigger
+ */
+export async function checkPaymentTriggers(
+  inspectionId: string | mongoose.Types.ObjectId
+): Promise<void> {
+  try {
+    // Fetch inspection with agreements
+    const inspection = await Inspection.findById(inspectionId).lean();
+    if (!inspection) {
+      return;
+    }
+
+    // Check if all agreements are signed
+    const agreements = inspection.agreements || [];
+    const allAgreementsSigned = agreements.length > 0 && agreements.every((a: any) => a.isSigned === true);
+
+    // Check if inspection is fully paid
+    const isFullyPaid = inspection.isPaid === true;
+
+    // If both conditions are met, trigger only the combined trigger
+    if (allAgreementsSigned && isFullyPaid) {
+      await checkAndProcessTriggers(inspectionId, 'ALL_AGREEMENTS_SIGNED_AND_FULLY_PAID');
+    } else if (isFullyPaid) {
+      // If only payment is fully paid (agreements not signed), trigger payment trigger
+      await checkAndProcessTriggers(inspectionId, 'INSPECTION_FULLY_PAID');
+    }
+    // If only agreements signed but payment not fully paid, no trigger (payment flow doesn't care)
+  } catch (error) {
+    console.error('Error checking payment triggers:', error);
+    // Don't throw - we don't want trigger failures to break inspection operations
+  }
+}
+
+/**
+ * Checks payment and agreement status from agreement context and triggers appropriate automation events
+ * Used when: Agreements are signed
+ * Logic:
+ * - If both agreements signed AND fully paid → trigger ONLY ALL_AGREEMENTS_SIGNED_AND_FULLY_PAID
+ * - If only agreements signed (payment not fully paid) → trigger ONLY ALL_AGREEMENTS_SIGNED
+ * - If only payment fully paid (agreements not signed) → no trigger (shouldn't happen in agreement flow)
+ */
+export async function checkAgreementTriggers(
+  inspectionId: string | mongoose.Types.ObjectId
+): Promise<void> {
+  try {
+    // Fetch inspection with agreements
+    const inspection = await Inspection.findById(inspectionId).lean();
+    if (!inspection) {
+      return;
+    }
+
+    // Check if all agreements are signed
+    const agreements = inspection.agreements || [];
+    const allAgreementsSigned = agreements.length > 0 && agreements.every((a: any) => a.isSigned === true);
+
+    // Check if inspection is fully paid
+    const isFullyPaid = inspection.isPaid === true;
+
+    // If both conditions are met, trigger only the combined trigger
+    if (allAgreementsSigned && isFullyPaid) {
+      await checkAndProcessTriggers(inspectionId, 'ALL_AGREEMENTS_SIGNED_AND_FULLY_PAID');
+    } else if (allAgreementsSigned) {
+      // If only agreements are signed (payment not fully paid), trigger agreement trigger
+      await checkAndProcessTriggers(inspectionId, 'ALL_AGREEMENTS_SIGNED');
+    }
+    // If only payment fully paid but agreements not signed, no trigger (shouldn't happen in agreement flow)
+  } catch (error) {
+    console.error('Error checking agreement triggers:', error);
+    // Don't throw - we don't want trigger failures to break inspection operations
+  }
+}
+
