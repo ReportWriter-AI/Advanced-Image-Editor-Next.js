@@ -238,3 +238,65 @@ export function detectPricingChanges(
   };
 }
 
+/**
+ * Helper function to normalize agreementId for comparison
+ */
+function normalizeAgreementId(agreementId: any): string | null {
+  if (!agreementId) return null;
+  if (typeof agreementId === 'string') return agreementId;
+  if (agreementId instanceof mongoose.Types.ObjectId) return agreementId.toString();
+  if (agreementId._id) return agreementId._id.toString();
+  return String(agreementId);
+}
+
+/**
+ * Compares agreements before and after update to detect added/removed agreements
+ * Returns flags indicating if agreements were added or removed
+ */
+export function detectAgreementChanges(
+  agreementsBefore: Array<{ agreementId: any }> | null | undefined,
+  agreementsAfter: Array<{ agreementId: any }> | null | undefined
+): { agreementsAdded: boolean; agreementsRemoved: boolean } {
+  const beforeAgreements = agreementsBefore || [];
+  const afterAgreements = agreementsAfter || [];
+
+  // Create sets of agreement IDs
+  const beforeIds = new Set<string>();
+  const afterIds = new Set<string>();
+
+  // Process agreements before
+  for (const agreement of beforeAgreements) {
+    const agreementId = normalizeAgreementId(agreement.agreementId);
+    if (agreementId) beforeIds.add(agreementId);
+  }
+
+  // Process agreements after
+  for (const agreement of afterAgreements) {
+    const agreementId = normalizeAgreementId(agreement.agreementId);
+    if (agreementId) afterIds.add(agreementId);
+  }
+
+  // Check for additions (in after but not in before)
+  let agreementsAdded = false;
+  for (const id of afterIds) {
+    if (!beforeIds.has(id)) {
+      agreementsAdded = true;
+      break;
+    }
+  }
+
+  // Check for removals (in before but not in after)
+  let agreementsRemoved = false;
+  for (const id of beforeIds) {
+    if (!afterIds.has(id)) {
+      agreementsRemoved = true;
+      break;
+    }
+  }
+
+  return {
+    agreementsAdded,
+    agreementsRemoved,
+  };
+}
+

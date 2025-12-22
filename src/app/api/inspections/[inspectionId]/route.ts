@@ -6,7 +6,7 @@ import Defect from "@/src/models/Defect";
 import InspectionInformationBlock from "@/src/models/InspectionInformationBlock";
 import mongoose from "mongoose";
 import { extractR2KeyFromUrl, deleteFromR2 } from "@/lib/r2";
-import { checkAndProcessTriggers, queueTimeBasedTriggers, detectPricingChanges } from "@/src/lib/automation-trigger-helper";
+import { checkAndProcessTriggers, queueTimeBasedTriggers, detectPricingChanges, detectAgreementChanges } from "@/src/lib/automation-trigger-helper";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
 
@@ -312,6 +312,22 @@ export async function PUT(
 
         if (pricingChanges.servicesOrAddonsRemoved) {
           await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION');
+        }
+      }
+
+      // Agreement change (agreements added or removed)
+      if (body.agreements !== undefined && inspectionAfter.confirmedInspection) {
+        const agreementChanges = detectAgreementChanges(
+          inspectionBefore.agreements,
+          inspectionAfter.agreements
+        );
+
+        if (agreementChanges.agreementsAdded) {
+          await checkAndProcessTriggers(inspectionId, 'AGREEMENT_ADDED_AFTER_CONFIRMATION');
+        }
+
+        if (agreementChanges.agreementsRemoved) {
+          await checkAndProcessTriggers(inspectionId, 'AGREEMENT_REMOVED_AFTER_CONFIRMATION');
         }
       }
     }
