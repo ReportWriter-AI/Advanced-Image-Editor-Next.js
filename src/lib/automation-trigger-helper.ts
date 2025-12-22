@@ -6,14 +6,14 @@ import mongoose from 'mongoose';
 import Inspection from '@/src/models/Inspection';
 import { processTrigger, wasTriggerAlreadySent, calculateExecutionTimeWithRestrictions } from './automation-trigger-service';
 import { queueTrigger } from './automation-queue';
-import { requiresConfirmedInspection } from './automation-triggers';
+import { requiresConfirmedInspection, AutomationTriggerKey } from './automation-triggers';
 
 /**
  * Checks and processes triggers for an inspection based on a trigger event
  */
 export async function checkAndProcessTriggers(
   inspectionId: string | mongoose.Types.ObjectId,
-  triggerEvent: string
+  triggerEvent: AutomationTriggerKey
 ): Promise<void> {
   try {
     const inspection = await Inspection.findById(inspectionId).lean();

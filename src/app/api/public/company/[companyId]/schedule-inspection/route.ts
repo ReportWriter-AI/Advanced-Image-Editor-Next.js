@@ -6,6 +6,7 @@ import Inspection from '@/src/models/Inspection';
 import DiscountCode from '@/src/models/DiscountCode';
 import { createOrUpdateClient, createOrUpdateAgent } from '@/lib/client-agent-utils';
 import { processInspectionPostCreation, attachAutomationActionsToInspection } from '@/lib/inspection-utils';
+import { checkAndProcessTriggers } from '@/src/lib/automation-trigger-helper';
 
 interface RouteParams {
   params: Promise<{
@@ -220,6 +221,10 @@ export async function POST(request: NextRequest, context: RouteParams) {
       await DiscountCode.findByIdAndUpdate(discountCodeId, {
         $inc: { usageCount: 1 },
       });
+    }
+
+    if (inspection?._id) {
+     await checkAndProcessTriggers(inspection._id, 'INSPECTION_REQUESTED');
     }
 
     return NextResponse.json(
