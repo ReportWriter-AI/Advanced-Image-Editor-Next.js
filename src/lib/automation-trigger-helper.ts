@@ -239,6 +239,70 @@ export function detectPricingChanges(
 }
 
 /**
+ * Helper function to create a unique key for an additional item (fee)
+ */
+function getFeeKey(item: any): string | null {
+  const name = item.name?.toLowerCase()?.trim();
+  if (!name) return null;
+  return `fee:${name}`;
+}
+
+/**
+ * Compares pricing items before and after update to detect added/removed additional items (fees)
+ * Returns flags indicating if fees were added or removed
+ */
+export function detectFeeChanges(
+  pricingBefore: { items?: any[] } | null | undefined,
+  pricingAfter: { items?: any[] } | null | undefined
+): { feesAdded: boolean; feesRemoved: boolean } {
+  const itemsBefore = pricingBefore?.items || [];
+  const itemsAfter = pricingAfter?.items || [];
+
+  // Create sets of keys for additional items (fees)
+  const beforeKeys = new Set<string>();
+  const afterKeys = new Set<string>();
+
+  // Process items before
+  for (const item of itemsBefore) {
+    if (item.type === 'additional') {
+      const key = getFeeKey(item);
+      if (key) beforeKeys.add(key);
+    }
+  }
+
+  // Process items after
+  for (const item of itemsAfter) {
+    if (item.type === 'additional') {
+      const key = getFeeKey(item);
+      if (key) afterKeys.add(key);
+    }
+  }
+
+  // Check for additions (in after but not in before)
+  let feesAdded = false;
+  for (const key of afterKeys) {
+    if (!beforeKeys.has(key)) {
+      feesAdded = true;
+      break;
+    }
+  }
+
+  // Check for removals (in before but not in after)
+  let feesRemoved = false;
+  for (const key of beforeKeys) {
+    if (!afterKeys.has(key)) {
+      feesRemoved = true;
+      break;
+    }
+  }
+
+  return {
+    feesAdded,
+    feesRemoved,
+  };
+}
+
+/**
  * Helper function to normalize agreementId for comparison
  */
 function normalizeAgreementId(agreementId: any): string | null {

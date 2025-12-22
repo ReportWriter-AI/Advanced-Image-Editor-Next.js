@@ -3,7 +3,7 @@ import dbConnect from '@/lib/db';
 import Inspection from '@/src/models/Inspection';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import mongoose from 'mongoose';
-import { checkAndProcessTriggers, detectPricingChanges } from '@/src/lib/automation-trigger-helper';
+import { checkAndProcessTriggers, detectPricingChanges, detectFeeChanges } from '@/src/lib/automation-trigger-helper';
 
 interface RouteParams {
   params: Promise<{
@@ -154,17 +154,31 @@ export async function PUT(request: NextRequest, context: RouteParams) {
 
     // Check for pricing changes and trigger if inspection is confirmed
     if (inspectionAfter && inspectionAfter.confirmedInspection) {
-      const pricingChanges = detectPricingChanges(
+      // const pricingChanges = detectPricingChanges(
+      //   inspectionBefore.pricing,
+      //   inspectionAfter.pricing
+      // );
+
+      // if (pricingChanges.servicesOrAddonsAdded) {
+      //   await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_ADDED_AFTER_CONFIRMATION');
+      // }
+
+      // if (pricingChanges.servicesOrAddonsRemoved) {
+      //   await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION');
+      // }
+
+      // Check for fee changes (additional items)
+      const feeChanges = detectFeeChanges(
         inspectionBefore.pricing,
         inspectionAfter.pricing
       );
 
-      if (pricingChanges.servicesOrAddonsAdded) {
-        await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_ADDED_AFTER_CONFIRMATION');
+      if (feeChanges.feesAdded) {
+        await checkAndProcessTriggers(inspectionId, 'FEE_ADDED_AFTER_CONFIRMATION');
       }
 
-      if (pricingChanges.servicesOrAddonsRemoved) {
-        await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION');
+      if (feeChanges.feesRemoved) {
+        await checkAndProcessTriggers(inspectionId, 'FEE_REMOVED_AFTER_CONFIRMATION');
       }
     }
 
