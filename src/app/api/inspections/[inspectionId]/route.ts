@@ -251,11 +251,18 @@ export async function PUT(
 
     // Check for trigger events based on changes
     if (inspectionBefore && inspectionAfter) {
-      // Status change
-      if (body.status && inspectionBefore.status !== inspectionAfter.status) {
-        if (body.status === 'Canceled') {
+      // Check for cancellation (cancelInspection changed from false/undefined to true)
+      if (body.cancelInspection !== undefined || body.status === 'Unconfirmed') {
+        const cancelBefore = inspectionBefore.cancelInspection || false;
+        const cancelAfter = inspectionAfter.cancelInspection || false;
+        if (!cancelBefore && cancelAfter) {
           await checkAndProcessTriggers(inspectionId, 'INSPECTION_CANCELED');
-        } else if (inspectionAfter.confirmedInspection && !inspectionBefore.confirmedInspection) {
+        }
+      }
+
+      // Status change (keep existing logic for other status changes)
+      if (body.status && inspectionBefore.status !== inspectionAfter.status) {
+        if (inspectionAfter.confirmedInspection && !inspectionBefore.confirmedInspection) {
           await checkAndProcessTriggers(inspectionId, 'INSPECTION_SCHEDULED');
         }
       }
