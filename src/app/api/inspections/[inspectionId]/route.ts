@@ -252,7 +252,7 @@ export async function PUT(
     // Check for trigger events based on changes
     if (inspectionBefore && inspectionAfter) {
       // Check for cancellation (cancelInspection changed from false/undefined to true)
-      if (body.cancelInspection !== undefined || body.status === 'Unconfirmed') {
+      if (body.cancelInspection !== undefined) {
         const cancelBefore = inspectionBefore.cancelInspection || false;
         const cancelAfter = inspectionAfter.cancelInspection || false;
         if (!cancelBefore && cancelAfter) {
@@ -280,7 +280,7 @@ export async function PUT(
       }
 
       // Date change (rescheduled)
-      if (body.date && inspectionBefore.date?.toString() !== inspectionAfter.date?.toString()) {
+      if (body.date) {
         await checkAndProcessTriggers(inspectionId, 'INSPECTION_RESCHEDULED');
         // Re-queue time-based triggers
         await queueTimeBasedTriggers(inspectionId);

@@ -2008,6 +2008,7 @@ export default function InspectionEditPage() {
           status: 'Unconfirmed',
           confirmedInspection: false,
           disableAutomatedNotifications: true,
+          cancelInspection: true,
           inspector: null, // Remove inspector when cancelling
           cancellationReason: cancellationReason || '',
         }),

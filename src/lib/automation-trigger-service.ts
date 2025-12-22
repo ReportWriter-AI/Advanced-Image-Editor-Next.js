@@ -421,9 +421,12 @@ export async function processTrigger(
     // Check if notifications are disabled
     // All triggers should respect disableAutomatedNotifications flag
     // unless the trigger config explicitly allows sending when notifications are disabled
+    // OR it's a cancellation or reschedule trigger (critical events that should always be sent)
     if (
       inspection.disableAutomatedNotifications &&
-      !triggerConfig.sendEvenWhenNotificationsDisabled
+      !triggerConfig.sendEvenWhenNotificationsDisabled &&
+      triggerEvent !== 'INSPECTION_CANCELED' &&
+      triggerEvent !== 'INSPECTION_RESCHEDULED'
     ) {
       return {
         success: false,
