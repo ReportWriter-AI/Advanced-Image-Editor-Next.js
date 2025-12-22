@@ -6,7 +6,7 @@ import Defect from "@/src/models/Defect";
 import InspectionInformationBlock from "@/src/models/InspectionInformationBlock";
 import mongoose from "mongoose";
 import { extractR2KeyFromUrl, deleteFromR2 } from "@/lib/r2";
-import { checkAndProcessTriggers, queueTimeBasedTriggers, detectPricingChanges, detectAgreementChanges } from "@/src/lib/automation-trigger-helper";
+import { checkAndProcessTriggers, queueTimeBasedTriggers, detectPricingChanges, detectAgreementChanges, detectDocumentChanges } from "@/src/lib/automation-trigger-helper";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
 import { recalculateAndUpdateIsPaid } from "./payment-history/route";
@@ -361,6 +361,22 @@ export async function PUT(
 
         if (agreementChanges.agreementsRemoved) {
           await checkAndProcessTriggers(inspectionId, 'AGREEMENT_REMOVED_AFTER_CONFIRMATION');
+        }
+      }
+
+      // Additional documents change (documents added or removed)
+      if (body.additionalDocuments !== undefined && inspectionAfter.confirmedInspection) {
+        const documentChanges = detectDocumentChanges(
+          inspectionBefore.additionalDocuments,
+          inspectionAfter.additionalDocuments
+        );
+
+        if (documentChanges.documentsAdded) {
+          await checkAndProcessTriggers(inspectionId, 'ATTACHMENT_ADDED_AFTER_CONFIRMATION');
+        }
+
+        if (documentChanges.documentsRemoved) {
+          await checkAndProcessTriggers(inspectionId, 'ATTACHMENT_REMOVED_AFTER_CONFIRMATION');
         }
       }
     }

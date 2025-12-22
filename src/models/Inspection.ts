@@ -97,6 +97,14 @@ export interface IInspection extends Document {
     createdBy: mongoose.Types.ObjectId;
     createdAt: Date;
   }>;
+  additionalDocuments?: Array<{
+    _id?: mongoose.Types.ObjectId;
+    name: string;
+    url: string;
+    isInternalOnly: boolean;
+    uploadedAt?: Date;
+    uploadedBy?: mongoose.Types.ObjectId;
+  }>;
   pricing?: {
     items: Array<{
       type: 'service' | 'addon' | 'additional';
@@ -473,6 +481,30 @@ const InspectionSchema = new Schema<IInspection>(
       createdAt: {
         type: Date,
         default: Date.now,
+      },
+    }],
+    additionalDocuments: [{
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      url: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      isInternalOnly: {
+        type: Boolean,
+        default: false,
+      },
+      uploadedAt: {
+        type: Date,
+        default: Date.now,
+      },
+      uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
       },
     }],
     pricing: {

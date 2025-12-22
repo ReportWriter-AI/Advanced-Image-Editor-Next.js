@@ -404,6 +404,16 @@ const formatInspection = (doc: IInspection | null) => {
       lastModifiedAt: doc.endOfInspectionPeriod.lastModifiedAt ? new Date(doc.endOfInspectionPeriod.lastModifiedAt).toISOString() : null,
     } : null,
     officeNotes: formattedOfficeNotes,
+    additionalDocuments: doc.additionalDocuments && Array.isArray(doc.additionalDocuments)
+      ? doc.additionalDocuments.map((doc: any) => ({
+          _id: doc._id?.toString() || undefined,
+          name: doc.name || '',
+          url: doc.url || '',
+          isInternalOnly: doc.isInternalOnly || false,
+          uploadedAt: doc.uploadedAt ? new Date(doc.uploadedAt).toISOString() : undefined,
+          uploadedBy: doc.uploadedBy ? (typeof doc.uploadedBy === 'object' && '_id' in doc.uploadedBy ? doc.uploadedBy._id?.toString() : doc.uploadedBy.toString()) : undefined,
+        }))
+      : [],
     triggers: formattedTriggers,
     createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : null,
     updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : null,
@@ -783,6 +793,11 @@ export async function updateInspection(inspectionId: string, data: Partial<{
     isSigned?: boolean;
     inputData?: Record<string, any>;
   }>; // agreements array
+  additionalDocuments: Array<{
+    name: string;
+    url: string;
+    isInternalOnly: boolean;
+  }>; // additional documents array
 }>) {
   if (!mongoose.Types.ObjectId.isValid(inspectionId)) {
     throw new Error('Invalid inspection ID format');
@@ -846,6 +861,17 @@ export async function updateInspection(inspectionId: string, data: Partial<{
             hours: typeof item.hours === 'number' ? item.hours : undefined,
           })),
         };
+      } else if (key === 'additionalDocuments' && Array.isArray(value)) {
+        // Handle additional documents array
+        acc[key] = value.map((doc: any) => ({
+          name: doc.name || '',
+          url: doc.url || '',
+          isInternalOnly: doc.isInternalOnly || false,
+          uploadedAt: doc.uploadedAt ? new Date(doc.uploadedAt) : new Date(),
+          uploadedBy: doc.uploadedBy && mongoose.Types.ObjectId.isValid(doc.uploadedBy)
+            ? new mongoose.Types.ObjectId(doc.uploadedBy)
+            : undefined,
+        }));
       } else {
         acc[key] = value;
       }

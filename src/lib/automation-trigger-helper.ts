@@ -387,6 +387,66 @@ export function detectAgreementChanges(
 }
 
 /**
+ * Helper function to normalize document URL for comparison
+ */
+function normalizeDocumentUrl(url: any): string | null {
+  if (!url) return null;
+  if (typeof url === 'string') return url.trim();
+  return String(url).trim();
+}
+
+/**
+ * Compares additional documents before and after update to detect added/removed documents
+ * Returns flags indicating if documents were added or removed
+ */
+export function detectDocumentChanges(
+  documentsBefore: Array<{ url: any; name?: string }> | null | undefined,
+  documentsAfter: Array<{ url: any; name?: string }> | null | undefined
+): { documentsAdded: boolean; documentsRemoved: boolean } {
+  const beforeDocuments = documentsBefore || [];
+  const afterDocuments = documentsAfter || [];
+
+  // Create sets of document URLs (using URL as unique identifier)
+  const beforeUrls = new Set<string>();
+  const afterUrls = new Set<string>();
+
+  // Process documents before
+  for (const document of beforeDocuments) {
+    const url = normalizeDocumentUrl(document.url);
+    if (url) beforeUrls.add(url);
+  }
+
+  // Process documents after
+  for (const document of afterDocuments) {
+    const url = normalizeDocumentUrl(document.url);
+    if (url) afterUrls.add(url);
+  }
+
+  // Check for additions (in after but not in before)
+  let documentsAdded = false;
+  for (const url of Array.from(afterUrls)) {
+    if (!beforeUrls.has(url)) {
+      documentsAdded = true;
+      break;
+    }
+  }
+
+  // Check for removals (in before but not in after)
+  let documentsRemoved = false;
+  for (const url of Array.from(beforeUrls)) {
+    if (!afterUrls.has(url)) {
+      documentsRemoved = true;
+      break;
+    }
+  }
+
+  return {
+    documentsAdded,
+    documentsRemoved,
+  };
+}
+
+/**
  * Checks payment and agreement status from payment context and triggers appropriate automation events
  * Used when: Payment is made/updated/deleted
  * Logic:

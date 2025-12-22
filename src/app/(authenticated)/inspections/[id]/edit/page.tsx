@@ -307,6 +307,24 @@ export default function InspectionEditPage() {
   const [deletingAgreement, setDeletingAgreement] = useState(false);
   const [addAgreementDialogOpen, setAddAgreementDialogOpen] = useState(false);
 
+  // Additional Documents state
+  const [additionalDocuments, setAdditionalDocuments] = useState<Array<{
+    _id?: string;
+    name: string;
+    url: string;
+    isInternalOnly: boolean;
+    uploadedAt?: string;
+    uploadedBy?: any;
+  }>>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [addDocumentDialogOpen, setAddDocumentDialogOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
+  const [deletingDocument, setDeletingDocument] = useState(false);
+  const [newDocumentName, setNewDocumentName] = useState('');
+  const [newDocumentFile, setNewDocumentFile] = useState<File | null>(null);
+  const [newDocumentIsInternalOnly, setNewDocumentIsInternalOnly] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+
   // Client/Agent management state
   const [addClientDialogOpen, setAddClientDialogOpen] = useState(false);
   const [addAgentDialogOpen, setAddAgentDialogOpen] = useState(false);
@@ -425,6 +443,31 @@ export default function InspectionEditPage() {
       setAgreements([]);
     } finally {
       setLoadingAgreements(false);
+    }
+  };
+
+  // Fetch additional documents from inspection
+  const fetchAdditionalDocuments = async () => {
+    try {
+      setLoadingDocuments(true);
+      
+      // Get inspection details with additional documents
+      const inspectionResponse = await fetch(`/api/inspections/${inspectionId}`);
+      if (!inspectionResponse.ok) {
+        console.error('Failed to fetch inspection for documents');
+        setAdditionalDocuments([]);
+        return;
+      }
+      
+      const inspectionData = await inspectionResponse.json();
+      const documents = inspectionData.additionalDocuments || [];
+      
+      setAdditionalDocuments(documents);
+    } catch (error) {
+      console.error('Error fetching additional documents:', error);
+      setAdditionalDocuments([]);
+    } finally {
+      setLoadingDocuments(false);
     }
   };
 
@@ -604,6 +647,7 @@ export default function InspectionEditPage() {
       fetchAgreements();
       fetchAvailableAgreements();
       fetchPaymentInfo();
+      fetchAdditionalDocuments();
       
       // Get current user ID
       fetch('/api/auth/verify-token', {
@@ -2564,6 +2608,117 @@ export default function InspectionEditPage() {
     }
   };
 
+  // Additional Documents management handlers
+  const handleAddDocument = async () => {
+    if (!newDocumentName.trim() || !newDocumentFile) {
+      toast.error('Please provide a document name and select a file');
+      return;
+    }
+
+    setUploadingDocument(true);
+    try {
+      // Upload file to R2
+      const formData = new FormData();
+      formData.append('file', newDocumentFile);
+
+      const uploadResponse = await fetch('/api/r2api', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to upload file');
+      }
+
+      const uploadData = await uploadResponse.json();
+      if (!uploadData?.url) {
+        throw new Error('Upload succeeded but no URL was returned');
+      }
+
+      // Get current documents
+      const currentDocuments = additionalDocuments.map((doc) => ({
+        name: doc.name,
+        url: doc.url,
+        isInternalOnly: doc.isInternalOnly,
+      }));
+
+      // Add new document
+      const updatedDocuments = [
+        ...currentDocuments,
+        {
+          name: newDocumentName.trim(),
+          url: uploadData.url,
+          isInternalOnly: newDocumentIsInternalOnly,
+        },
+      ];
+
+      // Update inspection with new document
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ additionalDocuments: updatedDocuments }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add document');
+      }
+
+      // Refresh documents list
+      await fetchAdditionalDocuments();
+      toast.success('Document added successfully');
+      
+      // Reset form
+      setNewDocumentName('');
+      setNewDocumentFile(null);
+      setNewDocumentIsInternalOnly(false);
+      setAddDocumentDialogOpen(false);
+    } catch (error: any) {
+      console.error('Error adding document:', error);
+      toast.error(error.message || 'Failed to add document');
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!documentToDelete) return;
+
+    setDeletingDocument(true);
+    try {
+      // Get current documents and remove the one to delete
+      const updatedDocuments = additionalDocuments
+        .filter((doc) => doc.url !== documentToDelete)
+        .map((doc) => ({
+          name: doc.name,
+          url: doc.url,
+          isInternalOnly: doc.isInternalOnly,
+        }));
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ additionalDocuments: updatedDocuments }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete document');
+      }
+
+      // Refresh documents list
+      await fetchAdditionalDocuments();
+      toast.success('Document removed successfully');
+      setDocumentToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting document:', error);
+      toast.error(error.message || 'Failed to delete document');
+    } finally {
+      setDeletingDocument(false);
+    }
+  };
+
   // Client/Agent management handlers
   const handleAddClient = async (clientData: any) => {
     try {
@@ -4008,6 +4163,183 @@ export default function InspectionEditPage() {
                       <i className="fas fa-file-contract text-2xl text-muted-foreground"></i>
                     </div>
                     <p className="text-sm text-muted-foreground">No agreements found</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Additional Documents Section */}
+              <div className="p-4 border rounded-lg bg-muted/50">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-lg">Additional Documents</h3>
+                  <Dialog open={addDocumentDialogOpen} onOpenChange={setAddDocumentDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        disabled={loadingDocuments || deletingDocument || uploadingDocument}
+                        className="gap-2"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Add Document</DialogTitle>
+                        <DialogDescription>
+                          Upload a document to attach to this inspection
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="document-name">Document Name</Label>
+                          <Input
+                            id="document-name"
+                            value={newDocumentName}
+                            onChange={(e) => setNewDocumentName(e.target.value)}
+                            placeholder="Enter document name"
+                            disabled={uploadingDocument}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="document-file">File</Label>
+                          <Input
+                            id="document-file"
+                            type="file"
+                            accept=".pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.mp3,.wav,.m4a,.aac,.ogg"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setNewDocumentFile(file);
+                              }
+                            }}
+                            disabled={uploadingDocument}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Supported: PDF, Text, Word, Excel, PowerPoint, Images, Audio
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="internal-only"
+                            checked={newDocumentIsInternalOnly}
+                            onCheckedChange={(checked) => setNewDocumentIsInternalOnly(checked === true)}
+                            disabled={uploadingDocument}
+                          />
+                          <Label
+                            htmlFor="internal-only"
+                            className="text-sm font-normal cursor-pointer"
+                          >
+                            Internal Only (will not be visible in Client Portal)
+                          </Label>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-4">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setAddDocumentDialogOpen(false);
+                              setNewDocumentName('');
+                              setNewDocumentFile(null);
+                              setNewDocumentIsInternalOnly(false);
+                            }}
+                            disabled={uploadingDocument}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={handleAddDocument}
+                            disabled={uploadingDocument || !newDocumentName.trim() || !newDocumentFile}
+                          >
+                            {uploadingDocument ? (
+                              <>
+                                <i className="fas fa-spinner fa-spin mr-2"></i>
+                                Uploading...
+                              </>
+                            ) : (
+                              'Add Document'
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                {loadingDocuments ? (
+                  <div className="flex items-center justify-center py-8">
+                    <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
+                  </div>
+                ) : additionalDocuments.length > 0 ? (
+                  <div className="space-y-2">
+                    {additionalDocuments.map((document, index) => {
+                      const getFileIcon = (url: string) => {
+                        const extension = url.split('.').pop()?.toLowerCase();
+                        if (['pdf'].includes(extension || '')) {
+                          return 'fas fa-file-pdf text-red-600';
+                        } else if (['doc', 'docx'].includes(extension || '')) {
+                          return 'fas fa-file-word text-blue-600';
+                        } else if (['xls', 'xlsx'].includes(extension || '')) {
+                          return 'fas fa-file-excel text-green-600';
+                        } else if (['ppt', 'pptx'].includes(extension || '')) {
+                          return 'fas fa-file-powerpoint text-orange-600';
+                        } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(extension || '')) {
+                          return 'fas fa-file-image text-purple-600';
+                        } else if (['mp3', 'wav', 'm4a', 'aac', 'ogg'].includes(extension || '')) {
+                          return 'fas fa-file-audio text-pink-600';
+                        } else if (['txt'].includes(extension || '')) {
+                          return 'fas fa-file-alt text-gray-600';
+                        }
+                        return 'fas fa-file text-gray-600';
+                      };
+
+                      return (
+                        <div
+                          key={document.url || `document-${index}`}
+                          className="p-3 bg-card border rounded-lg hover:shadow-sm transition-shadow flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <i className={`${getFileIcon(document.url)} text-xl`}></i>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium truncate">{document.name}</p>
+                                {document.isInternalOnly && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
+                                    Internal Only
+                                  </span>
+                                )}
+                              </div>
+                              <a
+                                href={document.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline"
+                              >
+                                View/Download
+                              </a>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDocumentToDelete(document.url)}
+                            disabled={deletingDocument}
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 ml-2"
+                            title="Remove document"
+                          >
+                            {deletingDocument && documentToDelete === document.url ? (
+                              <i className="fas fa-spinner fa-spin text-xs"></i>
+                            ) : (
+                              <i className="fas fa-trash text-xs"></i>
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                      <i className="fas fa-file text-2xl text-muted-foreground"></i>
+                    </div>
+                    <p className="text-sm text-muted-foreground">No documents found</p>
                   </div>
                 )}
               </div>
@@ -6216,6 +6548,35 @@ export default function InspectionEditPage() {
               className="bg-destructive hover:bg-destructive/90"
             >
               {deletingAgreement ? (
+                <>
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  Removing...
+                </>
+              ) : (
+                'Remove'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Document Confirmation Dialog */}
+      <AlertDialog open={!!documentToDelete} onOpenChange={(open) => !open && setDocumentToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Document</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this document from the inspection? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingDocument}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteDocument} 
+              disabled={deletingDocument}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {deletingDocument ? (
                 <>
                   <i className="fas fa-spinner fa-spin mr-2"></i>
                   Removing...
