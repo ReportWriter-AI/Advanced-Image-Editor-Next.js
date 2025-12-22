@@ -130,6 +130,14 @@ export async function POST(req: NextRequest) {
 
         if (eventsToCreate.length > 0) {
           await Event.insertMany(eventsToCreate);
+          
+          // Check if inspection is confirmed before triggering automation
+          const inspection = await Inspection.findById(inspectionId).lean();
+          if (inspection?.confirmedInspection) {
+            // Trigger INSPECTION_EVENT_CREATED for each event created
+            // The trigger helper will check if triggers are configured and process them
+            await checkAndProcessTriggers(inspectionId, 'INSPECTION_EVENT_CREATED');
+          }
         }
       }
     }
