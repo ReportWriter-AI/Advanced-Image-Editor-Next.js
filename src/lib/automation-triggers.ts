@@ -16,8 +16,8 @@ export interface AutomationTrigger {
 export type AutomationTriggerKey =
   | 'INSPECTION_REQUESTED'
   | 'INSPECTION_SCHEDULED'
-  | 'SERVICE_ADDED_AFTER_CONFIRMATION'
-  | 'SERVICE_REMOVED_AFTER_CONFIRMATION'
+  | 'SERVICE_OR_ADDON_ADDED_AFTER_CONFIRMATION'
+  | 'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION'
   | 'AGREEMENT_ADDED_AFTER_CONFIRMATION'
   | 'AGREEMENT_REMOVED_AFTER_CONFIRMATION'
   | 'ATTACHMENT_ADDED_AFTER_CONFIRMATION'
@@ -57,14 +57,14 @@ export const AUTOMATION_TRIGGERS: AutomationTrigger[] = [
     section: 'PRE_INSPECTION',
   },
   {
-    key: 'SERVICE_ADDED_AFTER_CONFIRMATION',
+    key: 'SERVICE_OR_ADDON_ADDED_AFTER_CONFIRMATION',
     title: 'Service or Add-on Added After Confirmation',
     description:
       'Triggers when a service or add-on is added to an order after the inspection is confirmed.',
     section: 'PRE_INSPECTION',
   },
   {
-    key: 'SERVICE_REMOVED_AFTER_CONFIRMATION',
+    key: 'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION',
     title: 'Service or Add-on Removed After Confirmation',
     description:
       'Triggers when a service or add-on is removed from an order after the inspection is confirmed.',
@@ -175,13 +175,13 @@ export const AUTOMATION_TRIGGERS: AutomationTrigger[] = [
   //   description: 'Triggers when the inspection is scheduled to end.',
   //   section: 'DAY_OF_INSPECTION',
   // },
-  {
-    key: 'ANY_REPORTS_PUBLISHED',
-    title: 'Any Reports Published',
-    description:
-      'Triggers when any reports linked to the inspection are published.',
-    section: 'DAY_OF_INSPECTION',
-  },
+  // {
+  //   key: 'ANY_REPORTS_PUBLISHED',
+  //   title: 'Any Reports Published',
+  //   description:
+  //     'Triggers when any reports linked to the inspection are published.',
+  //   section: 'DAY_OF_INSPECTION',
+  // },
 
   // INSPECTION EVENTS
   {
@@ -221,20 +221,20 @@ export const AUTOMATION_TRIGGERS: AutomationTrigger[] = [
       'Triggers at the beginning of the End of Period Date defined in the order.',
     section: 'POST_INSPECTION',
   },
-  {
-    key: 'ANY_REPORT_VIEWED_BY_AGENT',
-    title: 'Any Report Viewed By Agent',
-    description:
-      'Triggers when an agent views any report linked to the order. Specify which report using conditions (optional).',
-    section: 'POST_INSPECTION',
-  },
-  {
-    key: 'ANY_REPORT_VIEWED_BY_CLIENT',
-    title: 'Any Report Viewed By Client',
-    description:
-      'Triggers when a client views any report linked to the order. Specify which report with conditions (optional).',
-    section: 'POST_INSPECTION',
-  },
+  // {
+  //   key: 'ANY_REPORT_VIEWED_BY_AGENT',
+  //   title: 'Any Report Viewed By Agent',
+  //   description:
+  //     'Triggers when an agent views any report linked to the order. Specify which report using conditions (optional).',
+  //   section: 'POST_INSPECTION',
+  // },
+  // {
+  //   key: 'ANY_REPORT_VIEWED_BY_CLIENT',
+  //   title: 'Any Report Viewed By Client',
+  //   description:
+  //     'Triggers when a client views any report linked to the order. Specify which report with conditions (optional).',
+  //   section: 'POST_INSPECTION',
+  // },
 ];
 
 // Helper function to get triggers grouped by section for react-select
@@ -284,8 +284,8 @@ export function isValidTriggerKey(key: string): boolean {
 export function requiresConfirmedInspection(triggerKey: string): boolean {
   const triggersRequiringConfirmation = [
     'INSPECTION_SCHEDULED', // "Triggers when an inspection is confirmed"
-    'SERVICE_ADDED_AFTER_CONFIRMATION',
-    'SERVICE_REMOVED_AFTER_CONFIRMATION',
+    'SERVICE_OR_ADDON_ADDED_AFTER_CONFIRMATION',
+    'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION',
     'AGREEMENT_ADDED_AFTER_CONFIRMATION',
     'AGREEMENT_REMOVED_AFTER_CONFIRMATION',
     'ATTACHMENT_ADDED_AFTER_CONFIRMATION',

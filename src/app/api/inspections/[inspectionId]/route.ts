@@ -6,7 +6,7 @@ import Defect from "@/src/models/Defect";
 import InspectionInformationBlock from "@/src/models/InspectionInformationBlock";
 import mongoose from "mongoose";
 import { extractR2KeyFromUrl, deleteFromR2 } from "@/lib/r2";
-import { checkAndProcessTriggers, queueTimeBasedTriggers } from "@/src/lib/automation-trigger-helper";
+import { checkAndProcessTriggers, queueTimeBasedTriggers, detectPricingChanges } from "@/src/lib/automation-trigger-helper";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import { createOrUpdateClient, createOrUpdateAgent } from "@/lib/client-agent-utils";
 
@@ -296,6 +296,22 @@ export async function PUT(
         // Date was set, changed, or cleared
         if (endOfPeriodBefore !== endOfPeriodAfter) {
           await queueTimeBasedTriggers(inspectionId);
+        }
+      }
+
+      // Pricing change (services/addons added or removed)
+      if (body.pricing !== undefined && inspectionAfter.confirmedInspection) {
+        const pricingChanges = detectPricingChanges(
+          inspectionBefore.pricing,
+          inspectionAfter.pricing
+        );
+
+        if (pricingChanges.servicesOrAddonsAdded) {
+          await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_ADDED_AFTER_CONFIRMATION');
+        }
+
+        if (pricingChanges.servicesOrAddonsRemoved) {
+          await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION');
         }
       }
     }

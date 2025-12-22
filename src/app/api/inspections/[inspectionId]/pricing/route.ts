@@ -3,6 +3,7 @@ import dbConnect from '@/lib/db';
 import Inspection from '@/src/models/Inspection';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import mongoose from 'mongoose';
+import { checkAndProcessTriggers, detectPricingChanges } from '@/src/lib/automation-trigger-helper';
 
 interface RouteParams {
   params: Promise<{
@@ -81,8 +82,9 @@ export async function PUT(request: NextRequest, context: RouteParams) {
     }
 
     // Check if inspection exists and user has access
-    const inspection = await Inspection.findById(inspectionId).lean();
-    if (!inspection) {
+    // Get inspection before update for comparison
+    const inspectionBefore = await Inspection.findById(inspectionId).lean();
+    if (!inspectionBefore) {
       return NextResponse.json(
         { error: 'Inspection not found' },
         { status: 404 }
@@ -90,7 +92,7 @@ export async function PUT(request: NextRequest, context: RouteParams) {
     }
 
     // Verify user has access to this inspection's company
-    const inspectionCompanyId = (inspection as any).companyId?.toString();
+    const inspectionCompanyId = (inspectionBefore as any).companyId?.toString();
     const userCompanyId = currentUser.company?.toString();
 
     if (inspectionCompanyId !== userCompanyId) {
@@ -145,6 +147,25 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         { error: 'Failed to update inspection pricing' },
         { status: 500 }
       );
+    }
+
+    // Get updated inspection for comparison
+    const inspectionAfter = await Inspection.findById(inspectionId).lean();
+
+    // Check for pricing changes and trigger if inspection is confirmed
+    if (inspectionAfter && inspectionAfter.confirmedInspection) {
+      const pricingChanges = detectPricingChanges(
+        inspectionBefore.pricing,
+        inspectionAfter.pricing
+      );
+
+      if (pricingChanges.servicesOrAddonsAdded) {
+        await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_ADDED_AFTER_CONFIRMATION');
+      }
+
+      if (pricingChanges.servicesOrAddonsRemoved) {
+        await checkAndProcessTriggers(inspectionId, 'SERVICE_OR_ADDON_REMOVED_AFTER_CONFIRMATION');
+      }
     }
 
     return NextResponse.json(

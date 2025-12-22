@@ -147,3 +147,94 @@ export async function queueTimeBasedTriggers(
   }
 }
 
+/**
+ * Helper function to normalize serviceId for comparison
+ */
+function normalizeServiceId(serviceId: any): string | null {
+  if (!serviceId) return null;
+  if (typeof serviceId === 'string') return serviceId;
+  if (serviceId instanceof mongoose.Types.ObjectId) return serviceId.toString();
+  if (serviceId._id) return serviceId._id.toString();
+  return String(serviceId);
+}
+
+/**
+ * Helper function to create a unique key for a service item
+ */
+function getServiceKey(item: any): string | null {
+  const serviceId = normalizeServiceId(item.serviceId);
+  if (!serviceId) return null;
+  return `service:${serviceId}`;
+}
+
+/**
+ * Helper function to create a unique key for an addon item
+ */
+function getAddonKey(item: any): string | null {
+  const serviceId = normalizeServiceId(item.serviceId);
+  const addonName = item.addonName?.toLowerCase()?.trim();
+  if (!serviceId || !addonName) return null;
+  return `addon:${serviceId}:${addonName}`;
+}
+
+/**
+ * Compares pricing items before and after update to detect added/removed services or addons
+ * Returns flags indicating if services/addons were added or removed
+ */
+export function detectPricingChanges(
+  pricingBefore: { items?: any[] } | null | undefined,
+  pricingAfter: { items?: any[] } | null | undefined
+): { servicesOrAddonsAdded: boolean; servicesOrAddonsRemoved: boolean } {
+  const itemsBefore = pricingBefore?.items || [];
+  const itemsAfter = pricingAfter?.items || [];
+
+  // Create sets of keys for services and addons
+  const beforeKeys = new Set<string>();
+  const afterKeys = new Set<string>();
+
+  // Process items before
+  for (const item of itemsBefore) {
+    if (item.type === 'service') {
+      const key = getServiceKey(item);
+      if (key) beforeKeys.add(key);
+    } else if (item.type === 'addon') {
+      const key = getAddonKey(item);
+      if (key) beforeKeys.add(key);
+    }
+  }
+
+  // Process items after
+  for (const item of itemsAfter) {
+    if (item.type === 'service') {
+      const key = getServiceKey(item);
+      if (key) afterKeys.add(key);
+    } else if (item.type === 'addon') {
+      const key = getAddonKey(item);
+      if (key) afterKeys.add(key);
+    }
+  }
+
+  // Check for additions (in after but not in before)
+  let servicesOrAddonsAdded = false;
+  for (const key of afterKeys) {
+    if (!beforeKeys.has(key)) {
+      servicesOrAddonsAdded = true;
+      break;
+    }
+  }
+
+  // Check for removals (in before but not in after)
+  let servicesOrAddonsRemoved = false;
+  for (const key of beforeKeys) {
+    if (!afterKeys.has(key)) {
+      servicesOrAddonsRemoved = true;
+      break;
+    }
+  }
+
+  return {
+    servicesOrAddonsAdded,
+    servicesOrAddonsRemoved,
+  };
+}
+
