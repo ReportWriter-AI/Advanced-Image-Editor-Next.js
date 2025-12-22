@@ -238,7 +238,7 @@ export function detectPricingChanges(
 
   // Check for additions (in after but not in before)
   let servicesOrAddonsAdded = false;
-  for (const key of afterKeys) {
+  for (const key of Array.from(afterKeys)) {
     if (!beforeKeys.has(key)) {
       servicesOrAddonsAdded = true;
       break;
@@ -247,7 +247,7 @@ export function detectPricingChanges(
 
   // Check for removals (in before but not in after)
   let servicesOrAddonsRemoved = false;
-  for (const key of beforeKeys) {
+  for (const key of Array.from(beforeKeys)) {
     if (!afterKeys.has(key)) {
       servicesOrAddonsRemoved = true;
       break;
@@ -302,7 +302,7 @@ export function detectFeeChanges(
 
   // Check for additions (in after but not in before)
   let feesAdded = false;
-  for (const key of afterKeys) {
+  for (const key of Array.from(afterKeys)) {
     if (!beforeKeys.has(key)) {
       feesAdded = true;
       break;
@@ -311,7 +311,7 @@ export function detectFeeChanges(
 
   // Check for removals (in before but not in after)
   let feesRemoved = false;
-  for (const key of beforeKeys) {
+  for (const key of Array.from(beforeKeys)) {
     if (!afterKeys.has(key)) {
       feesRemoved = true;
       break;
@@ -364,7 +364,7 @@ export function detectAgreementChanges(
 
   // Check for additions (in after but not in before)
   let agreementsAdded = false;
-  for (const id of afterIds) {
+  for (const id of Array.from(afterIds)) {
     if (!beforeIds.has(id)) {
       agreementsAdded = true;
       break;
@@ -373,7 +373,7 @@ export function detectAgreementChanges(
 
   // Check for removals (in before but not in after)
   let agreementsRemoved = false;
-  for (const id of beforeIds) {
+  for (const id of Array.from(beforeIds)) {
     if (!afterIds.has(id)) {
       agreementsRemoved = true;
       break;
