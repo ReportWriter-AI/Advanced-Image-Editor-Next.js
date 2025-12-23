@@ -21,11 +21,8 @@ import CreatableSelect from "react-select/creatable";
 import { Loader2, Plus, X } from "lucide-react";
 import { getGroupedTriggerOptions } from "@/src/lib/automation-triggers";
 import { ConditionForm, ConditionFormData } from "./ConditionForm";
-import dynamic from "next/dynamic";
-import { PLACEHOLDER_SECTIONS, PlaceholderItem } from "@/src/app/(authenticated)/agreements/_components/AgreementForm";
-
-const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
-import "react-quill-new/dist/quill.snow.css";
+import { PLACEHOLDER_SECTIONS, PlaceholderItem, PlaceholderSection } from "@/src/app/(authenticated)/agreements/_components/AgreementForm";
+import TinyMCERichTextEditor, { TinyMCERichTextEditorRef } from "@/components/TinyMCERichTextEditor";
 
 interface Category {
   _id: string;
@@ -206,7 +203,7 @@ export function ActionForm({
   const [showBcc, setShowBcc] = useState(false);
   const [companyOwnerEmail, setCompanyOwnerEmail] = useState<string | null>(null);
   const [placeholderTargetField, setPlaceholderTargetField] = useState<"subject" | "body" | null>(null);
-  const quillRef = useRef<any>(null);
+  const tinyMceRef = useRef<TinyMCERichTextEditorRef>(null);
   const previousInitialValuesRef = useRef<any>(null);
 
   // Triggers that support both BEFORE and AFTER options
@@ -274,12 +271,6 @@ export function ActionForm({
     return "AND";
   });
 
-  // Helper function to filter non-input placeholders
-  const getNonInputPlaceholders = (): PlaceholderItem[] => {
-    return PLACEHOLDER_SECTIONS.flatMap(section => 
-      section.placeholders.filter(p => !p.input)
-    );
-  };
 
   // Insert placeholder into subject field
   const insertPlaceholderIntoSubject = (token: string) => {
@@ -302,16 +293,14 @@ export function ActionForm({
     }
   };
 
-  // Insert placeholder into body field (ReactQuill)
+  // Insert placeholder into body field (TinyMCE)
   const insertPlaceholderIntoBody = (token: string) => {
-    const editor = quillRef.current?.getEditor?.();
+    const editor = tinyMceRef.current?.getEditor();
     if (!editor) {
       return;
     }
-    const selection = editor.getSelection(true);
-    const index = selection ? selection.index : editor.getLength();
-    editor.insertText(index, ` ${token} `);
-    editor.setSelection(index + token.length + 2, 0);
+    
+    editor.insertContent(`${token}`);
   };
 
   // Insert placeholder into text body field (textarea)
@@ -659,7 +648,7 @@ export function ActionForm({
         {open && (
           <div
             ref={dropdownRef}
-            className="absolute right-0 top-full mt-1 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg z-50"
+            className="absolute right-0 bottom-full mb-1 w-[400px] bg-white border border-gray-200 rounded-md shadow-lg z-[10000]"
             style={{ maxHeight: "300px", display: "flex", flexDirection: "column" }}
           >
             {/* Search Input */}
@@ -1115,26 +1104,12 @@ export function ActionForm({
                 control={form.control}
                 render={({ field, fieldState }) => (
                   <div>
-                    <div className="border rounded-md">
-                      <ReactQuill
-                        //@ts-ignore
-                        ref={quillRef}
-                        theme="snow"
-                        value={field.value || ""}
-                        onChange={field.onChange}
-                        modules={{
-                          toolbar: [
-                            [{ header: [1, 2, 3, false] }],
-                            ["bold", "italic", "underline", "strike"],
-                            [{ list: "ordered" }, { list: "bullet" }],
-                            ["link"],
-                            ["clean"],
-                          ],
-                        }}
-                        formats={["header", "bold", "italic", "underline", "strike", "list", "link"]}
-                        placeholder="Enter email body"
-                      />
-                    </div>
+                    <TinyMCERichTextEditor
+                      ref={tinyMceRef}
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      placeholderSections={PLACEHOLDER_SECTIONS}
+                    />
                     {fieldState.error && (
                       <p className="mt-1 text-sm text-destructive">{fieldState.error.message}</p>
                     )}

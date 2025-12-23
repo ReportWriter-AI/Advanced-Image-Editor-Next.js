@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DataTable, Column } from "@/components/ui/data-table";
 import {
   AlertDialog,
@@ -12,16 +13,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Edit, Trash2, Plus } from "lucide-react";
-import { ActionForm, ActionFormNormalizedValues } from "./ActionForm";
 import { getTriggerByKey } from "@/src/lib/automation-triggers";
 
 interface Action {
@@ -96,15 +89,12 @@ const mapAction = (item: any): Action => {
 };
 
 export default function ActionsList() {
+  const router = useRouter();
   const [actions, setActions] = useState<Action[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionPendingDelete, setActionPendingDelete] = useState<string | null>(null);
   const [deleteInFlight, setDeleteInFlight] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingAction, setEditingAction] = useState<Action | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchActions();
@@ -133,12 +123,7 @@ export default function ActionsList() {
   };
 
   const handleEditClick = (actionId: string) => {
-    const action = actions.find((a) => a.id === actionId);
-    if (action) {
-      setEditingAction(action);
-      setDialogOpen(true);
-      setSubmitError(null);
-    }
+    router.push(`/automations/actions/${actionId}/edit`);
   };
 
   const handleDeleteClick = (actionId: string) => {
@@ -180,51 +165,7 @@ export default function ActionsList() {
   };
 
   const handleAddAction = () => {
-    setEditingAction(null);
-    setDialogOpen(true);
-    setSubmitError(null);
-  };
-
-  const closeDialog = () => {
-    if (isSubmitting) return;
-    setDialogOpen(false);
-    setEditingAction(null);
-    setSubmitError(null);
-  };
-
-  const handleFormSubmit = async (values: ActionFormNormalizedValues) => {
-    try {
-      setIsSubmitting(true);
-      setSubmitError(null);
-
-      const url = editingAction
-        ? `/api/automations/actions/${editingAction.id}`
-        : "/api/automations/actions";
-      const method = editingAction ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(values),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || `Failed to ${editingAction ? "update" : "create"} action`);
-      }
-
-      await fetchActions();
-      closeDialog();
-    } catch (error: any) {
-      console.error(`Error ${editingAction ? "updating" : "creating"} action:`, error);
-      setSubmitError(error.message || `Failed to ${editingAction ? "update" : "create"} action`);
-    } finally {
-      setIsSubmitting(false);
-    }
+    router.push("/automations/actions/new");
   };
 
   const getCategoryName = (category: string | { _id: string; name: string }): string => {
@@ -302,56 +243,6 @@ export default function ActionsList() {
     },
   ];
 
-  // Memoize initialValues to prevent creating new object references on every render
-  // This ensures the form doesn't reset unnecessarily during submission
-  const memoizedInitialValues = useMemo(() => {
-    if (!editingAction) return undefined;
-    
-    return {
-      name: editingAction.name,
-      category:
-        typeof editingAction.category === "string"
-          ? editingAction.category
-          : editingAction.category?._id || "",
-      automationTrigger: editingAction.automationTrigger,
-      isActive: editingAction.isActive,
-      conditions: editingAction.conditions?.map((cond) => ({
-        type: cond.type,
-        operator: cond.operator,
-        value: cond.value,
-        // @ts-ignore 
-        serviceId: cond.serviceId ? (typeof cond.serviceId === 'string' ? cond.serviceId : cond.serviceId.toString()) : undefined,
-        addonName: cond.addonName,
-        serviceCategory: cond.serviceCategory,
-        // @ts-ignore 
-        categoryId: cond.categoryId ? (typeof cond.categoryId === 'string' ? cond.categoryId : cond.categoryId.toString()) : undefined,
-        yearBuild: cond.yearBuild,
-        foundation: cond.foundation,
-        squareFeet: cond.squareFeet,
-        zipCode: cond.zipCode,
-        city: cond.city,
-        state: cond.state,
-      })),
-      conditionLogic: editingAction.conditionLogic || "AND",
-      communicationType: editingAction.communicationType,
-      sendTiming: editingAction.sendTiming,
-      sendDelay: editingAction.sendDelay,
-      sendDelayUnit: editingAction.sendDelayUnit,
-      onlyTriggerOnce: editingAction.onlyTriggerOnce,
-      // alsoSendOnRecurringInspections: editingAction.alsoSendOnRecurringInspections,
-      sendEvenWhenNotificationsDisabled: editingAction.sendEvenWhenNotificationsDisabled,
-      sendDuringCertainHoursOnly: editingAction.sendDuringCertainHoursOnly,
-      startTime: editingAction.startTime,
-      endTime: editingAction.endTime,
-      doNotSendOnWeekends: editingAction.doNotSendOnWeekends,
-      emailTo: editingAction.emailTo || [],
-      emailCc: editingAction.emailCc || [],
-      emailBcc: editingAction.emailBcc || [],
-      emailFrom: editingAction.emailFrom,
-      emailSubject: editingAction.emailSubject || "",
-      emailBody: editingAction.emailBody || "",
-    };
-  }, [editingAction]);
 
   return (
     <div className="space-y-6">
@@ -372,35 +263,6 @@ export default function ActionsList() {
         loading={loading}
         emptyMessage="No actions found. Get started by creating your first action."
       />
-
-      {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={closeDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingAction ? "Edit Action" : "Create Action"}</DialogTitle>
-            <DialogDescription>
-              {editingAction
-                ? "Update the action information below."
-                : "Fill out the information below to create your action."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {submitError && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {submitError}
-            </div>
-          )}
-
-          <ActionForm
-          // @ts-ignore 
-            initialValues={memoizedInitialValues}
-            submitLabel={editingAction ? "Update Action" : "Create Action"}
-            onSubmit={handleFormSubmit}
-            onCancel={closeDialog}
-            isSubmitting={isSubmitting}
-          />
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={Boolean(actionPendingDelete)} onOpenChange={closeDeleteDialog}>

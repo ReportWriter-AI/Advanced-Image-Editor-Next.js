@@ -2947,4 +2947,45 @@ body div.submit-section div.submit-controls div.location-button-container button
   color: white !important;
 }
 
+/* TinyMCE Z-Index Fix for Dialogs */
+/* Ensure TinyMCE editor and dropdowns appear above Dialog components (z-50) */
+/* Dialog uses z-50 (50), so TinyMCE needs much higher values */
+.tox-tinymce {
+  z-index: 2000 !important;
+}
+
+/* TinyMCE auxiliary container - this is critical for modals/dialogs */
+.tox-tinymce-aux {
+  z-index: 2001 !important;
+}
+
+/* TinyMCE dropdown menus need higher z-index to appear above dialog overlays */
+.tox-menu {
+  z-index: 2001 !important;
+}
+
+/* TinyMCE toolbar dropdowns */
+.tox-toolbar {
+  z-index: 2000 !important;
+}
+
+/* TinyMCE popups and dialogs */
+.tox-pop,
+.tox-dialog {
+  z-index: 2002 !important;
+}
+
+/* TinyMCE dialog wrapper and backdrop */
+.tox-dialog-wrap,
+.tox-dialog__backdrop {
+  z-index: 2001 !important;
+}
+
+/* Ensure TinyMCE elements are interactive */
+.tox-tinymce-aux *,
+.tox-dialog *,
+.tox-menu * {
+  pointer-events: auto !important;
+}
+
 
