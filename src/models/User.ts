@@ -6,9 +6,17 @@ export interface IUser extends Document {
   lastName: string;
   email: string;
   phoneNumber?: string;
+  mobileNumber?: string;
   profileImageUrl?: string;
   signatureImageUrl?: string;
   credentials?: string;
+  homeAddress?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  milesWantsToTravel?: string;
+  description?: string;
+  notes?: string;
   password: string;
   smsOptIn: boolean;
   isEmailVerified: boolean;
@@ -72,6 +80,10 @@ const UserSchema = new Schema<IUser>(
       type: String,
       trim: true,
     },
+    mobileNumber: {
+      type: String,
+      trim: true,
+    },
     profileImageUrl: {
       type: String,
       trim: true,
@@ -81,6 +93,34 @@ const UserSchema = new Schema<IUser>(
       trim: true,
     },
     credentials: {
+      type: String,
+      trim: true,
+    },
+    homeAddress: {
+      type: String,
+      trim: true,
+    },
+    city: {
+      type: String,
+      trim: true,
+    },
+    state: {
+      type: String,
+      trim: true,
+    },
+    zipCode: {
+      type: String,
+      trim: true,
+    },
+    milesWantsToTravel: {
+      type: String,
+      trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+    },
+    notes: {
       type: String,
       trim: true,
     },

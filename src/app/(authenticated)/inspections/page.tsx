@@ -16,10 +16,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FileText, Edit, Trash2, Plus, RotateCcw, Search } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface Inspection {
   id: string;
   date: string;
+  inspectionEndTime?: string;
   location?: {
     address?: string;
     city?: string;
@@ -53,6 +55,7 @@ const mapInspection = (item: any): Inspection => ({
   date: item?.date
     ? new Date(item.date).toLocaleDateString()
     : new Date().toLocaleDateString(),
+  inspectionEndTime: item?.inspectionEndTime?.date || undefined,
   location: item?.location || undefined,
   clients: item?.clients || [],
   agents: item?.agents || [],
@@ -313,6 +316,17 @@ export default function InspectionsPage() {
       header: 'Listing Agent Name',
       cell: (row) => (
         <span className="text-muted-foreground">{formatListingAgentNames(row.listingAgent)}</span>
+      ),
+    },
+    {
+      id: 'inspectionEndTime',
+      header: 'Inspection End Time',
+      cell: (row) => (
+        <span className="text-muted-foreground">
+          {row.inspectionEndTime 
+            ? format(new Date(row.inspectionEndTime), 'PPp') 
+            : '-'}
+        </span>
       ),
     },
     {

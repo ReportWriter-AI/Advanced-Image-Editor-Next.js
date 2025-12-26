@@ -191,6 +191,15 @@ export default function InspectionEditPage() {
       };
       lastModifiedAt?: string;
     };
+    inspectionEndTime?: {
+      date?: string;
+      lastModifiedBy?: {
+        _id: string;
+        firstName: string;
+        lastName: string;
+      };
+      lastModifiedAt?: string;
+    };
     officeNotes?: Array<{
       _id: string;
       content: string;
@@ -1621,6 +1630,96 @@ export default function InspectionEditPage() {
       }
     } catch (e) {
       toast.error('Error saving end of inspection period');
+    } finally {
+      setDetailsAutoSaving(false);
+    }
+  };
+
+  const updateInspectionEndTime = async (date: string | null, time: string | null) => {
+    if (!currentUserId) return;
+    
+    // Combine date and time into a single Date object
+    let dateTimeValue: Date | null = null;
+    if (date && time) {
+      const [hours, minutes] = time.split(':').map(Number);
+      const dateObj = new Date(date + 'T00:00:00');
+      dateObj.setHours(hours, minutes, 0, 0);
+      dateTimeValue = dateObj;
+    } else if (date) {
+      // If only date is provided (shouldn't happen from UI, but handle gracefully)
+      // Use existing inspectionEndTime time if available, otherwise inspection date time, or default
+      const dateObj = new Date(date + 'T00:00:00');
+      if (inspectionDetails.inspectionEndTime?.date) {
+        const existingDateTime = new Date(inspectionDetails.inspectionEndTime.date);
+        dateObj.setHours(existingDateTime.getHours(), existingDateTime.getMinutes(), 0, 0);
+      } else if (inspectionDetails.date) {
+        const inspectionDate = new Date(inspectionDetails.date);
+        dateObj.setHours(inspectionDate.getHours(), inspectionDate.getMinutes(), 0, 0);
+      } else {
+        dateObj.setHours(17, 0, 0, 0); // Default to 5 PM
+      }
+      dateTimeValue = dateObj;
+    }
+    
+    const newInspectionEndTime = dateTimeValue ? {
+      date: dateTimeValue.toISOString(),
+      lastModifiedBy: {
+        _id: currentUserId,
+        firstName: '',
+        lastName: '',
+      },
+      lastModifiedAt: new Date().toISOString(),
+    } : {
+      date: undefined,
+      lastModifiedBy: {
+        _id: currentUserId,
+        firstName: '',
+        lastName: '',
+      },
+      lastModifiedAt: new Date().toISOString(),
+    };
+    
+    setInspectionDetails(prev => ({
+      ...prev,
+      inspectionEndTime: newInspectionEndTime,
+    }));
+
+    setDetailsAutoSaving(true);
+    try {
+      const updatePayload = {
+        inspectionEndTime: {
+          date: dateTimeValue ? dateTimeValue.toISOString() : null,
+          lastModifiedBy: currentUserId,
+          lastModifiedAt: new Date(),
+        }
+      };
+
+      console.log('Updating inspection end time:', {
+        date,
+        time,
+        dateTimeValue: dateTimeValue?.toISOString(),
+        updatePayload
+      });
+
+      const response = await fetch(`/api/inspections/${inspectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatePayload)
+      });
+      
+      if (response.ok) {
+        const now = new Date();
+        setDetailsLastSaved(now.toLocaleTimeString());
+        toast.success('Inspection end time saved successfully');
+        await fetchInspectionDetails();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to save inspection end time:', errorData);
+        toast.error(errorData.error || 'Failed to save inspection end time');
+      }
+    } catch (e) {
+      console.error('Error saving inspection end time:', e);
+      toast.error('Error saving inspection end time');
     } finally {
       setDetailsAutoSaving(false);
     }
@@ -5840,6 +5939,116 @@ export default function InspectionEditPage() {
                         month: 'short',
                         day: 'numeric'
                       })}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1 italic">Not set</p>
+                  )}
+                </div>
+
+                {/* Inspection End Time */}
+                <div className="space-y-2 mt-6">
+                  <Label htmlFor="inspectionEndTime" className="text-sm font-semibold">Inspection End Time</Label>
+                  <div className="flex gap-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={`w-full max-w-xs justify-start text-left font-normal ${!inspectionDetails.inspectionEndTime?.date && 'text-muted-foreground'}`}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {inspectionDetails.inspectionEndTime?.date
+                            ? format(new Date(inspectionDetails.inspectionEndTime.date), 'PPP')
+                            : inspectionDetails.date
+                            ? format(new Date(inspectionDetails.date), 'PPP')
+                            : 'Pick a date'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={
+                            inspectionDetails.inspectionEndTime?.date
+                              ? new Date(inspectionDetails.inspectionEndTime.date)
+                              : inspectionDetails.date
+                              ? new Date(inspectionDetails.date)
+                              : undefined
+                          }
+                          onSelect={(date) => {
+                            if (date) {
+                              // Preserve existing time if inspectionEndTime exists, otherwise use inspection date time or default
+                              let currentTime = '17:00';
+                              if (inspectionDetails.inspectionEndTime?.date) {
+                                currentTime = new Date(inspectionDetails.inspectionEndTime.date).toTimeString().slice(0, 5);
+                              } else if (inspectionDetails.date) {
+                                currentTime = new Date(inspectionDetails.date).toTimeString().slice(0, 5);
+                              }
+                              updateInspectionEndTime(format(date, 'yyyy-MM-dd'), currentTime);
+                            } else {
+                              // Clear the entire inspection end time when date is cleared
+                              updateInspectionEndTime(null, null);
+                            }
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <Select
+                      value={
+                        inspectionDetails.inspectionEndTime?.date
+                          ? new Date(inspectionDetails.inspectionEndTime.date).toTimeString().slice(0, 5)
+                          : inspectionDetails.date
+                          ? new Date(inspectionDetails.date).toTimeString().slice(0, 5)
+                          : '17:00'
+                      }
+                      onValueChange={(value) => {
+                        const selectedDate = inspectionDetails.inspectionEndTime?.date
+                          ? format(new Date(inspectionDetails.inspectionEndTime.date), 'yyyy-MM-dd')
+                          : inspectionDetails.date
+                          ? format(new Date(inspectionDetails.date), 'yyyy-MM-dd')
+                          : null;
+                        updateInspectionEndTime(selectedDate, value);
+                      }}
+                    >
+                      <SelectTrigger className="w-full max-w-xs">
+                        <SelectValue placeholder="Select time" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60 overflow-y-auto">
+                        {(() => {
+                          // Generate time options in 30-minute intervals
+                          const timeOptions = [];
+                          for (let hour = 0; hour < 24; hour++) {
+                            for (let minute = 0; minute < 60; minute += 30) {
+                              const time24 = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                              const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+                              const ampm = hour < 12 ? 'AM' : 'PM';
+                              const minuteStr = minute === 0 ? '00' : minute.toString();
+                              const time12 = `${hour12}:${minuteStr} ${ampm}`;
+                              timeOptions.push({ value: time24, label: time12 });
+                            }
+                          }
+                          return timeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ));
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {inspectionDetails.inspectionEndTime?.date && inspectionDetails.inspectionEndTime.lastModifiedBy && inspectionDetails.inspectionEndTime.lastModifiedAt ? (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Selected: {format(new Date(inspectionDetails.inspectionEndTime.date), 'PPP p')}, set by {inspectionDetails.inspectionEndTime.lastModifiedBy.firstName} {inspectionDetails.inspectionEndTime.lastModifiedBy.lastName} on {new Date(inspectionDetails.inspectionEndTime.lastModifiedAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })} at {new Date(inspectionDetails.inspectionEndTime.lastModifiedAt).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  ) : inspectionDetails.inspectionEndTime?.date ? (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Selected: {format(new Date(inspectionDetails.inspectionEndTime.date), 'PPP p')}
                     </p>
                   ) : (
                     <p className="text-xs text-muted-foreground mt-1 italic">Not set</p>

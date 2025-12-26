@@ -403,6 +403,17 @@ const formatInspection = (doc: IInspection | null) => {
         : null,
       lastModifiedAt: doc.endOfInspectionPeriod.lastModifiedAt ? new Date(doc.endOfInspectionPeriod.lastModifiedAt).toISOString() : null,
     } : null,
+    inspectionEndTime: doc.inspectionEndTime ? {
+      date: doc.inspectionEndTime.date ? new Date(doc.inspectionEndTime.date).toISOString() : null,
+      lastModifiedBy: doc.inspectionEndTime.lastModifiedBy && typeof doc.inspectionEndTime.lastModifiedBy === 'object'
+        ? {
+            _id: (doc.inspectionEndTime.lastModifiedBy as any)._id?.toString() || '',
+            firstName: (doc.inspectionEndTime.lastModifiedBy as any).firstName || '',
+            lastName: (doc.inspectionEndTime.lastModifiedBy as any).lastName || '',
+          }
+        : null,
+      lastModifiedAt: doc.inspectionEndTime.lastModifiedAt ? new Date(doc.inspectionEndTime.lastModifiedAt).toISOString() : null,
+    } : null,
     officeNotes: formattedOfficeNotes,
     additionalDocuments: doc.additionalDocuments && Array.isArray(doc.additionalDocuments)
       ? doc.additionalDocuments.map((doc: any) => ({
@@ -723,6 +734,7 @@ export async function getInspection(inspectionId: string) {
     .populate('officeNotes.createdBy', 'firstName lastName profileImageUrl')
     .populate('closingDate.lastModifiedBy', 'firstName lastName')
     .populate('endOfInspectionPeriod.lastModifiedBy', 'firstName lastName')
+    .populate('inspectionEndTime.lastModifiedBy', 'firstName lastName')
     .lean();
   return formatInspection(inspection as any);
 }
@@ -788,6 +800,7 @@ export async function updateInspection(inspectionId: string, data: Partial<{
   disableAutomatedNotifications: boolean; // disable automated notifications flag
   closingDate: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // closing date with metadata
   endOfInspectionPeriod: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // end of inspection period with metadata
+  inspectionEndTime: { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date }; // inspection end time with metadata
   agreements: Array<{
     agreementId: string;
     isSigned?: boolean;
@@ -822,7 +835,7 @@ export async function updateInspection(inspectionId: string, data: Partial<{
         acc[key] = value.map((id: string) => 
           mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id
         );
-      } else if (key === 'closingDate' || key === 'endOfInspectionPeriod') {
+      } else if (key === 'closingDate' || key === 'endOfInspectionPeriod' || key === 'inspectionEndTime') {
         // Handle date fields with metadata
         const dateField = value as { date?: string | Date; lastModifiedBy?: string; lastModifiedAt?: Date };
         const processedField: any = {};

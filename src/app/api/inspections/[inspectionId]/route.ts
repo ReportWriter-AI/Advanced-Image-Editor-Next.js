@@ -326,6 +326,16 @@ export async function PUT(
         }
       }
 
+      // Inspection end time change
+      if (body.inspectionEndTime !== undefined) {
+        const inspectionEndTimeBefore = normalizeDateToString(inspectionBefore.inspectionEndTime?.date);
+        const inspectionEndTimeAfter = normalizeDateToString(inspectionAfter.inspectionEndTime?.date);
+        // Date was set, changed, or cleared
+        if (inspectionEndTimeBefore !== inspectionEndTimeAfter) {
+          await queueTimeBasedTriggers(inspectionId);
+        }
+      }
+
       // Pricing change (services/addons added or removed)
       if (body.pricing !== undefined && inspectionAfter.confirmedInspection) {
         const pricingChanges = detectPricingChanges(

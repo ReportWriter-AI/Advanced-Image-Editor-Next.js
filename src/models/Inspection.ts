@@ -91,6 +91,11 @@ export interface IInspection extends Document {
     lastModifiedBy?: mongoose.Types.ObjectId;
     lastModifiedAt?: Date;
   };
+  inspectionEndTime?: {
+    date?: Date;
+    lastModifiedBy?: mongoose.Types.ObjectId;
+    lastModifiedAt?: Date;
+  };
   officeNotes?: Array<{
     _id: mongoose.Types.ObjectId;
     content: string;
@@ -456,6 +461,18 @@ const InspectionSchema = new Schema<IInspection>(
       },
     },
     endOfInspectionPeriod: {
+      date: {
+        type: Date,
+      },
+      lastModifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      lastModifiedAt: {
+        type: Date,
+      },
+    },
+    inspectionEndTime: {
       date: {
         type: Date,
       },

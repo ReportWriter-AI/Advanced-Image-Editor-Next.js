@@ -182,11 +182,51 @@ export default function ProfilePage() {
 
         const data = await response.json();
 
+        // Convert full names back to ISO codes for form population
+        // Handle backward compatibility: if value is ISO code (2-3 chars), use it directly
+        // If value is full name, find matching ISO code
+        let countryIsoCode = data.company?.country || '';
+        if (countryIsoCode) {
+          // Check if it's already an ISO code (typically 2-3 characters)
+          const isLikelyIsoCode = countryIsoCode.length <= 3;
+          if (!isLikelyIsoCode) {
+            // It's a full name, find the matching ISO code
+            const countryMatch = countryOptions.find(
+              (country) => country.name.toLowerCase() === countryIsoCode.toLowerCase()
+            );
+            if (countryMatch) {
+              countryIsoCode = countryMatch.isoCode;
+            } else {
+              // If not found, keep the original value (fallback)
+              countryIsoCode = data.company?.country || '';
+            }
+          }
+        }
+
+        let stateIsoCode = data.company?.state || '';
+        if (stateIsoCode && countryIsoCode) {
+          // Check if it's already an ISO code (typically 1-3 characters)
+          const isLikelyIsoCode = stateIsoCode.length <= 3;
+          if (!isLikelyIsoCode) {
+            // It's a full name, find the matching ISO code
+            const statesForCountry = State.getStatesOfCountry(countryIsoCode);
+            const stateMatch = statesForCountry.find(
+              (state) => state.name.toLowerCase() === stateIsoCode.toLowerCase()
+            );
+            if (stateMatch) {
+              stateIsoCode = stateMatch.isoCode;
+            } else {
+              // If not found, keep the original value (fallback)
+              stateIsoCode = data.company?.state || '';
+            }
+          }
+        }
+
         reset({
           companyName: data.company?.name || '',
           address: data.company?.address || '',
-          country: data.company?.country || '',
-          state: data.company?.state || '',
+          country: countryIsoCode,
+          state: stateIsoCode,
           city: data.company?.city || '',
           zip: data.company?.zip || '',
           displayAddressPublicly: data.company?.displayAddressPublicly ?? false,
@@ -218,11 +258,29 @@ export default function ProfilePage() {
     };
 
     loadProfile();
-  }, [authUser?.email, reset]);
+  }, [authUser?.email, reset, countryOptions]);
 
   const onSubmit = async (values: ProfileFormValues) => {
     try {
       setSaving(true);
+
+      // Convert ISO codes to full names before sending to API
+      let countryName = values.country || '';
+      if (countryName) {
+        const countryMatch = countryOptions.find((country) => country.isoCode === countryName);
+        if (countryMatch) {
+          countryName = countryMatch.name;
+        }
+      }
+
+      let stateName = values.state || '';
+      if (stateName && selectedCountry) {
+        const stateMatch = stateOptions.find((state) => state.isoCode === stateName);
+        if (stateMatch) {
+          stateName = stateMatch.name;
+        }
+      }
+
       const response = await fetch('/api/profile', {
         method: 'PUT',
         credentials: 'include',
@@ -233,8 +291,8 @@ export default function ProfilePage() {
           company: {
             name: values.companyName,
             address: values.address,
-            country: values.country,
-            state: values.state,
+            country: countryName,
+            state: stateName,
             city: values.city,
             zip: values.zip,
             displayAddressPublicly: values.displayAddressPublicly,
@@ -265,11 +323,43 @@ export default function ProfilePage() {
 
       const data = await response.json();
 
+      // Convert full names back to ISO codes for form population
+      let countryIsoCode = data.company?.country || '';
+      if (countryIsoCode) {
+        const isLikelyIsoCode = countryIsoCode.length <= 3;
+        if (!isLikelyIsoCode) {
+          const countryMatch = countryOptions.find(
+            (country) => country.name.toLowerCase() === countryIsoCode.toLowerCase()
+          );
+          if (countryMatch) {
+            countryIsoCode = countryMatch.isoCode;
+          } else {
+            countryIsoCode = data.company?.country || '';
+          }
+        }
+      }
+
+      let stateIsoCode = data.company?.state || '';
+      if (stateIsoCode && countryIsoCode) {
+        const isLikelyIsoCode = stateIsoCode.length <= 3;
+        if (!isLikelyIsoCode) {
+          const statesForCountry = State.getStatesOfCountry(countryIsoCode);
+          const stateMatch = statesForCountry.find(
+            (state) => state.name.toLowerCase() === stateIsoCode.toLowerCase()
+          );
+          if (stateMatch) {
+            stateIsoCode = stateMatch.isoCode;
+          } else {
+            stateIsoCode = data.company?.state || '';
+          }
+        }
+      }
+
       reset({
         companyName: data.company?.name || '',
         address: data.company?.address || '',
-        country: data.company?.country || '',
-        state: data.company?.state || '',
+        country: countryIsoCode,
+        state: stateIsoCode,
         city: data.company?.city || '',
         zip: data.company?.zip || '',
         displayAddressPublicly: data.company?.displayAddressPublicly ?? false,

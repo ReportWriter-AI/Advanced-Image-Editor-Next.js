@@ -50,17 +50,81 @@ interface Agreement {
 
 interface InspectionDataForPlaceholders {
   address: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
   county: string;
+  yearBuilt?: number;
+  foundation: string;
+  squareFeet?: number;
   price: number;
   fees: string;
   services: string;
   currentDate: string;
   currentYear: string;
   clientName: string;
+  clientFirstName: string;
+  clientPhone: string;
+  clientEmail: string;
+  clientContactInfo: string;
+  clientAddress: string;
   inspectionDate: string;
   inspectionTime: string;
+  inspectionEndTime: string;
+  inspectionTextLink: string;
+  signAndPayLink: string;
+  signLink: string;
+  payLink: string;
+  invoiceLink: string;
+  viewReportOnClientPortalLink: string;
+  reportPublishedTextLink: string;
   companyWebsite: string;
+  inspectionCompany: string;
+  inspectionCompanyPhone: string;
+  companyAddress: string;
+  companyCity: string;
+  companyState: string;
+  companyZip: string;
+  companyPhone: string;
   inspectorSignature?: string;
+  agentName: string;
+  agentFirstName: string;
+  agentContactInfo: string;
+  agentPhone: string;
+  agentEmail: string;
+  agentAddress: string;
+  agentFullAddress: string;
+  agentCity: string;
+  agentState: string;
+  agentZip: string;
+  listingAgentName: string;
+  listingAgentFirstName: string;
+  listingAgentContactInfo: string;
+  listingAgentPhone: string;
+  listingAgentEmail: string;
+  listingAgentAddress: string;
+  listingAgentFullAddress: string;
+  listingAgentCity: string;
+  listingAgentState: string;
+  listingAgentZip: string;
+  description: string;
+  notes: string;
+  paid: string;
+  published: string;
+  agreed: string;
+  orderId: string;
+  inspectorFirstName: string;
+  inspectorName: string;
+  inspectors: string;
+  inspectorsFirstNames: string;
+  inspectorPhone: string;
+  inspectorEmail: string;
+  inspectorCredentials: string;
+  inspectorImage: string;
+  inspectorDescription: string;
+  inspectorNotes: string;
+  inspectorInitials: string;
 }
 
 // Payment Form Component
@@ -1737,7 +1801,7 @@ export default function InspectionClientViewPage() {
           setSelectedAgreementsToSign(new Set());
         }
       }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-gray-900">
               Sign Agreement

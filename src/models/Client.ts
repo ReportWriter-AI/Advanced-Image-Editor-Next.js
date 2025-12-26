@@ -10,6 +10,10 @@ export interface IClient extends Document {
   phone?: string;
   homePhone?: string;
   mobilePhone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
   categories: mongoose.Types.ObjectId[];
   internalNotes?: string;
   internalAdminNotes?: string;
@@ -59,6 +63,22 @@ const ClientSchema = new Schema<IClient>(
       trim: true,
     },
     mobilePhone: {
+      type: String,
+      trim: true,
+    },
+    address: {
+      type: String,
+      trim: true,
+    },
+    city: {
+      type: String,
+      trim: true,
+    },
+    state: {
+      type: String,
+      trim: true,
+    },
+    zip: {
       type: String,
       trim: true,
     },

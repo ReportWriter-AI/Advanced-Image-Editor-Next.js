@@ -35,8 +35,17 @@ export async function PUT(
       firstName,
       lastName,
       phoneNumber,
+      mobileNumber,
       profileImageUrl,
       signatureImageUrl,
+      credentials,
+      homeAddress,
+      city,
+      state,
+      zipCode,
+      milesWantsToTravel,
+      description,
+      notes,
       // Permissions
       can_schedule_self,
       can_schedule,
@@ -99,9 +108,38 @@ export async function PUT(
       updatePayload.profileImageUrl = normalizedProfileImage;
     }
 
-    // Only update signature for inspectors
-    if (teamMember.role === 'inspector' && normalizedSignatureImage !== undefined) {
-      updatePayload.signatureImageUrl = normalizedSignatureImage;
+    // Only update signature and inspector-specific fields for inspectors
+    if (teamMember.role === 'inspector') {
+      if (normalizedSignatureImage !== undefined) {
+        updatePayload.signatureImageUrl = normalizedSignatureImage;
+      }
+      if (mobileNumber !== undefined) {
+        updatePayload.mobileNumber = mobileNumber || undefined;
+      }
+      if (credentials !== undefined) {
+        updatePayload.credentials = credentials || undefined;
+      }
+      if (homeAddress !== undefined) {
+        updatePayload.homeAddress = homeAddress || undefined;
+      }
+      if (city !== undefined) {
+        updatePayload.city = city || undefined;
+      }
+      if (state !== undefined) {
+        updatePayload.state = state || undefined;
+      }
+      if (zipCode !== undefined) {
+        updatePayload.zipCode = zipCode || undefined;
+      }
+      if (milesWantsToTravel !== undefined) {
+        updatePayload.milesWantsToTravel = milesWantsToTravel || undefined;
+      }
+      if (description !== undefined) {
+        updatePayload.description = description || undefined;
+      }
+      if (notes !== undefined) {
+        updatePayload.notes = notes || undefined;
+      }
     }
 
     const updatedUser = await User.findByIdAndUpdate(

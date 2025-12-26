@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -68,10 +69,19 @@ const teamMemberSchema = z.object({
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Please enter a valid email address'),
   phoneNumber: z.string().optional(),
+  mobileNumber: z.string().optional(),
   password: z.string().optional(),
   sendConfirmation: z.boolean(),
   profileImageUrl: z.string().optional(),
   signatureImageUrl: z.string().optional(),
+  credentials: z.string().optional(),
+  homeAddress: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  milesWantsToTravel: z.string().optional(),
+  description: z.string().optional(),
+  notes: z.string().optional(),
 }).refine((data) => {
   // If sendConfirmation is false, password is required
   if (!data.sendConfirmation && !data.password) {
@@ -87,8 +97,17 @@ const editTeamMemberSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   phoneNumber: z.string().optional(),
+  mobileNumber: z.string().optional(),
   profileImageUrl: z.string().optional(),
   signatureImageUrl: z.string().optional(),
+  credentials: z.string().optional(),
+  homeAddress: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  milesWantsToTravel: z.string().optional(),
+  description: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 type TeamMemberFormData = z.infer<typeof teamMemberSchema>;
@@ -100,6 +119,7 @@ interface TeamMember {
   lastName: string;
   email: string;
   phoneNumber?: string;
+  mobileNumber?: string;
   role: 'inspector' | 'staff';
   can_schedule_self?: boolean;
   can_schedule?: boolean;
@@ -114,6 +134,14 @@ interface TeamMember {
   can_delete_inspections?: boolean;
   profileImageUrl?: string;
   signatureImageUrl?: string;
+  credentials?: string;
+  homeAddress?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  milesWantsToTravel?: string;
+  description?: string;
+  notes?: string;
 }
 
 export default function TeamPage() {
@@ -138,10 +166,19 @@ export default function TeamPage() {
       lastName: '',
       email: '',
       phoneNumber: '',
+      mobileNumber: '',
       password: '',
       sendConfirmation: true,
       profileImageUrl: '',
       signatureImageUrl: '',
+      credentials: '',
+      homeAddress: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      milesWantsToTravel: '',
+      description: '',
+      notes: '',
     },
   });
 
@@ -151,8 +188,17 @@ export default function TeamPage() {
       firstName: '',
       lastName: '',
       phoneNumber: '',
+      mobileNumber: '',
       profileImageUrl: '',
       signatureImageUrl: '',
+      credentials: '',
+      homeAddress: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      milesWantsToTravel: '',
+      description: '',
+      notes: '',
     },
   });
 
@@ -300,8 +346,17 @@ export default function TeamPage() {
       firstName: member.firstName,
       lastName: member.lastName,
       phoneNumber: member.phoneNumber || '',
+      mobileNumber: member.mobileNumber || '',
       profileImageUrl: member.profileImageUrl || '',
       signatureImageUrl: member.signatureImageUrl || '',
+      credentials: member.credentials || '',
+      homeAddress: member.homeAddress || '',
+      city: member.city || '',
+      state: member.state || '',
+      zipCode: member.zipCode || '',
+      milesWantsToTravel: member.milesWantsToTravel || '',
+      description: member.description || '',
+      notes: member.notes || '',
     });
 
     // Set permissions from member
@@ -638,6 +693,100 @@ export default function TeamPage() {
                   </div>
                 </div>
 
+                {/* Inspector-only fields */}
+                {addType === 'inspector' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="mobileNumber">Mobile Number</Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="mobileNumber"
+                          type="tel"
+                          {...addForm.register('mobileNumber')}
+                          placeholder="+1 (555) 000-0000"
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="credentials">Credentials</Label>
+                      <Input
+                        id="credentials"
+                        {...addForm.register('credentials')}
+                        placeholder="e.g., Licensed Inspector, Certified Professional"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="homeAddress">Home Address</Label>
+                      <Input
+                        id="homeAddress"
+                        {...addForm.register('homeAddress')}
+                        placeholder="Street address"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="city">City</Label>
+                        <Input
+                          id="city"
+                          {...addForm.register('city')}
+                          placeholder="City"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="state">State</Label>
+                        <Input
+                          id="state"
+                          {...addForm.register('state')}
+                          placeholder="State"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="zipCode">Zip Code</Label>
+                      <Input
+                        id="zipCode"
+                        {...addForm.register('zipCode')}
+                        placeholder="Zip code"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="milesWantsToTravel">Miles Willing to Travel</Label>
+                      <Input
+                        id="milesWantsToTravel"
+                        {...addForm.register('milesWantsToTravel')}
+                        placeholder="e.g., 50 miles"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="description">Description</Label>
+                      <Textarea
+                        id="description"
+                        {...addForm.register('description')}
+                        placeholder="Inspector description"
+                        rows={4}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="notes">Notes</Label>
+                      <Textarea
+                        id="notes"
+                        {...addForm.register('notes')}
+                        placeholder="Additional notes"
+                        rows={4}
+                      />
+                    </div>
+                  </>
+                )}
+
                 {/* Send Confirmation Checkbox */}
                 <div className="flex items-center space-x-2 p-3 bg-muted rounded-lg">
                   <Checkbox
@@ -795,6 +944,100 @@ export default function TeamPage() {
                     />
                   </div>
                 </div>
+
+                {/* Inspector-only fields */}
+                {editingMember.role === 'inspector' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-mobileNumber">Mobile Number</Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="edit-mobileNumber"
+                          type="tel"
+                          {...editForm.register('mobileNumber')}
+                          placeholder="+1 (555) 000-0000"
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-credentials">Credentials</Label>
+                      <Input
+                        id="edit-credentials"
+                        {...editForm.register('credentials')}
+                        placeholder="e.g., Licensed Inspector, Certified Professional"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-homeAddress">Home Address</Label>
+                      <Input
+                        id="edit-homeAddress"
+                        {...editForm.register('homeAddress')}
+                        placeholder="Street address"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-city">City</Label>
+                        <Input
+                          id="edit-city"
+                          {...editForm.register('city')}
+                          placeholder="City"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-state">State</Label>
+                        <Input
+                          id="edit-state"
+                          {...editForm.register('state')}
+                          placeholder="State"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-zipCode">Zip Code</Label>
+                      <Input
+                        id="edit-zipCode"
+                        {...editForm.register('zipCode')}
+                        placeholder="Zip code"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-milesWantsToTravel">Miles Willing to Travel</Label>
+                      <Input
+                        id="edit-milesWantsToTravel"
+                        {...editForm.register('milesWantsToTravel')}
+                        placeholder="e.g., 50 miles"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-description">Description</Label>
+                      <Textarea
+                        id="edit-description"
+                        {...editForm.register('description')}
+                        placeholder="Inspector description"
+                        rows={4}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-notes">Notes</Label>
+                      <Textarea
+                        id="edit-notes"
+                        {...editForm.register('notes')}
+                        placeholder="Additional notes"
+                        rows={4}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <ImageUpload
                   label="Profile Photo"
