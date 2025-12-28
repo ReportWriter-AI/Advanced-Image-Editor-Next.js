@@ -163,6 +163,7 @@ export interface IInspection extends Document {
     isDisabled?: boolean;
   }>;
   deletedAt?: Date;
+  isReportPublished?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -713,6 +714,10 @@ const InspectionSchema = new Schema<IInspection>(
     deletedAt: {
       type: Date,
       default: null,
+    },
+    isReportPublished: {
+      type: Boolean,
+      default: false,
     },
   },
   {

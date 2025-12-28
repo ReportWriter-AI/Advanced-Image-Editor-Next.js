@@ -4,6 +4,9 @@ import InspectionInformationBlock from '@/src/models/InspectionInformationBlock'
 // Import Section and SectionChecklist models to ensure they're registered before populate
 import Section from '@/src/models/Section';
 import SectionChecklist from '@/src/models/SectionChecklist';
+import Inspection from '@/src/models/Inspection';
+import { checkAllStatusFieldsComplete } from '@/lib/status-completion-check';
+import { checkAndProcessTriggers } from '@/src/lib/automation-trigger-helper';
 
 async function dbConnect() {
   if (mongoose.connection.readyState === 0) {
@@ -152,6 +155,31 @@ export async function POST(
       .populate('selected_checklist_ids')
       .lean();
 
+    try {
+      const inspection = await Inspection.findById(inspectionId).lean();
+      if (inspection && !inspection.isReportPublished) {
+        const allComplete = await checkAllStatusFieldsComplete(inspectionId);
+        if (allComplete) {
+          await Inspection.findByIdAndUpdate(
+            inspectionId,
+            { isReportPublished: true },
+            { new: true }
+          );
+          
+          // Trigger automation when report is published
+          try {
+            await checkAndProcessTriggers(inspectionId, 'ANY_REPORTS_PUBLISHED');
+          } catch (triggerError) {
+            // Log error but don't fail the request
+            console.error('Error triggering ANY_REPORTS_PUBLISHED after POST:', triggerError);
+          }
+        }
+      }
+    } catch (completionError) {
+      // Log error but don't fail the request
+      console.error('Error checking status completion after POST:', completionError);
+    }
+
     return NextResponse.json(
       { success: true, data: populated },
       {
@@ -267,6 +295,33 @@ export async function PUT(
 
     if (!updated) {
       return NextResponse.json({ success: false, error: 'Block not found' }, { status: 404 });
+    }
+
+    // Check if all status fields are complete and update isReportPublished if needed
+    try {
+      const inspection = await Inspection.findById(inspectionId).lean();
+      // Only check and update if isReportPublished is not already true
+      if (inspection && !inspection.isReportPublished) {
+        const allComplete = await checkAllStatusFieldsComplete(inspectionId);
+        if (allComplete) {
+          await Inspection.findByIdAndUpdate(
+            inspectionId,
+            { isReportPublished: true },
+            { new: true }
+          );
+          
+          // Trigger automation when report is published
+          try {
+            await checkAndProcessTriggers(inspectionId, 'ANY_REPORTS_PUBLISHED');
+          } catch (triggerError) {
+            // Log error but don't fail the request
+            console.error('Error triggering ANY_REPORTS_PUBLISHED after PUT:', triggerError);
+          }
+        }
+      }
+    } catch (completionError) {
+      // Log error but don't fail the request
+      console.error('Error checking status completion after PUT:', completionError);
     }
 
     return NextResponse.json(

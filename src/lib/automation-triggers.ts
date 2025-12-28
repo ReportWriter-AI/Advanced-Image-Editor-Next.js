@@ -177,13 +177,13 @@ export const AUTOMATION_TRIGGERS: AutomationTrigger[] = [
     description: 'Triggers when the inspection is scheduled to end.',
     section: 'DAY_OF_INSPECTION',
   },
-  // {
-  //   key: 'ANY_REPORTS_PUBLISHED',
-  //   title: 'Any Reports Published',
-  //   description:
-  //     'Triggers when any reports linked to the inspection are published.',
-  //   section: 'DAY_OF_INSPECTION',
-  // },
+  {
+    key: 'ANY_REPORTS_PUBLISHED',
+    title: 'Any Reports Published',
+    description:
+      'Triggers when any reports linked to the inspection are published.',
+    section: 'DAY_OF_INSPECTION',
+  },
 
   // INSPECTION EVENTS
   {
