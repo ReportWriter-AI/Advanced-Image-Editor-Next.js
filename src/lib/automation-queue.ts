@@ -139,7 +139,7 @@ export async function getQueuedTriggersForInspection(
     TRIGGER_QUEUE_KEY,
     0,
     -1,
-    { byScore: false }
+    { byScore: true }
   );
 
   if (!allMembers || allMembers.length === 0) {
