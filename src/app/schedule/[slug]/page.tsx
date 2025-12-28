@@ -143,6 +143,7 @@ export default function SchedulePage() {
   const [validatingDiscount, setValidatingDiscount] = useState(false);
   const [discountDetails, setDiscountDetails] = useState<any>(null);
   const [referralSourceOptions, setReferralSourceOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [hasCustomFields, setHasCustomFields] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState(false);
   const [scheduleSuccess, setScheduleSuccess] = useState(false);
 
@@ -300,6 +301,25 @@ export default function SchedulePage() {
 
     fetchOptions();
   }, [companyId, company]);
+
+  // Fetch custom fields
+  useEffect(() => {
+    if (!companyId) return;
+
+    const fetchCustomFields = async () => {
+      try {
+        const response = await fetch(`/api/public/company/${companyId}/custom-fields`);
+        if (response.ok) {
+          const data = await response.json();
+          setHasCustomFields((data.customFields || []).length > 0);
+        }
+      } catch (err) {
+        console.error('Error fetching custom fields:', err);
+      }
+    };
+
+    fetchCustomFields();
+  }, [companyId]);
 
   // Fetch inspectors and availability
   useEffect(() => {
@@ -1227,32 +1247,18 @@ export default function SchedulePage() {
               </div>
 
               {/* Custom Fields Section */}
-              {companyId && (() => {
-                const customData = form.watch('customData') || {};
-                // Check if customData has any meaningful data
-                const hasCustomData = Object.keys(customData).length > 0 && 
-                  Object.values(customData).some(value => {
-                    if (value === null || value === undefined || value === '') return false;
-                    if (Array.isArray(value) && value.length === 0) return false;
-                    if (typeof value === 'object' && Object.keys(value).length === 0) return false;
-                    return true;
-                  });
-                
-                if (!hasCustomData) return null;
-                
-                return (
-                  <div className="space-y-4 border-t pt-6">
-                    <div>
-                      <h3 className="text-lg font-semibold mb-2">Additional Information</h3>
-                    </div>
-                    <CustomFields
-                      control={form.control}
-                      customData={customData}
-                      companyId={companyId}
-                    />
+              {companyId && hasCustomFields && (
+                <div className="space-y-4 border-t pt-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Additional Information</h3>
                   </div>
-                );
-              })()}
+                  <CustomFields
+                    control={form.control}
+                    customData={form.watch('customData') || {}}
+                    companyId={companyId}
+                  />
+                </div>
+              )}
 
               <div className="flex justify-end pt-4 border-t">
                 <Button onClick={handleNextTab} disabled={selectedServices.length === 0}>
