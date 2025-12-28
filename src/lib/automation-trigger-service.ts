@@ -272,8 +272,8 @@ function shouldTriggerBasedOnTiming(
 
   // For time-based triggers, calculate execution time using unified calculator
   const timeBasedTriggers = [
-    // 'INSPECTION_START_TIME',
-    // 'INSPECTION_END_TIME',
+    'INSPECTION_START_TIME',
+    'INSPECTION_END_TIME',
     'INSPECTION_CLOSING_DATE',
     'INSPECTION_END_OF_PERIOD_DATE',
   ];
@@ -283,8 +283,12 @@ function shouldTriggerBasedOnTiming(
 
     switch (triggerConfig.automationTrigger) {
       case 'INSPECTION_START_TIME':
-      case 'INSPECTION_END_TIME':
         baseTime = inspection.date ? new Date(inspection.date) : null;
+        break;
+      case 'INSPECTION_END_TIME':
+        baseTime = inspection.inspectionEndTime?.date
+          ? new Date(inspection.inspectionEndTime.date)
+          : null;
         break;
       case 'INSPECTION_CLOSING_DATE':
         baseTime = inspection.closingDate?.date

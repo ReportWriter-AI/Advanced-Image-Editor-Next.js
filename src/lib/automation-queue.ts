@@ -125,6 +125,64 @@ export async function removeProcessedTriggers(triggers: QueuedTrigger[]): Promis
 }
 
 /**
+ * Gets all queued triggers for a specific inspection
+ * Returns only triggers that are scheduled for the future (not due yet)
+ */
+export async function getQueuedTriggersForInspection(
+  inspectionId: string
+): Promise<QueuedTrigger[]> {
+  const currentTimestamp = Date.now();
+
+  // Get all members from the sorted set (we'll filter by inspectionId)
+  // Use a large range to get all members, then filter
+  const allMembers = await redis.zrange<string[]>(
+    TRIGGER_QUEUE_KEY,
+    0,
+    -1,
+    { byScore: false }
+  );
+
+  if (!allMembers || allMembers.length === 0) {
+    return [];
+  }
+
+  // Filter members that match this inspectionId
+  const matchingMembers = allMembers.filter((member) => {
+    const [memberInspectionId] = member.split(':');
+    return memberInspectionId === inspectionId;
+  });
+
+  if (matchingMembers.length === 0) {
+    return [];
+  }
+
+  // Fetch trigger data for each matching member
+  const triggers: QueuedTrigger[] = [];
+  for (const member of matchingMembers) {
+    const dataKey = `${TRIGGER_DATA_PREFIX}${member}`;
+    const data = await redis.get<string | QueuedTrigger>(dataKey);
+
+    if (data) {
+      try {
+        // Handle both cases: data might be a string (needs parsing) or already an object
+        const trigger: QueuedTrigger = typeof data === 'string' 
+          ? JSON.parse(data) as QueuedTrigger
+          : data as QueuedTrigger;
+        
+        // Only include triggers that are in the future (not due yet)
+        if (trigger.executionTime > currentTimestamp) {
+          triggers.push(trigger);
+        }
+      } catch (error) {
+        console.error(`Error parsing trigger data for ${member}:`, error);
+      }
+    }
+  }
+
+  return triggers;
+}
+
+/**
  * Cleans up old triggers that are past their execution time (for maintenance)
  */
 export async function cleanupOldTriggers(olderThanHours: number = 24): Promise<number> {

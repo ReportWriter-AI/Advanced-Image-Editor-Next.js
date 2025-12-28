@@ -208,8 +208,8 @@ export function ActionForm({
 
   // Triggers that support both BEFORE and AFTER options
   const TRIGGERS_WITH_BEFORE_AFTER = [
-    // 'INSPECTION_START_TIME',
-    // 'INSPECTION_END_TIME',
+    'INSPECTION_START_TIME',
+    'INSPECTION_END_TIME',
     'INSPECTION_CLOSING_DATE',
     'INSPECTION_END_OF_PERIOD_DATE',
   ];

@@ -87,6 +87,11 @@ export async function POST(req: NextRequest) {
         inspection._id,
         currentUser.company as mongoose.Types.ObjectId
       );
+      
+      // Queue time-based triggers if inspection has a date
+      if (inspection.date) {
+        await queueTimeBasedTriggers(inspection._id);
+      }
     }
 
     // Handle clients creation/update

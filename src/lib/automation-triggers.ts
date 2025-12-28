@@ -35,6 +35,8 @@ export type AutomationTriggerKey =
   | 'INSPECTION_EVENT_CREATED'
   | 'INSPECTION_EVENT_UPDATED'
   | 'INSPECTION_EVENT_DELETED'
+  | 'INSPECTION_START_TIME'
+  | 'INSPECTION_END_TIME'
   | 'INSPECTION_CLOSING_DATE'
   | 'INSPECTION_END_OF_PERIOD_DATE'
   | 'ANY_REPORT_VIEWED_BY_AGENT'
@@ -163,18 +165,18 @@ export const AUTOMATION_TRIGGERS: AutomationTrigger[] = [
   },
 
   // DAY OF INSPECTION
-  // {
-  //   key: 'INSPECTION_START_TIME',
-  //   title: 'Inspection Start Time',
-  //   description: 'Triggers when the inspection is scheduled to begin.',
-  //   section: 'DAY_OF_INSPECTION',
-  // },
-  // {
-  //   key: 'INSPECTION_END_TIME',
-  //   title: 'Inspection End Time',
-  //   description: 'Triggers when the inspection is scheduled to end.',
-  //   section: 'DAY_OF_INSPECTION',
-  // },
+  {
+    key: 'INSPECTION_START_TIME',
+    title: 'Inspection Start Time',
+    description: 'Triggers when the inspection is scheduled to begin.',
+    section: 'DAY_OF_INSPECTION',
+  },
+  {
+    key: 'INSPECTION_END_TIME',
+    title: 'Inspection End Time',
+    description: 'Triggers when the inspection is scheduled to end.',
+    section: 'DAY_OF_INSPECTION',
+  },
   // {
   //   key: 'ANY_REPORTS_PUBLISHED',
   //   title: 'Any Reports Published',

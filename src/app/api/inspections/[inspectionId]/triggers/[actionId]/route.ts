@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import Inspection from '@/src/models/Inspection';
+import { removeQueuedTrigger } from '@/src/lib/automation-queue';
 
 interface RouteParams {
   params: Promise<{
@@ -149,8 +150,13 @@ export async function DELETE(
       );
     }
 
-    // Remove the trigger from the array
+    // Find the trigger index before removing it
     const triggers = inspection.triggers || [];
+    const triggerIndex = triggers.findIndex(
+      (t: any) => t.actionId && t.actionId.toString() === actionId
+    );
+
+    // Remove the trigger from the array
     const filteredTriggers = triggers.filter(
       (t: any) => !t.actionId || t.actionId.toString() !== actionId
     );
@@ -159,6 +165,16 @@ export async function DELETE(
     await Inspection.findByIdAndUpdate(inspectionId, {
       triggers: filteredTriggers,
     });
+
+    // If trigger was found and had an index, remove it from the queue
+    if (triggerIndex !== -1) {
+      try {
+        await removeQueuedTrigger(inspectionId, triggerIndex);
+      } catch (error) {
+        // Log error but don't fail the request if queue removal fails
+        console.error('Error removing queued trigger:', error);
+      }
+    }
 
     return NextResponse.json(
       { message: 'Trigger deleted successfully' },

@@ -296,6 +296,10 @@ export default function InspectionEditPage() {
   const [disablingTrigger, setDisablingTrigger] = useState<string | null>(null);
   const [deletingTrigger, setDeletingTrigger] = useState<string | null>(null);
   const [triggerToDelete, setTriggerToDelete] = useState<string | null>(null);
+  
+  // Queued triggers state
+  const [queuedTriggers, setQueuedTriggers] = useState<any[]>([]);
+  const [cancellingQueuedTrigger, setCancellingQueuedTrigger] = useState<number | null>(null);
 
   // Inspector selection state
   const [inspectorDialogOpen, setInspectorDialogOpen] = useState(false);
@@ -385,6 +389,25 @@ export default function InspectionEditPage() {
       }
     } catch (error) {
       console.error('Error fetching inspection details:', error);
+    }
+  };
+
+  // Fetch queued triggers
+  const fetchQueuedTriggers = async () => {
+    try {
+      const response = await fetch(`/api/inspections/${inspectionId}/queued-triggers`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setQueuedTriggers(data.queuedTriggers || []);
+      } else {
+        console.error('Failed to fetch queued triggers');
+        setQueuedTriggers([]);
+      }
+    } catch (error) {
+      console.error('Error fetching queued triggers:', error);
+      setQueuedTriggers([]);
     }
   };
 
@@ -594,6 +617,7 @@ export default function InspectionEditPage() {
 
       toast.success(`Trigger ${!currentDisabled ? 'disabled' : 'enabled'} successfully`);
       await fetchInspectionDetails();
+      await fetchQueuedTriggers();
     } catch (error: any) {
       console.error('Error toggling trigger:', error);
       toast.error(error.message || 'Failed to update trigger');
@@ -621,11 +645,36 @@ export default function InspectionEditPage() {
       toast.success('Trigger deleted successfully');
       setTriggerToDelete(null);
       await fetchInspectionDetails();
+      await fetchQueuedTriggers();
     } catch (error: any) {
       console.error('Error deleting trigger:', error);
       toast.error(error.message || 'Failed to delete trigger');
     } finally {
       setDeletingTrigger(null);
+    }
+  };
+
+  // Handle cancel queued trigger (remove from queue but keep trigger config)
+  const handleCancelQueuedTrigger = async (triggerIndex: number) => {
+    try {
+      setCancellingQueuedTrigger(triggerIndex);
+      const response = await fetch(`/api/inspections/${inspectionId}/queued-triggers/${triggerIndex}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to cancel scheduled trigger');
+      }
+
+      toast.success('Scheduled trigger cancelled successfully');
+      await fetchQueuedTriggers();
+    } catch (error: any) {
+      console.error('Error cancelling queued trigger:', error);
+      toast.error(error.message || 'Failed to cancel scheduled trigger');
+    } finally {
+      setCancellingQueuedTrigger(null);
     }
   };
 
@@ -650,6 +699,7 @@ export default function InspectionEditPage() {
     if (inspectionId) {
       fetchDefects();
       fetchInspectionDetails();
+      fetchQueuedTriggers();
       fetchFormDataOptions();
       fetchTasks();
       fetchCompanyUsers();
@@ -1566,6 +1616,7 @@ export default function InspectionEditPage() {
         setDetailsLastSaved(now.toLocaleTimeString());
         toast.success('Closing date saved successfully');
         await fetchInspectionDetails();
+        await fetchQueuedTriggers();
       } else {
         toast.error('Failed to save closing date');
       }
@@ -1625,6 +1676,7 @@ export default function InspectionEditPage() {
         setDetailsLastSaved(now.toLocaleTimeString());
         toast.success('End of inspection period saved successfully');
         await fetchInspectionDetails();
+        await fetchQueuedTriggers();
       } else {
         toast.error('Failed to save end of inspection period');
       }
@@ -1712,6 +1764,7 @@ export default function InspectionEditPage() {
         setDetailsLastSaved(now.toLocaleTimeString());
         toast.success('Inspection end time saved successfully');
         await fetchInspectionDetails();
+        await fetchQueuedTriggers();
       } else {
         const errorData = await response.json().catch(() => ({}));
         console.error('Failed to save inspection end time:', errorData);
@@ -2133,6 +2186,7 @@ export default function InspectionEditPage() {
       setRescheduleDate('');
       setRescheduleTime('');
       await fetchInspectionDetails();
+      await fetchQueuedTriggers();
     } catch (error: any) {
       console.error('Error rescheduling inspection:', error);
       toast.error(error.message || 'Failed to reschedule inspection');
@@ -6299,6 +6353,217 @@ export default function InspectionEditPage() {
                                     {!trigger.sentAt && (
                                       <p className="text-xs text-muted-foreground italic">Not sent yet</p>
                                     )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Scheduled Emails Section - Full Width at Bottom */}
+          {queuedTriggers && queuedTriggers.length > 0 && (
+            <div className="mt-8 w-full">
+              <div className="border-t pt-6">
+                <h3 className="text-xl font-semibold mb-4">Scheduled Emails</h3>
+                
+                {/* Email and Text Scheduled Triggers Side by Side */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Scheduled Email Triggers List */}
+                  {queuedTriggers.filter((t: any) => t.communicationType === 'EMAIL').length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-3 text-primary">Scheduled Email Triggers</h4>
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="divide-y">
+                          {queuedTriggers
+                            .filter((t: any) => t.communicationType === 'EMAIL')
+                            .map((queuedTrigger: any, index: number) => {
+                              const triggerInfo = getTriggerByKey(queuedTrigger.automationTrigger);
+                              const executionDate = new Date(queuedTrigger.executionTimeISO);
+                              return (
+                                <div key={`${queuedTrigger.inspectionId}-${queuedTrigger.triggerIndex}-${index}`} className={`p-4 hover:bg-muted/50 transition-colors ${queuedTrigger.isDisabled ? 'opacity-60' : ''}`}>
+                                  <div className="space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <h5 className="font-semibold text-sm">{queuedTrigger.name}</h5>
+                                          {queuedTrigger.isDisabled && (
+                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                              Disabled
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap bg-blue-100 text-blue-800 border border-blue-200">
+                                          Scheduled
+                                        </span>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleToggleTrigger(queuedTrigger.actionId, queuedTrigger.isDisabled || false)}
+                                          disabled={disablingTrigger === queuedTrigger.actionId}
+                                          className="h-8 w-8"
+                                          title={queuedTrigger.isDisabled ? 'Enable trigger' : 'Disable trigger'}
+                                        >
+                                          {disablingTrigger === queuedTrigger.actionId ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : queuedTrigger.isDisabled ? (
+                                            <Power className="h-4 w-4" />
+                                          ) : (
+                                            <PowerOff className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => setTriggerToDelete(queuedTrigger.actionId)}
+                                          disabled={deletingTrigger === queuedTrigger.actionId}
+                                          className="h-8 w-8 text-destructive hover:text-destructive"
+                                          title="Delete trigger"
+                                        >
+                                          {deletingTrigger === queuedTrigger.actionId ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleCancelQueuedTrigger(queuedTrigger.triggerIndex)}
+                                          disabled={cancellingQueuedTrigger === queuedTrigger.triggerIndex}
+                                          className="h-8 w-8 text-orange-600 hover:text-orange-700"
+                                          title="Cancel scheduled trigger"
+                                        >
+                                          {cancellingQueuedTrigger === queuedTrigger.triggerIndex ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : (
+                                            <X className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {triggerInfo?.title || queuedTrigger.automationTrigger}
+                                    </p>
+                                    {queuedTrigger.emailSubject && (
+                                      <p className="text-xs font-medium text-foreground">
+                                        Subject: {queuedTrigger.emailSubject}
+                                      </p>
+                                    )}
+                                    <p className="text-xs text-muted-foreground font-medium">
+                                      Scheduled for: {executionDate.toLocaleString('en-US', {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        timeZoneName: 'short',
+                                      })}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Scheduled Text Triggers List */}
+                  {queuedTriggers.filter((t: any) => t.communicationType === 'TEXT').length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-3 text-primary">Scheduled Text Triggers</h4>
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="divide-y">
+                          {queuedTriggers
+                            .filter((t: any) => t.communicationType === 'TEXT')
+                            .map((queuedTrigger: any, index: number) => {
+                              const triggerInfo = getTriggerByKey(queuedTrigger.automationTrigger);
+                              const executionDate = new Date(queuedTrigger.executionTimeISO);
+                              return (
+                                <div key={`${queuedTrigger.inspectionId}-${queuedTrigger.triggerIndex}-${index}`} className={`p-4 hover:bg-muted/50 transition-colors ${queuedTrigger.isDisabled ? 'opacity-60' : ''}`}>
+                                  <div className="space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <h5 className="font-semibold text-sm">{queuedTrigger.name}</h5>
+                                          {queuedTrigger.isDisabled && (
+                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                              Disabled
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap bg-blue-100 text-blue-800 border border-blue-200">
+                                          Scheduled
+                                        </span>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleToggleTrigger(queuedTrigger.actionId, queuedTrigger.isDisabled || false)}
+                                          disabled={disablingTrigger === queuedTrigger.actionId}
+                                          className="h-8 w-8"
+                                          title={queuedTrigger.isDisabled ? 'Enable trigger' : 'Disable trigger'}
+                                        >
+                                          {disablingTrigger === queuedTrigger.actionId ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : queuedTrigger.isDisabled ? (
+                                            <Power className="h-4 w-4" />
+                                          ) : (
+                                            <PowerOff className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => setTriggerToDelete(queuedTrigger.actionId)}
+                                          disabled={deletingTrigger === queuedTrigger.actionId}
+                                          className="h-8 w-8 text-destructive hover:text-destructive"
+                                          title="Delete trigger"
+                                        >
+                                          {deletingTrigger === queuedTrigger.actionId ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleCancelQueuedTrigger(queuedTrigger.triggerIndex)}
+                                          disabled={cancellingQueuedTrigger === queuedTrigger.triggerIndex}
+                                          className="h-8 w-8 text-orange-600 hover:text-orange-700"
+                                          title="Cancel scheduled trigger"
+                                        >
+                                          {cancellingQueuedTrigger === queuedTrigger.triggerIndex ? (
+                                            <i className="fas fa-spinner fa-spin"></i>
+                                          ) : (
+                                            <X className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {triggerInfo?.title || queuedTrigger.automationTrigger}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground font-medium">
+                                      Scheduled for: {executionDate.toLocaleString('en-US', {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        timeZoneName: 'short',
+                                      })}
+                                    </p>
                                   </div>
                                 </div>
                               );

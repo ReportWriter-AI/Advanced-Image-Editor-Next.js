@@ -5,7 +5,7 @@
 import mongoose from 'mongoose';
 import Inspection from '@/src/models/Inspection';
 import { processTrigger, wasTriggerAlreadySent, calculateExecutionTimeWithRestrictions } from './automation-trigger-service';
-import { queueTrigger } from './automation-queue';
+import { queueTrigger, removeQueuedTrigger } from './automation-queue';
 import { requiresConfirmedInspection, AutomationTriggerKey } from './automation-triggers';
 
 /**
@@ -80,8 +80,8 @@ export async function queueTimeBasedTriggers(
     }
 
     const timeBasedTriggerKeys = [
-      // 'INSPECTION_START_TIME',
-      // 'INSPECTION_END_TIME',
+      'INSPECTION_START_TIME',
+      'INSPECTION_END_TIME',
       'INSPECTION_CLOSING_DATE',
       'INSPECTION_END_OF_PERIOD_DATE',
     ];
@@ -115,10 +115,14 @@ export async function queueTimeBasedTriggers(
       let baseTime: Date | null = null;
 
       switch (triggerConfig.automationTrigger) {
-        // case 'INSPECTION_START_TIME':
-        // case 'INSPECTION_END_TIME':
-        //   baseTime = inspection.date ? new Date(inspection.date) : null;
-        //   break;
+        case 'INSPECTION_START_TIME':
+          baseTime = inspection.date ? new Date(inspection.date) : null;
+          break;
+        case 'INSPECTION_END_TIME':
+          baseTime = inspection.inspectionEndTime?.date
+            ? new Date(inspection.inspectionEndTime.date)
+            : null;
+          break;
         case 'INSPECTION_CLOSING_DATE':
           baseTime = inspection.closingDate?.date
             ? new Date(inspection.closingDate.date)
@@ -154,6 +158,9 @@ export async function queueTimeBasedTriggers(
       }
       // If execution time is in the future, queue it
       else if (executionTime > now) {
+        // Remove any existing queued trigger for this inspection and trigger index to prevent duplicates
+        await removeQueuedTrigger(inspectionId.toString(), i);
+        
         await queueTrigger(
           inspectionId.toString(),
           i,
