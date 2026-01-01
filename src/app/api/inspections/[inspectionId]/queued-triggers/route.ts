@@ -45,13 +45,16 @@ export async function GET(
     }
 
     // Get queued triggers from Redis
+    console.log(`[queued-triggers API] Fetching queued triggers for inspection: ${inspectionId}`);
     const queuedTriggers = await getQueuedTriggersForInspection(inspectionId);
+    console.log(`[queued-triggers API] Retrieved ${queuedTriggers.length} queued triggers from Redis`);
 
     // Enrich queued triggers with full trigger config from inspection
     const enrichedTriggers = queuedTriggers.map((queuedTrigger) => {
       const triggerConfig = inspection.triggers?.[queuedTrigger.triggerIndex];
       
       if (!triggerConfig) {
+        console.warn(`[queued-triggers API] No trigger config found at index ${queuedTrigger.triggerIndex} for inspection ${inspectionId}`);
         return null;
       }
 
@@ -73,6 +76,8 @@ export async function GET(
         executionTimeISO: new Date(queuedTrigger.executionTime).toISOString(),
       };
     }).filter((trigger) => trigger !== null); // Remove any null entries
+
+    console.log(`[queued-triggers API] Returning ${enrichedTriggers.length} enriched triggers for inspection ${inspectionId}`);
 
     return NextResponse.json(
       { queuedTriggers: enrichedTriggers },

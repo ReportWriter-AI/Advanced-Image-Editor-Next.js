@@ -4,6 +4,7 @@ import Inspection from '@/src/models/Inspection';
 import Service from '@/src/models/Service';
 import AutomationAction from '@/src/models/AutomationAction';
 import { generateSecureToken } from '@/src/lib/token-utils';
+import { evaluateConditions } from '@/src/lib/automation-executor';
 
 /**
  * Processes post-creation tasks for an inspection:
@@ -146,6 +147,7 @@ export async function processInspectionPostCreation(
 /**
  * Attaches active automation actions to an inspection.
  * Fetches all active automation actions for the company and stores them in the inspection's triggers field.
+ * Only attaches actions whose conditions match the inspection data.
  * 
  * @param inspectionId - The ID of the inspection
  * @param companyId - The company ID to filter automation actions
@@ -170,6 +172,19 @@ export async function attachAutomationActionsToInspection(
   const companyObjectId = new mongoose.Types.ObjectId(companyId);
 
   try {
+    // Fetch the inspection with necessary data for condition evaluation
+    // Use lean() to get plain JavaScript object for condition evaluation
+    const inspection = await Inspection.findById(inspectionObjectId)
+      .populate('clients', 'categories')
+      .populate('agents', 'categories')
+      .populate('listingAgent', 'categories')
+      .lean();
+
+    if (!inspection) {
+      console.error('Inspection not found for attaching automation actions');
+      return;
+    }
+
     // Fetch all active automation actions for the company
     const activeActions = await AutomationAction.find({
       company: companyObjectId,
@@ -181,8 +196,37 @@ export async function attachAutomationActionsToInspection(
       return;
     }
 
-    // Map actions to trigger objects
-    const triggers = activeActions.map((action: any) => ({
+    // Filter actions by evaluating their conditions
+    const matchingActions = [];
+    for (const action of activeActions) {
+      try {
+        // If action has no conditions, always attach (existing behavior)
+        if (!action.conditions || action.conditions.length === 0) {
+          matchingActions.push(action);
+          continue;
+        }
+
+        // Evaluate conditions against inspection data
+        const conditionLogic = action.conditionLogic || 'AND';
+        const conditionsMatch = await evaluateConditions(
+          action.conditions || [],
+          conditionLogic,
+          inspection
+        );
+
+        // Only include actions whose conditions match
+        if (conditionsMatch) {
+          matchingActions.push(action);
+        }
+      } catch (error) {
+        // If condition evaluation fails, skip the action (fail-safe approach)
+        console.error(`Error evaluating conditions for action ${action._id}:`, error);
+        // Don't attach actions with evaluation errors
+      }
+    }
+
+    // Map matching actions to trigger objects
+    const triggers = matchingActions.map((action: any) => ({
       actionId: action._id,
       name: action.name || '',
       automationTrigger: action.automationTrigger || '',
@@ -210,7 +254,7 @@ export async function attachAutomationActionsToInspection(
       status: undefined,
     }));
 
-    // Update inspection with triggers array
+    // Update inspection with triggers array (only matching actions)
     await Inspection.findByIdAndUpdate(inspectionObjectId, {
       triggers: triggers,
     });

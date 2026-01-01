@@ -7,6 +7,7 @@ import dbConnect from '@/lib/db';
 import { getDueTriggers, removeProcessedTriggers } from '@/src/lib/automation-queue';
 import { processTrigger } from '@/src/lib/automation-trigger-service';
 import Inspection from '@/src/models/Inspection';
+import '@/src/models/User'
 
 export async function GET(req: NextRequest) {
   // Verify this is called by Vercel Cron (optional security check)

@@ -7,7 +7,7 @@ import LocationSearch from '../../../../../../components/LocationSearch';
 import FileUpload from '../../../../../../components/FileUpload';
 import { LOCATION_OPTIONS } from '../../../../../../constants/locations';
 import dynamic from 'next/dynamic';
-import { ArrowLeft, X, Plus, Trash2, Power, PowerOff } from 'lucide-react';
+import { ArrowLeft, X, Plus, Trash2, Power, PowerOff, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ReactSelect from 'react-select';
 import AsyncSelect from 'react-select/async';
@@ -21,6 +21,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -296,10 +297,18 @@ export default function InspectionEditPage() {
   const [disablingTrigger, setDisablingTrigger] = useState<string | null>(null);
   const [deletingTrigger, setDeletingTrigger] = useState<string | null>(null);
   const [triggerToDelete, setTriggerToDelete] = useState<string | null>(null);
+  const [importingActions, setImportingActions] = useState(false);
   
   // Queued triggers state
   const [queuedTriggers, setQueuedTriggers] = useState<any[]>([]);
   const [cancellingQueuedTrigger, setCancellingQueuedTrigger] = useState<number | null>(null);
+
+  // Accordion state for trigger subsections
+  const [emailTriggersOpen, setEmailTriggersOpen] = useState(true);
+  const [textTriggersOpen, setTextTriggersOpen] = useState(true);
+  const [sentEmailTriggersOpen, setSentEmailTriggersOpen] = useState(true);
+  const [scheduledEmailTriggersOpen, setScheduledEmailTriggersOpen] = useState(true);
+  const [scheduledTextTriggersOpen, setScheduledTextTriggersOpen] = useState(true);
 
   // Inspector selection state
   const [inspectorDialogOpen, setInspectorDialogOpen] = useState(false);
@@ -675,6 +684,40 @@ export default function InspectionEditPage() {
       toast.error(error.message || 'Failed to cancel scheduled trigger');
     } finally {
       setCancellingQueuedTrigger(null);
+    }
+  };
+
+  // Handle import actions
+  const handleImportActions = async () => {
+    try {
+      setImportingActions(true);
+      const response = await fetch(`/api/inspections/${inspectionId}/triggers/import`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to import actions');
+      }
+
+      const data = await response.json();
+      
+      // Show appropriate message based on imported count
+      if (data.importedCount > 0) {
+        toast.success(data.message || `${data.importedCount} action(s) imported successfully`);
+      } else {
+        toast.info(data.message || 'No new actions to import');
+      }
+
+      // Refresh inspection details and queued triggers
+      await fetchInspectionDetails();
+      await fetchQueuedTriggers();
+    } catch (error: any) {
+      console.error('Error importing actions:', error);
+      toast.error(error.message || 'Failed to import actions');
+    } finally {
+      setImportingActions(false);
     }
   };
 
@@ -6113,17 +6156,47 @@ export default function InspectionEditPage() {
           </div>
 
           {/* Automation Triggers Section - Full Width at Bottom */}
-          {triggers && triggers.length > 0 && (
-            <div className="mt-8 w-full">
-              <div className="border-t pt-6">
-                <h3 className="text-xl font-semibold mb-4">Automation Triggers</h3>
-                
+          <div className="mt-8 w-full">
+            <div className="border-t pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold">Automation Triggers</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleImportActions}
+                  disabled={importingActions}
+                >
+                  {importingActions ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin mr-2"></i>
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Import Action
+                    </>
+                  )}
+                </Button>
+              </div>
+              {triggers && triggers.length > 0 && (
+                <>
                 {/* Email and Text Triggers Side by Side */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Email Triggers List */}
                   {triggers.filter((t: any) => t.communicationType === 'EMAIL').length > 0 && (
                     <div>
-                      <h4 className="text-lg font-semibold mb-3 text-primary">Email Triggers</h4>
+                      <Accordion 
+                        type="single" 
+                        collapsible 
+                        value={emailTriggersOpen ? "email-triggers" : ""} 
+                        onValueChange={(value) => setEmailTriggersOpen(value === "email-triggers")}
+                      >
+                        <AccordionItem value="email-triggers">
+                          <AccordionTrigger>
+                            <h4 className="text-lg font-semibold text-primary">Email Triggers</h4>
+                          </AccordionTrigger>
+                          <AccordionContent>
                       <div className="border rounded-lg overflow-hidden">
                         <div className="divide-y">
                           {triggers
@@ -6203,77 +6276,26 @@ export default function InspectionEditPage() {
                             })}
                         </div>
                       </div>
-                      
-                      {/* Sent Email Triggers - Separate Section */}
-                      {triggers.filter((t: any) => t.communicationType === 'EMAIL' && t.sentAt).length > 0 && (
-                        <div className="mt-6">
-                          <h4 className="text-lg font-semibold mb-3 text-primary">Sent Email Triggers</h4>
-                          <div className="border rounded-lg overflow-hidden">
-                            <div className="divide-y">
-                              {triggers
-                                .filter((t: any) => t.communicationType === 'EMAIL' && t.sentAt)
-                                .map((trigger: any, index: number) => {
-                                  const triggerInfo = getTriggerByKey(trigger.automationTrigger);
-                                  return (
-                                    <div key={trigger.actionId || index} className="p-4 hover:bg-muted/50 transition-colors">
-                                      <div className="space-y-2">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                              <h5 className="font-semibold text-sm">{trigger.name}</h5>
-                                              {trigger.isDisabled && (
-                                                <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
-                                                  Disabled
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div className="flex items-center gap-2">
-                                            <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
-                                              trigger.status === 'sent' 
-                                                ? 'bg-green-100 text-green-800 border border-green-200' 
-                                                : trigger.status === 'bounced'
-                                                ? 'bg-red-100 text-red-800 border border-red-200'
-                                                : 'bg-gray-100 text-gray-800 border border-gray-200'
-                                            }`}>
-                                              {trigger.status || 'Pending'}
-                                            </span>
-                                          </div>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">
-                                          {triggerInfo?.title || trigger.automationTrigger}
-                                        </p>
-                                        {trigger.emailSubject && (
-                                          <p className="text-xs font-medium text-foreground">
-                                            Subject: {trigger.emailSubject}
-                                          </p>
-                                        )}
-                                        {trigger.sentAt && (
-                                          <p className="text-xs text-muted-foreground">
-                                            Sent: {new Date(trigger.sentAt).toLocaleString('en-US', {
-                                              year: 'numeric',
-                                              month: 'short',
-                                              day: 'numeric',
-                                              hour: '2-digit',
-                                              minute: '2-digit',
-                                            })}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
                     </div>
                   )}
 
                   {/* Text Triggers List */}
                   {triggers.filter((t: any) => t.communicationType === 'TEXT').length > 0 && (
                     <div>
-                      <h4 className="text-lg font-semibold mb-3 text-primary">Text Triggers</h4>
+                      <Accordion 
+                        type="single" 
+                        collapsible 
+                        value={textTriggersOpen ? "text-triggers" : ""} 
+                        onValueChange={(value) => setTextTriggersOpen(value === "text-triggers")}
+                      >
+                        <AccordionItem value="text-triggers">
+                          <AccordionTrigger>
+                            <h4 className="text-lg font-semibold text-primary">Text Triggers</h4>
+                          </AccordionTrigger>
+                          <AccordionContent>
                       <div className="border rounded-lg overflow-hidden">
                         <div className="divide-y">
                           {triggers
@@ -6359,223 +6381,337 @@ export default function InspectionEditPage() {
                             })}
                         </div>
                       </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
-          )}
+                </>
+              )}
 
-          {/* Scheduled Emails Section - Full Width at Bottom */}
-          {queuedTriggers && queuedTriggers.length > 0 && (
-            <div className="mt-8 w-full">
-              <div className="border-t pt-6">
-                <h3 className="text-xl font-semibold mb-4">Scheduled Emails</h3>
-                
-                {/* Email and Text Scheduled Triggers Side by Side */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Scheduled Email Triggers List */}
-                  {queuedTriggers.filter((t: any) => t.communicationType === 'EMAIL').length > 0 && (
-                    <div>
-                      <h4 className="text-lg font-semibold mb-3 text-primary">Scheduled Email Triggers</h4>
-                      <div className="border rounded-lg overflow-hidden">
-                        <div className="divide-y">
-                          {queuedTriggers
-                            .filter((t: any) => t.communicationType === 'EMAIL')
-                            .map((queuedTrigger: any, index: number) => {
-                              const triggerInfo = getTriggerByKey(queuedTrigger.automationTrigger);
-                              const executionDate = new Date(queuedTrigger.executionTimeISO);
-                              return (
-                                <div key={`${queuedTrigger.inspectionId}-${queuedTrigger.triggerIndex}-${index}`} className={`p-4 hover:bg-muted/50 transition-colors ${queuedTrigger.isDisabled ? 'opacity-60' : ''}`}>
-                                  <div className="space-y-2">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                          <h5 className="font-semibold text-sm">{queuedTrigger.name}</h5>
-                                          {queuedTrigger.isDisabled && (
-                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
-                                              Disabled
-                                            </span>
-                                          )}
+              {/* Scheduled Triggers Section */}
+              {queuedTriggers && queuedTriggers.length > 0 && (
+                <div className="mt-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Scheduled Email Triggers List */}
+                    {queuedTriggers.filter((t: any) => t.communicationType === 'EMAIL').length > 0 && (
+                      <div>
+                        <Accordion 
+                                  type="single" 
+                                  collapsible 
+                                  value={scheduledEmailTriggersOpen ? "scheduled-email-triggers" : ""} 
+                                  onValueChange={(value) => setScheduledEmailTriggersOpen(value === "scheduled-email-triggers")}
+                                >
+                                  <AccordionItem value="scheduled-email-triggers">
+                                    <AccordionTrigger>
+                                      <h4 className="text-lg font-semibold text-primary">Scheduled Triggers</h4>
+                                    </AccordionTrigger>
+                                    <AccordionContent>
+                                      <div className="border rounded-lg overflow-hidden">
+                                        <div className="divide-y">
+                                          {queuedTriggers
+                                            .filter((t: any) => t.communicationType === 'EMAIL')
+                                            .map((queuedTrigger: any, index: number) => {
+                                              const triggerInfo = getTriggerByKey(queuedTrigger.automationTrigger);
+                                              const executionDate = new Date(queuedTrigger.executionTimeISO);
+                                              return (
+                                                <div key={`${queuedTrigger.inspectionId}-${queuedTrigger.triggerIndex}-${index}`} className={`p-4 hover:bg-muted/50 transition-colors ${queuedTrigger.isDisabled ? 'opacity-60' : ''}`}>
+                                                  <div className="space-y-2">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                      <div className="flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                          <h5 className="font-semibold text-sm">{queuedTrigger.name}</h5>
+                                                          {queuedTrigger.isDisabled && (
+                                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                                              Disabled
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap bg-blue-100 text-blue-800 border border-blue-200">
+                                                          Scheduled
+                                                        </span>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="icon"
+                                                          onClick={() => handleToggleTrigger(queuedTrigger.actionId, queuedTrigger.isDisabled || false)}
+                                                          disabled={disablingTrigger === queuedTrigger.actionId}
+                                                          className="h-8 w-8"
+                                                          title={queuedTrigger.isDisabled ? 'Enable trigger' : 'Disable trigger'}
+                                                        >
+                                                          {disablingTrigger === queuedTrigger.actionId ? (
+                                                            <i className="fas fa-spinner fa-spin"></i>
+                                                          ) : queuedTrigger.isDisabled ? (
+                                                            <Power className="h-4 w-4" />
+                                                          ) : (
+                                                            <PowerOff className="h-4 w-4" />
+                                                          )}
+                                                        </Button>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="icon"
+                                                          onClick={() => setTriggerToDelete(queuedTrigger.actionId)}
+                                                          disabled={deletingTrigger === queuedTrigger.actionId}
+                                                          className="h-8 w-8 text-destructive hover:text-destructive"
+                                                          title="Delete trigger"
+                                                        >
+                                                          {deletingTrigger === queuedTrigger.actionId ? (
+                                                            <i className="fas fa-spinner fa-spin"></i>
+                                                          ) : (
+                                                            <Trash2 className="h-4 w-4" />
+                                                          )}
+                                                        </Button>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="icon"
+                                                          onClick={() => handleCancelQueuedTrigger(queuedTrigger.triggerIndex)}
+                                                          disabled={cancellingQueuedTrigger === queuedTrigger.triggerIndex}
+                                                          className="h-8 w-8 text-orange-600 hover:text-orange-700"
+                                                          title="Cancel scheduled trigger"
+                                                        >
+                                                          {cancellingQueuedTrigger === queuedTrigger.triggerIndex ? (
+                                                            <i className="fas fa-spinner fa-spin"></i>
+                                                          ) : (
+                                                            <X className="h-4 w-4" />
+                                                          )}
+                                                        </Button>
+                                                      </div>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                      {triggerInfo?.title || queuedTrigger.automationTrigger}
+                                                    </p>
+                                                    {queuedTrigger.emailSubject && (
+                                                      <p className="text-xs font-medium text-foreground">
+                                                        Subject: {queuedTrigger.emailSubject}
+                                                      </p>
+                                                    )}
+                                                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-100">
+                                                      <CalendarIcon className="h-4 w-4 text-blue-600" />
+                                                      <div className="flex-1">
+                                                        <p className="text-xs text-muted-foreground mb-0.5">Scheduled for:</p>
+                                                        <p className="text-sm font-semibold text-blue-700">
+                                                          {executionDate.toLocaleString('en-US', {
+                                                            year: 'numeric',
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit',
+                                                            timeZoneName: 'short',
+                                                          })}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
                                         </div>
                                       </div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap bg-blue-100 text-blue-800 border border-blue-200">
-                                          Scheduled
-                                        </span>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => handleToggleTrigger(queuedTrigger.actionId, queuedTrigger.isDisabled || false)}
-                                          disabled={disablingTrigger === queuedTrigger.actionId}
-                                          className="h-8 w-8"
-                                          title={queuedTrigger.isDisabled ? 'Enable trigger' : 'Disable trigger'}
-                                        >
-                                          {disablingTrigger === queuedTrigger.actionId ? (
-                                            <i className="fas fa-spinner fa-spin"></i>
-                                          ) : queuedTrigger.isDisabled ? (
-                                            <Power className="h-4 w-4" />
-                                          ) : (
-                                            <PowerOff className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => setTriggerToDelete(queuedTrigger.actionId)}
-                                          disabled={deletingTrigger === queuedTrigger.actionId}
-                                          className="h-8 w-8 text-destructive hover:text-destructive"
-                                          title="Delete trigger"
-                                        >
-                                          {deletingTrigger === queuedTrigger.actionId ? (
-                                            <i className="fas fa-spinner fa-spin"></i>
-                                          ) : (
-                                            <Trash2 className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => handleCancelQueuedTrigger(queuedTrigger.triggerIndex)}
-                                          disabled={cancellingQueuedTrigger === queuedTrigger.triggerIndex}
-                                          className="h-8 w-8 text-orange-600 hover:text-orange-700"
-                                          title="Cancel scheduled trigger"
-                                        >
-                                          {cancellingQueuedTrigger === queuedTrigger.triggerIndex ? (
-                                            <i className="fas fa-spinner fa-spin"></i>
-                                          ) : (
-                                            <X className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                      {triggerInfo?.title || queuedTrigger.automationTrigger}
-                                    </p>
-                                    {queuedTrigger.emailSubject && (
-                                      <p className="text-xs font-medium text-foreground">
-                                        Subject: {queuedTrigger.emailSubject}
-                                      </p>
-                                    )}
-                                    <p className="text-xs text-muted-foreground font-medium">
-                                      Scheduled for: {executionDate.toLocaleString('en-US', {
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        timeZoneName: 'short',
-                                      })}
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                                    </AccordionContent>
+                                  </AccordionItem>
+                                </Accordion>
+                              </div>
+                            )}
 
-                  {/* Scheduled Text Triggers List */}
-                  {queuedTriggers.filter((t: any) => t.communicationType === 'TEXT').length > 0 && (
-                    <div>
-                      <h4 className="text-lg font-semibold mb-3 text-primary">Scheduled Text Triggers</h4>
-                      <div className="border rounded-lg overflow-hidden">
-                        <div className="divide-y">
-                          {queuedTriggers
-                            .filter((t: any) => t.communicationType === 'TEXT')
-                            .map((queuedTrigger: any, index: number) => {
-                              const triggerInfo = getTriggerByKey(queuedTrigger.automationTrigger);
-                              const executionDate = new Date(queuedTrigger.executionTimeISO);
-                              return (
-                                <div key={`${queuedTrigger.inspectionId}-${queuedTrigger.triggerIndex}-${index}`} className={`p-4 hover:bg-muted/50 transition-colors ${queuedTrigger.isDisabled ? 'opacity-60' : ''}`}>
-                                  <div className="space-y-2">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                          <h5 className="font-semibold text-sm">{queuedTrigger.name}</h5>
-                                          {queuedTrigger.isDisabled && (
-                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
-                                              Disabled
-                                            </span>
-                                          )}
+                            {/* Scheduled Text Triggers List */}
+                            {queuedTriggers.filter((t: any) => t.communicationType === 'TEXT').length > 0 && (
+                              <div>
+                                <Accordion 
+                                  type="single" 
+                                  collapsible 
+                                  value={scheduledTextTriggersOpen ? "scheduled-text-triggers" : ""} 
+                                  onValueChange={(value) => setScheduledTextTriggersOpen(value === "scheduled-text-triggers")}
+                                >
+                                  <AccordionItem value="scheduled-text-triggers">
+                                    <AccordionTrigger>
+                                      <h5 className="text-base font-semibold text-primary">Scheduled Text Triggers</h5>
+                                    </AccordionTrigger>
+                                    <AccordionContent>
+                                      <div className="border rounded-lg overflow-hidden">
+                                        <div className="divide-y">
+                                          {queuedTriggers
+                                            .filter((t: any) => t.communicationType === 'TEXT')
+                                            .map((queuedTrigger: any, index: number) => {
+                                              const triggerInfo = getTriggerByKey(queuedTrigger.automationTrigger);
+                                              const executionDate = new Date(queuedTrigger.executionTimeISO);
+                                              return (
+                                                <div key={`${queuedTrigger.inspectionId}-${queuedTrigger.triggerIndex}-${index}`} className={`p-4 hover:bg-muted/50 transition-colors ${queuedTrigger.isDisabled ? 'opacity-60' : ''}`}>
+                                                  <div className="space-y-2">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                      <div className="flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                          <h5 className="font-semibold text-sm">{queuedTrigger.name}</h5>
+                                                          {queuedTrigger.isDisabled && (
+                                                            <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                                              Disabled
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap bg-blue-100 text-blue-800 border border-blue-200">
+                                                          Scheduled
+                                                        </span>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="icon"
+                                                          onClick={() => handleToggleTrigger(queuedTrigger.actionId, queuedTrigger.isDisabled || false)}
+                                                          disabled={disablingTrigger === queuedTrigger.actionId}
+                                                          className="h-8 w-8"
+                                                          title={queuedTrigger.isDisabled ? 'Enable trigger' : 'Disable trigger'}
+                                                        >
+                                                          {disablingTrigger === queuedTrigger.actionId ? (
+                                                            <i className="fas fa-spinner fa-spin"></i>
+                                                          ) : queuedTrigger.isDisabled ? (
+                                                            <Power className="h-4 w-4" />
+                                                          ) : (
+                                                            <PowerOff className="h-4 w-4" />
+                                                          )}
+                                                        </Button>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="icon"
+                                                          onClick={() => setTriggerToDelete(queuedTrigger.actionId)}
+                                                          disabled={deletingTrigger === queuedTrigger.actionId}
+                                                          className="h-8 w-8 text-destructive hover:text-destructive"
+                                                          title="Delete trigger"
+                                                        >
+                                                          {deletingTrigger === queuedTrigger.actionId ? (
+                                                            <i className="fas fa-spinner fa-spin"></i>
+                                                          ) : (
+                                                            <Trash2 className="h-4 w-4" />
+                                                          )}
+                                                        </Button>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="icon"
+                                                          onClick={() => handleCancelQueuedTrigger(queuedTrigger.triggerIndex)}
+                                                          disabled={cancellingQueuedTrigger === queuedTrigger.triggerIndex}
+                                                          className="h-8 w-8 text-orange-600 hover:text-orange-700"
+                                                          title="Cancel scheduled trigger"
+                                                        >
+                                                          {cancellingQueuedTrigger === queuedTrigger.triggerIndex ? (
+                                                            <i className="fas fa-spinner fa-spin"></i>
+                                                          ) : (
+                                                            <X className="h-4 w-4" />
+                                                          )}
+                                                        </Button>
+                                                      </div>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                      {triggerInfo?.title || queuedTrigger.automationTrigger}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-100">
+                                                      <CalendarIcon className="h-4 w-4 text-blue-600" />
+                                                      <div className="flex-1">
+                                                        <p className="text-xs text-muted-foreground mb-0.5">Scheduled for:</p>
+                                                        <p className="text-sm font-semibold text-blue-700">
+                                                          {executionDate.toLocaleString('en-US', {
+                                                            year: 'numeric',
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit',
+                                                            timeZoneName: 'short',
+                                                          })}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
                                         </div>
                                       </div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap bg-blue-100 text-blue-800 border border-blue-200">
-                                          Scheduled
-                                        </span>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => handleToggleTrigger(queuedTrigger.actionId, queuedTrigger.isDisabled || false)}
-                                          disabled={disablingTrigger === queuedTrigger.actionId}
-                                          className="h-8 w-8"
-                                          title={queuedTrigger.isDisabled ? 'Enable trigger' : 'Disable trigger'}
-                                        >
-                                          {disablingTrigger === queuedTrigger.actionId ? (
-                                            <i className="fas fa-spinner fa-spin"></i>
-                                          ) : queuedTrigger.isDisabled ? (
-                                            <Power className="h-4 w-4" />
-                                          ) : (
-                                            <PowerOff className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => setTriggerToDelete(queuedTrigger.actionId)}
-                                          disabled={deletingTrigger === queuedTrigger.actionId}
-                                          className="h-8 w-8 text-destructive hover:text-destructive"
-                                          title="Delete trigger"
-                                        >
-                                          {deletingTrigger === queuedTrigger.actionId ? (
-                                            <i className="fas fa-spinner fa-spin"></i>
-                                          ) : (
-                                            <Trash2 className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => handleCancelQueuedTrigger(queuedTrigger.triggerIndex)}
-                                          disabled={cancellingQueuedTrigger === queuedTrigger.triggerIndex}
-                                          className="h-8 w-8 text-orange-600 hover:text-orange-700"
-                                          title="Cancel scheduled trigger"
-                                        >
-                                          {cancellingQueuedTrigger === queuedTrigger.triggerIndex ? (
-                                            <i className="fas fa-spinner fa-spin"></i>
-                                          ) : (
-                                            <X className="h-4 w-4" />
-                                          )}
-                                        </Button>
+                                    </AccordionContent>
+                                  </AccordionItem>
+                                </Accordion>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Sent Email Triggers - Separate Section */}
+                      {triggers.filter((t: any) => t.communicationType === 'EMAIL' && t.sentAt).length > 0 && (
+                        <div className="mt-6">
+                          <Accordion 
+                            type="single" 
+                            collapsible 
+                            value={sentEmailTriggersOpen ? "sent-email-triggers" : ""} 
+                            onValueChange={(value) => setSentEmailTriggersOpen(value === "sent-email-triggers")}
+                          >
+                            <AccordionItem value="sent-email-triggers">
+                              <AccordionTrigger>
+                                <h4 className="text-lg font-semibold text-primary">Sent Email Triggers</h4>
+                              </AccordionTrigger>
+                              <AccordionContent>
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="divide-y">
+                              {triggers
+                                .filter((t: any) => t.communicationType === 'EMAIL' && t.sentAt)
+                                .map((trigger: any, index: number) => {
+                                  const triggerInfo = getTriggerByKey(trigger.automationTrigger);
+                                  return (
+                                    <div key={trigger.actionId || index} className="p-4 hover:bg-muted/50 transition-colors">
+                                      <div className="space-y-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                              <h5 className="font-semibold text-sm">{trigger.name}</h5>
+                                              {trigger.isDisabled && (
+                                                <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                                  Disabled
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
+                                              trigger.status === 'sent' 
+                                                ? 'bg-green-100 text-green-800 border border-green-200' 
+                                                : trigger.status === 'bounced'
+                                                ? 'bg-red-100 text-red-800 border border-red-200'
+                                                : 'bg-gray-100 text-gray-800 border border-gray-200'
+                                            }`}>
+                                              {trigger.status || 'Pending'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                          {triggerInfo?.title || trigger.automationTrigger}
+                                        </p>
+                                        {trigger.emailSubject && (
+                                          <p className="text-xs font-medium text-foreground">
+                                            Subject: {trigger.emailSubject}
+                                          </p>
+                                        )}
+                                        {trigger.sentAt && (
+                                          <p className="text-xs text-muted-foreground">
+                                            Sent: {new Date(trigger.sentAt).toLocaleString('en-US', {
+                                              year: 'numeric',
+                                              month: 'short',
+                                              day: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                            })}
+                                          </p>
+                                        )}
                                       </div>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">
-                                      {triggerInfo?.title || queuedTrigger.automationTrigger}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground font-medium">
-                                      Scheduled for: {executionDate.toLocaleString('en-US', {
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        timeZoneName: 'short',
-                                      })}
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                  );
+                                })}
+                            </div>
+                          </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
                         </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+                      )}
             </div>
-          )}
+          </div>
           </>
         )}
       </div>

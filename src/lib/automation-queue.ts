@@ -132,25 +132,34 @@ export async function getQueuedTriggersForInspection(
   inspectionId: string
 ): Promise<QueuedTrigger[]> {
   const currentTimestamp = Date.now();
+  
+  // Ensure inspectionId is a string for consistent comparison
+  const inspectionIdStr = String(inspectionId);
+  
+  console.log(`[getQueuedTriggersForInspection] Fetching queued triggers for inspection: ${inspectionIdStr}`);
 
   // Get all members from the sorted set (we'll filter by inspectionId)
-  // Use a large range to get all members, then filter
+  // Use index-based retrieval (0 to -1 means all members)
   const allMembers = await redis.zrange<string[]>(
     TRIGGER_QUEUE_KEY,
     0,
-    -1,
-    { byScore: true }
+    -1
   );
 
+  console.log(`[getQueuedTriggersForInspection] Retrieved ${allMembers?.length || 0} total members from Redis`);
+
   if (!allMembers || allMembers.length === 0) {
+    console.log(`[getQueuedTriggersForInspection] No members found in queue`);
     return [];
   }
 
   // Filter members that match this inspectionId
   const matchingMembers = allMembers.filter((member) => {
     const [memberInspectionId] = member.split(':');
-    return memberInspectionId === inspectionId;
+    return memberInspectionId === inspectionIdStr;
   });
+
+  console.log(`[getQueuedTriggersForInspection] Found ${matchingMembers.length} matching members for inspection ${inspectionIdStr}`);
 
   if (matchingMembers.length === 0) {
     return [];
@@ -160,25 +169,35 @@ export async function getQueuedTriggersForInspection(
   const triggers: QueuedTrigger[] = [];
   for (const member of matchingMembers) {
     const dataKey = `${TRIGGER_DATA_PREFIX}${member}`;
-    const data = await redis.get<string | QueuedTrigger>(dataKey);
+    try {
+      const data = await redis.get<string | QueuedTrigger>(dataKey);
 
-    if (data) {
-      try {
-        // Handle both cases: data might be a string (needs parsing) or already an object
-        const trigger: QueuedTrigger = typeof data === 'string' 
-          ? JSON.parse(data) as QueuedTrigger
-          : data as QueuedTrigger;
-        
-        // Only include triggers that are in the future (not due yet)
-        if (trigger.executionTime > currentTimestamp) {
-          triggers.push(trigger);
+      if (data) {
+        try {
+          // Handle both cases: data might be a string (needs parsing) or already an object
+          const trigger: QueuedTrigger = typeof data === 'string' 
+            ? JSON.parse(data) as QueuedTrigger
+            : data as QueuedTrigger;
+          
+          // Only include triggers that are in the future (not due yet)
+          if (trigger.executionTime > currentTimestamp) {
+            triggers.push(trigger);
+            console.log(`[getQueuedTriggersForInspection] Added trigger for member ${member}, execution time: ${new Date(trigger.executionTime).toISOString()}`);
+          } else {
+            console.log(`[getQueuedTriggersForInspection] Skipped trigger for member ${member} (execution time in the past: ${new Date(trigger.executionTime).toISOString()})`);
+          }
+        } catch (parseError) {
+          console.error(`[getQueuedTriggersForInspection] Error parsing trigger data for ${member}:`, parseError);
         }
-      } catch (error) {
-        console.error(`Error parsing trigger data for ${member}:`, error);
+      } else {
+        console.warn(`[getQueuedTriggersForInspection] No data found for member ${member} at key ${dataKey}`);
       }
+    } catch (error) {
+      console.error(`[getQueuedTriggersForInspection] Error fetching data for member ${member}:`, error);
     }
   }
 
+  console.log(`[getQueuedTriggersForInspection] Returning ${triggers.length} queued triggers for inspection ${inspectionIdStr}`);
   return triggers;
 }
 
