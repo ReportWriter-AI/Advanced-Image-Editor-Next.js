@@ -190,6 +190,7 @@ export default function InspectionEditPage() {
   const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const editedValuesRef = useRef<Partial<Defect>>({});
   
   // Auto-save for inspection details
   const [detailsAutoSaving, setDetailsAutoSaving] = useState(false);
@@ -3103,7 +3104,9 @@ export default function InspectionEditPage() {
 
   const startEditing = (defect: Defect) => {
     setEditingId(defect._id);
-    setEditedValues({ ...defect });
+    const initialValues = { ...defect };
+    setEditedValues(initialValues);
+    editedValuesRef.current = initialValues;
     setLastSaved(null);
   };
 
@@ -3113,6 +3116,7 @@ export default function InspectionEditPage() {
     }
     setEditingId(null);
     setEditedValues({});
+    editedValuesRef.current = {};
     setLastSaved(null);
   };
 
@@ -3123,7 +3127,10 @@ export default function InspectionEditPage() {
         const num = parseFloat(value);
         parsed = isNaN(num) ? 0 : num;
       }
-      return { ...prev, [field]: parsed };
+      const updated = { ...prev, [field]: parsed };
+      // Sync ref immediately with the updated value
+      editedValuesRef.current = updated;
+      return updated;
     });
     
     triggerAutoSave();
@@ -3137,14 +3144,14 @@ export default function InspectionEditPage() {
     autoSaveTimerRef.current = setTimeout(() => {
       performAutoSave();
     }, 1000);
-  }, [editingId, editedValues, defects]);
+  }, [editingId, defects]);
 
   const performAutoSave = async () => {
     if (!editingId) return;
     const index = defects.findIndex(d => d._id === editingId);
     if (index === -1) return;
   
-    const updated: Defect = { ...defects[index], ...(editedValues as Defect) };
+    const updated: Defect = { ...defects[index], ...(editedValuesRef.current as Defect) };
   
     setAutoSaving(true);
     
@@ -3189,6 +3196,11 @@ export default function InspectionEditPage() {
       setAutoSaving(false);
     }
   };
+
+  // Keep ref in sync with editedValues state
+  useEffect(() => {
+    editedValuesRef.current = editedValues;
+  }, [editedValues]);
 
   useEffect(() => {
     return () => {
