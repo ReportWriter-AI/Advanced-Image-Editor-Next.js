@@ -3,26 +3,46 @@
 import { useSearchParams, useRouter } from 'next/navigation';
 import ImageEditor from '../../../../components/ImageEditor';
 import { useState, useRef, useEffect, Suspense } from 'react';
-import { useAnalysisStore } from '@/lib/store';
 import { toast } from 'sonner';
+import { useSpeechToText } from '@/src/lib/useSpeechToText';
 
 function ImageEditorPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const selectedInspectionId = searchParams.get('inspectionId') || '';
-  const preloadImageUrl = searchParams.get('imageUrl') || searchParams.get('src'); // Get existing image URL (support both 'imageUrl' and 'src')
-  const returnTo = searchParams.get('returnTo'); // Where to return after editing
-  const checklistId = searchParams.get('checklistId'); // For information block images
-  const mode = searchParams.get('mode'); // 'additional-location' for adding photos to existing defect, 'defect-main' for main defect image
-  const defectId = searchParams.get('defectId'); // Parent defect ID for additional photos
-  const editIndexParam = searchParams.get('index'); // Index when editing existing additional photo
+  const preloadImageUrl = searchParams.get('imageUrl') || searchParams.get('src');
+  const returnTo = searchParams.get('returnTo');
+  const checklistId = searchParams.get('checklistId');
+  const mode = searchParams.get('mode');
+  const defectId = searchParams.get('defectId');
+  const editIndexParam = searchParams.get('index');
   
-  // Check if this is additional location photo mode
   const isAdditionalLocationMode = mode === 'additional-location' && defectId;
   const isEditAdditionalMode = mode === 'edit-additional' && defectId && typeof editIndexParam === 'string';
-  const isDefectMainMode = mode === 'defect-main' && defectId; // Editing main defect image
+  const isDefectMainMode = mode === 'defect-main' && defectId;
   
   const [description, setDescription] = useState('');
+  
+  // Speech-to-text hook
+  const {
+    isRecording,
+    startRecording,
+    stopRecording,
+    error: speechError,
+  } = useSpeechToText(
+    (transcript: string) => {
+      setDescription((prev) => {
+        return prev ? `${prev} ${transcript}` : transcript;
+      });
+    }
+  );
+
+  useEffect(() => {
+    if (speechError) {
+      toast.error(speechError);
+    }
+  }, [speechError]);
+
   const [activeMode, setActiveMode] = useState<'none' | 'crop' | 'arrow' | 'circle' | 'square'>('none');
   const [hasCropFrame, setHasCropFrame] = useState(false);
   const [showDrawingDropdown, setShowDrawingDropdown] = useState(false);
@@ -38,7 +58,6 @@ function ImageEditorPageContent() {
   const [locationSearch2, setLocationSearch2] = useState('');
   const [selectedLocation2, setSelectedLocation2] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState('');
   const drawingDropdownRef = useRef<HTMLDivElement>(null);
   const circleDropdownRef = useRef<HTMLDivElement>(null);
   const squareDropdownRef = useRef<HTMLDivElement>(null);
@@ -47,41 +66,35 @@ function ImageEditorPageContent() {
   const locationDropdownRef2 = useRef<HTMLDivElement>(null);
   const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
   const [editedFile, setEditedFile] = useState<File | null>(null);
-  const [originalFile, setOriginalFile] = useState<File | null>(null); // Store original unannotated file for CREATE flow
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [selectedColor, setSelectedColor] = useState('#d63636'); // Default red color - shared across all tools
+  const [selectedColor, setSelectedColor] = useState('#d63636');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
-  const [isThreeSixty, setIsThreeSixty] = useState(false); // 360° photo flag
+  const [isThreeSixty, setIsThreeSixty] = useState(false);
   const [preloadedAnnotations, setPreloadedAnnotations] = useState<any[] | undefined>(undefined);
   const [currentAnnotations, setCurrentAnnotations] = useState<any[]>([]);
-  
-  // Inspection location data for classify API
+
   const [inspectionState, setInspectionState] = useState<string>('');
   const [inspectionCity, setInspectionCity] = useState<string>('');
   const [inspectionZipCode, setInspectionZipCode] = useState<string>('');
 
-  // Custom items from localStorage - TEMPLATE (all inspections)
   const [customLocations, setCustomLocations] = useState<string[]>([]);
   const [customSections, setCustomSections] = useState<string[]>([]);
   const [customSubsections, setCustomSubsections] = useState<{ [key: string]: string[] }>({});
 
-  // Custom items from localStorage - INSPECTION-SPECIFIC (this inspection only)
   const [inspectionCustomLocations, setInspectionCustomLocations] = useState<string[]>([]);
   const [inspectionCustomSections, setInspectionCustomSections] = useState<string[]>([]);
   const [inspectionCustomSubsections, setInspectionCustomSubsections] = useState<{ [key: string]: string[] }>({});
 
-  // Add new item states
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [showAddSection, setShowAddSection] = useState(false);
   const [showAddSubSection, setShowAddSubSection] = useState(false);
   const [newLocationInput, setNewLocationInput] = useState('');
   const [newSectionInput, setNewSectionInput] = useState('');
   const [newSubSectionInput, setNewSubSectionInput] = useState('');
-
-  const { updateAnalysisData } = useAnalysisStore();
 
   const location = [
     'Addition', 'All Locations', 'Apartment', 'Attic', 'Back Porch', 'Back Room', 'Balcony',
@@ -265,15 +278,9 @@ function ImageEditorPageContent() {
               setInspectionState(inspection.location.state || '');
               setInspectionCity(inspection.location.city || '');
               setInspectionZipCode(inspection.location.zip || '');
-              console.log('✅ Inspection location loaded:', {
-                state: inspection.location.state,
-                city: inspection.location.city,
-                zip: inspection.location.zip
-              });
             }
           }
         } catch (error) {
-          console.error('Error fetching inspection:', error);
         }
       };
       fetchInspection();
@@ -290,11 +297,8 @@ function ImageEditorPageContent() {
             const defects = await response.json();
             const parentDefect = defects.find((d: any) => d._id === defectId);
             if (parentDefect) {
-              // Auto-fill section and subsection from parent defect
               setSelectedLocation(parentDefect.section || '');
               setSelectedSubLocation(parentDefect.subsection || '');
-              console.log('✅ Parent defect loaded:', parentDefect.section, '-', parentDefect.subsection);
-              // For edit mode, also prefill the location field with the photo's location
               if (isEditAdditionalMode && Array.isArray(parentDefect.additional_images)) {
                 const idx = parseInt(editIndexParam as string, 10);
                 const target = parentDefect.additional_images[idx];
@@ -305,7 +309,6 @@ function ImageEditorPageContent() {
             }
           }
         } catch (error) {
-          console.error('Error fetching parent defect:', error);
         }
       };
       fetchParentDefect();
@@ -345,45 +348,32 @@ function ImageEditorPageContent() {
   // Load existing image from URL if provided
   useEffect(() => {
     if (preloadImageUrl) {
-      console.log('🖼️ Loading existing image from URL:', preloadImageUrl);
-      
-  // Use the robust proxy-image API (has R2 SDK fallback) to avoid CORS and TLS hiccups
-  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(preloadImageUrl)}`;
+    
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(preloadImageUrl)}`;
       
       fetch(proxyUrl)
         .then(res => {
-          console.log('Fetch response status:', res.status);
           if (!res.ok) {
             throw new Error(`Failed to fetch image: ${res.status} ${res.statusText}`);
           }
           return res.blob();
         })
         .then(blob => {
-          console.log('✅ Image fetched as blob, size:', blob.size, 'type:', blob.type);
-          
-          // Create object URL from blob
           const objectUrl = URL.createObjectURL(blob);
-          console.log('Created object URL:', objectUrl);
-          
-          // Create image element
+    
           const img = new Image();
           img.onload = () => {
-            console.log('✅ Image loaded successfully, dimensions:', img.width, 'x', img.height);
             setCurrentImage(img);
             
-            // Convert blob to File object for the editor
             const file = new File([blob], 'image.jpg', { type: blob.type || 'image/jpeg' });
             setEditedFile(file);
-            console.log('✅ Image converted to File object');
           };
           img.onerror = (err) => {
-            console.error('❌ Error loading image from object URL:', err);
             alert('Failed to load image from object URL. Please try again.');
           };
           img.src = objectUrl;
         })
         .catch(err => {
-          console.error('❌ Error fetching image:', err);
           alert(`Failed to load image: ${err.message}. Please try again.`);
         });
     }
@@ -392,24 +382,20 @@ function ImageEditorPageContent() {
   // Load annotations from localStorage for defect-main mode
   useEffect(() => {
     if (isDefectMainMode) {
-      console.log('📥 Defect-main mode detected, checking for annotations...');
       const annotationsJson = localStorage.getItem('defectAnnotations');
       if (annotationsJson) {
         try {
           const annotations = JSON.parse(annotationsJson);
-          console.log('✅ Loaded annotations from localStorage:', annotations.length);
           setPreloadedAnnotations(annotations);
         } catch (e) {
-          console.error('❌ Failed to parse annotations from localStorage:', e);
+          console.log(e);
         }
       } else {
-        console.log('ℹ️ No annotations found in localStorage');
         setPreloadedAnnotations([]);
       }
     }
   }, [isDefectMainMode]);
 
-  // Load custom items from localStorage on mount
   useEffect(() => {
     try {
       // Load TEMPLATE items (global - all inspections)
@@ -436,10 +422,11 @@ function ImageEditorPageContent() {
         if (inspSub) setInspectionCustomSubsections(JSON.parse(inspSub));
       }
     } catch (e) {
-      console.error('Failed to load custom items from localStorage:', e);
+      console.log(e);
     }
   }, [selectedInspectionId]);
 
+  // actions for editing images
   const handleActionClick = (mode: 'none' | 'crop' | 'arrow' | 'circle' | 'square') => {
     if (mode === 'arrow') {
       setShowDrawingDropdown(!showDrawingDropdown);
@@ -465,15 +452,11 @@ function ImageEditorPageContent() {
   };
 
   const handleUndo = () => {
-    console.log('Undo clicked');
-    // Dispatch custom event for ImageEditor to handle undo
     const event = new CustomEvent('undoAction');
     window.dispatchEvent(event);
   };
 
   const handleRedo = () => {
-    console.log('Redo clicked');
-    // Dispatch custom event for ImageEditor to handle redo
     const event = new CustomEvent('redoAction');
     window.dispatchEvent(event);
   };
@@ -481,8 +464,6 @@ function ImageEditorPageContent() {
   
 
   const handleRotate = () => {
-    console.log('Rotate clicked');
-    // Dispatch custom event for ImageEditor to handle rotation
     const event = new CustomEvent('rotateImage');
     window.dispatchEvent(event);
   };
@@ -499,12 +480,10 @@ function ImageEditorPageContent() {
     const newItem = newLocationInput.trim();
 
     if (isTemplate) {
-      // Save to Template (all inspections)
       const updated = [...customLocations, newItem];
       setCustomLocations(updated);
       localStorage.setItem('customLocations', JSON.stringify(updated));
     } else {
-      // Add to This Inspection Only
       const updated = [...inspectionCustomLocations, newItem];
       setInspectionCustomLocations(updated);
       localStorage.setItem(`inspection_custom_locations_${selectedInspectionId}`, JSON.stringify(updated));
@@ -527,12 +506,10 @@ function ImageEditorPageContent() {
       const updated = [...customSections, newItem];
       setCustomSections(updated);
       localStorage.setItem('customSections', JSON.stringify(updated));
-      // Initialize empty subsection array for new section
       const updatedSubsections = { ...customSubsections, [newItem]: [] };
       setCustomSubsections(updatedSubsections);
       localStorage.setItem('customSubsections', JSON.stringify(updatedSubsections));
     } else {
-      // Add to This Inspection Only
       const updated = [...inspectionCustomSections, newItem];
       setInspectionCustomSections(updated);
       localStorage.setItem(`inspection_custom_sections_${selectedInspectionId}`, JSON.stringify(updated));
@@ -634,8 +611,6 @@ function ImageEditorPageContent() {
   const handleSubmit = async () => {
     // Special handling for additional location photos
     if (isAdditionalLocationMode && defectId) {
-      console.log('📤 Adding location photo to existing defect:', defectId);
-      
       if (!editedFile) {
         alert('Please upload and edit an image before submitting.');
         return;
@@ -647,7 +622,6 @@ function ImageEditorPageContent() {
       }
 
       setIsSubmitting(true);
-      setSubmitStatus('Uploading photo...');
 
       try {
         // Upload the annotated image to R2 via presigned URL (direct, no Vercel bandwidth)
@@ -669,7 +643,6 @@ function ImageEditorPageContent() {
           throw new Error(`Failed to upload image to R2: ${putRes.status} ${t}`);
         }
         const uploadData = { url: publicUrl };
-        console.log('✅ Image uploaded (direct):', uploadData.url);
 
         // Get current defect data to update additional_images
         const defectRes = await fetch(`/api/defects/${selectedInspectionId}`);
@@ -720,10 +693,9 @@ function ImageEditorPageContent() {
           };
           localStorage.setItem('pendingAdditionalLocationPhoto', JSON.stringify(notice));
         } catch (e) {
-          console.warn('Unable to write pendingAdditionalLocationPhoto to localStorage:', e);
+          // Unable to write to localStorage
         }
 
-        setSubmitStatus('Done! Closing...');
         
         // Close the window and return to inspection page
         setTimeout(() => {
@@ -737,11 +709,9 @@ function ImageEditorPageContent() {
         }, 500);
 
       } catch (error) {
-        console.error('❌ Error adding location photo:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
         alert(`Failed to add location photo: ${errorMessage}`);
         setIsSubmitting(false);
-        setSubmitStatus('');
       }
       
       return; // Exit early for additional location flow
@@ -749,15 +719,12 @@ function ImageEditorPageContent() {
 
     // Special handling for editing main defect image
     if (isDefectMainMode && defectId) {
-      console.log('✏️ Editing main defect image:', defectId);
-
       if (!editedFile) {
         alert('Please upload and edit an image before submitting.');
         return;
       }
 
       setIsSubmitting(true);
-      setSubmitStatus('Uploading edited image...');
 
       try {
         // Upload the annotated image to R2 via presigned URL
@@ -779,7 +746,6 @@ function ImageEditorPageContent() {
           throw new Error(`Failed to upload image to R2: ${putRes.status} ${t}`);
         }
         const uploadData = { url: publicUrl };
-        console.log('✅ Main image uploaded (direct):', uploadData.url);
 
         // Get current defect data
         const defectRes = await fetch(`/api/defects/${selectedInspectionId}`);
@@ -795,12 +761,8 @@ function ImageEditorPageContent() {
         }
 
         // Update defect with new main image AND annotations
-        console.log('💾 Saving annotations:', currentAnnotations.length);
-        console.log('📝 Full annotations data:', JSON.stringify(currentAnnotations, null, 2));
-
         // If there's an original image in localStorage, save it too
         const originalImageUrl = localStorage.getItem('defectOriginalImage');
-        console.log('🖼️ Original image URL:', originalImageUrl);
 
         const updatePayload = {
           inspection_id: currentDefect.inspection_id,
@@ -808,8 +770,6 @@ function ImageEditorPageContent() {
           annotations: currentAnnotations,
           originalImage: originalImageUrl || currentDefect.originalImage || uploadData.url
         };
-
-        console.log('📦 Update payload:', JSON.stringify(updatePayload, null, 2));
 
         const updateRes = await fetch(`/api/defects/${defectId}`, {
           method: 'PATCH',
@@ -819,11 +779,8 @@ function ImageEditorPageContent() {
 
         if (!updateRes.ok) {
           const errorText = await updateRes.text();
-          console.error('❌ Update failed:', errorText);
           throw new Error('Failed to update defect');
         }
-
-        console.log('✅ Defect updated successfully');
 
         // Notify parent window via localStorage so the Manage Defects modal can refresh instantly
         try {
@@ -835,10 +792,8 @@ function ImageEditorPageContent() {
           };
           localStorage.setItem('pendingDefectMainImageUpdate', JSON.stringify(notice));
         } catch (e) {
-          console.warn('Unable to write pendingDefectMainImageUpdate to localStorage:', e);
+          // Unable to write to localStorage
         }
-
-        setSubmitStatus('Done! Closing...');
 
         // Close the window and return to inspection page
         setTimeout(() => {
@@ -852,11 +807,9 @@ function ImageEditorPageContent() {
         }, 500);
 
       } catch (error) {
-        console.error('❌ Error updating main defect image:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
         alert(`Failed to update defect image: ${errorMessage}`);
         setIsSubmitting(false);
-        setSubmitStatus('');
       }
 
       return; // Exit early for main defect image flow
@@ -864,15 +817,12 @@ function ImageEditorPageContent() {
 
     // Special handling for editing an existing additional location photo
     if (isEditAdditionalMode && defectId) {
-      console.log('✏️ Editing existing additional location photo:', defectId, 'index:', editIndexParam);
-
       if (!editedFile) {
         alert('Please upload and edit an image before submitting.');
         return;
       }
 
       setIsSubmitting(true);
-      setSubmitStatus('Uploading edited photo...');
 
       try {
         // Upload the annotated image to R2 via presigned URL
@@ -894,7 +844,6 @@ function ImageEditorPageContent() {
           throw new Error(`Failed to upload image to R2: ${putRes.status} ${t}`);
         }
         const uploadData = { url: publicUrl };
-        console.log('✅ Edited image uploaded (direct):', uploadData.url);
 
         // Fetch current defect to get existing additional_images
         const defectRes = await fetch(`/api/defects/${selectedInspectionId}`);
@@ -937,10 +886,9 @@ function ImageEditorPageContent() {
           };
           localStorage.setItem('pendingEditedAdditionalLocationPhoto', JSON.stringify(notice));
         } catch (e) {
-          console.warn('Unable to write pendingEditedAdditionalLocationPhoto to localStorage:', e);
+          // Unable to write to localStorage
         }
 
-        setSubmitStatus('Done! Closing...');
         setTimeout(() => {
           window.close();
           setTimeout(() => {
@@ -951,11 +899,9 @@ function ImageEditorPageContent() {
         }, 500);
 
       } catch (error) {
-        console.error('❌ Error editing location photo:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
         alert(`Failed to save edited photo: ${errorMessage}`);
         setIsSubmitting(false);
-        setSubmitStatus('');
       }
 
       return; // Exit early for edit-additional flow
@@ -963,24 +909,17 @@ function ImageEditorPageContent() {
 
     // Special handling for information block annotation
     if (returnTo && checklistId) {
-      console.log('📤 Returning annotated image to information block');
-      console.log('📋 Current editedFile state:', editedFile ? `${editedFile.name} (${editedFile.size} bytes)` : 'NULL');
-      
       if (!editedFile) {
-        console.error('❌ No edited file available! User must make changes before clicking Done.');
         alert('Please make some changes to the image before saving (draw arrows, circles, etc.).');
         return;
       }
 
       setIsSubmitting(true);
-      setSubmitStatus('Saving annotated image...');
 
       try {
         // Upload the annotated image to R2
         const formData = new FormData();
         formData.append('file', editedFile);
-
-        console.log('📤 Uploading annotated image:', editedFile.name, editedFile.size, 'bytes');
 
         const presignedRes = await fetch(
           `/api/r2api?action=presigned&fileName=${encodeURIComponent(editedFile.name)}&contentType=${encodeURIComponent(editedFile.type)}`
@@ -1000,7 +939,6 @@ function ImageEditorPageContent() {
           throw new Error(`Failed to upload annotated image to R2: ${putRes.status} ${t}`);
         }
         const uploadData = { url: publicUrl };
-        console.log('✅ Annotated image uploaded (direct):', uploadData.url);
 
         // Store the annotated image URL in localStorage for the modal to pick up
         // Include inspectionId so main page can reopen the correct modal
@@ -1017,13 +955,10 @@ function ImageEditorPageContent() {
         
         try {
           localStorage.setItem('pendingAnnotation', JSON.stringify(annotationData));
-          console.log('✅ Saved annotation data to localStorage');
         } catch (storageError) {
-          console.error('❌ Failed to save to localStorage:', storageError);
           // Continue anyway - the image was uploaded successfully
         }
 
-        setSubmitStatus('Done! Returning...');
         
         // Navigate back to the inspection page
         // Use a full page reload to ensure the annotation detection works properly
@@ -1036,7 +971,6 @@ function ImageEditorPageContent() {
             // This ensures the window focus event fires and polling detects the annotation
             setTimeout(() => {
               if (!window.closed) {
-                console.log('🔙 Reloading page to trigger annotation detection');
                 // Use location.href for full page reload which guarantees:
                 // 1. Window focus event fires
                 // 2. Polling mechanism starts fresh
@@ -1045,18 +979,15 @@ function ImageEditorPageContent() {
               }
             }, 100);
           } catch (error) {
-            console.error('❌ Navigation error:', error);
             // Fallback: reload the page
             window.location.href = returnTo || window.location.origin + '/';
           }
         }, 500);
 
       } catch (error) {
-        console.error('❌ Error saving annotated image:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
         alert(`Failed to save annotated image: ${errorMessage}\n\nPlease try again or check your internet connection.`);
         setIsSubmitting(false);
-        setSubmitStatus('');
       }
       
       return; // Exit early for information block flow
@@ -1084,7 +1015,6 @@ function ImageEditorPageContent() {
     const selectedLocationValue = selectedLocation2;
   
     setIsSubmitting(true);
-    setSubmitStatus('Processing...');
   
     let imageDataUrl: string;
     imageDataUrl = ''
@@ -1097,7 +1027,6 @@ function ImageEditorPageContent() {
         });
       }
     } catch (conversionError) {
-      console.error('Error converting image to data URL:', conversionError);
       imageDataUrl = '';
     }
   
@@ -1111,7 +1040,6 @@ function ImageEditorPageContent() {
       // Upload original image (without annotations) if available and annotations exist
       let originalImageUrl: string | null = null;
       if (originalFile && currentAnnotations.length > 0) {
-        console.log('📤 Uploading original (unannotated) image for CREATE flow...');
         const presignedOrigRes = await fetch(
           `/api/r2api?action=presigned&fileName=original-${encodeURIComponent(originalFile.name)}&contentType=${encodeURIComponent(originalFile.type)}`
         );
@@ -1130,7 +1058,6 @@ function ImageEditorPageContent() {
           throw new Error(`Failed to upload original image to R2: ${putOrig.status} ${t}`);
         }
         originalImageUrl = origPublicUrl;
-        console.log('✅ Original image uploaded:', originalImageUrl);
       }
 
       // Get presigned URL for annotated image
@@ -1152,7 +1079,6 @@ function ImageEditorPageContent() {
         const t = await putImg.text();
         throw new Error(`Failed to upload image to R2: ${putImg.status} ${t}`);
       }
-      console.log('✅ Annotated image uploaded:', imagePublicUrl);
 
       // Optional video upload via presigned URL
       let videoPublicUrl: string | null = null;
@@ -1213,10 +1139,6 @@ function ImageEditorPageContent() {
       }
 
       // 2) Send only JSON metadata and URLs to the analysis endpoint
-      console.log('🚀 Sending to analyze-image API...');
-      console.log('📝 Sending annotations:', currentAnnotations.length);
-      console.log('🖼️ Original image URL:', originalImageUrl || imagePublicUrl);
-      console.log('🎨 Annotated image URL:', imagePublicUrl);
       const response = await fetch('/api/llm/analyze-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1240,17 +1162,13 @@ function ImageEditorPageContent() {
         }),
       });
       
-      console.log('📡 Response status:', response.status);
-      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ API Error:', errorText);
         alert(`Analysis request failed: ${errorText}`);
         return; // ❌ stop here
       }
       
       const result = await response.json();
-      console.log('✅ API response:', result);
       
       // Show success toast
       toast.success('You can see the details in the report once it is ready');
@@ -1258,25 +1176,19 @@ function ImageEditorPageContent() {
       // Check if the analysis was accepted and started
       if (response.status === 202) {
         // Analysis is processing in the background
-        console.log('✅ Analysis started with ID:', result.analysisId);
-        console.log('⏳ Waiting 3 seconds before redirect to see defect appear...');
-        
         // Wait 3 seconds to let QStash process
         await new Promise(resolve => setTimeout(resolve, 3000));
         
       } else if (!result.analysisId) {
-        console.error('❌ No analysisId in response!', result);
         alert('Analysis did not start correctly. Please try again.');
         return; // ❌ stop here
       }
   
-
   
+
   // ✅ Navigate only if job started successfully
-      console.log('🔄 Redirecting to image editor...');
       window.location.href = `/image-editor/?inspectionId=${selectedInspectionId}`;
     } catch (error: any) {
-      console.error('❌ Submission error:', error);
       alert('Unexpected error occurred while submitting. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -1299,43 +1211,13 @@ function ImageEditorPageContent() {
     window.dispatchEvent(arrowEvent);
     window.dispatchEvent(circleEvent);
     window.dispatchEvent(squareEvent);
-    
-    console.log('Color synchronized across all tools:', color);
   };
 
   if (isSubmitting) {
     return (
-      <div style={{ position: "relative", display: "inline-block" }}>
-          <div
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              width: "100%",
-              height: "100%",
-              background: "rgba(255,255,255,0.7)",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              zIndex: 999,
-            }}
-          >
-            <div
-              style={{
-                width: "48px",
-                height: "48px",
-                border: "5px solid #e5e7eb",
-                borderTop: "5px solid #8230c9",
-                borderRadius: "50%",
-                animation: "spin 0.8s linear infinite",
-              }}
-            />
-            {/* Inline keyframes */}
-            <style>{`
-              @keyframes spin {
-                to { transform: rotate(360deg); }
-              }
-            `}</style>
+      <div className="relative inline-block">
+          <div className="fixed top-0 left-0 w-full h-full bg-white/70 flex justify-center items-center z-[999]">
+            <div className="w-12 h-12 border-[5px] border-gray-200 border-t-[#8230c9] rounded-full animate-spin" />
           </div>
       </div>
     );
@@ -1343,40 +1225,6 @@ function ImageEditorPageContent() {
 
   return (
     <div className="app-container">
-      <style jsx>{`
-        .location-btn, .main-location-btn, .section-btn, .sub-location-btn, .location2-btn {
-          background: linear-gradient(135deg, rgb(75, 108, 183) 0%, rgb(106, 17, 203) 100%) !important;
-          color: white !important;
-          border: none !important;
-          padding: 18px 24px !important;
-          border-radius: 12px !important;
-          font-size: 16px !important;
-          font-weight: 600 !important;
-          cursor: pointer !important;
-          transition: all 0.3s ease !important;
-          box-shadow: 0 4px 20px rgba(75, 108, 183, 0.3) !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: space-between !important;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-          letter-spacing: 0.3px !important;
-          border: 1px solid rgba(255, 255, 255, 0.1) !important;
-          width: 300px !important;
-          height: 60px !important;
-          white-space: nowrap !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-        }
-        .location-btn:hover, .main-location-btn:hover, .section-btn:hover, .sub-location-btn:hover, .location2-btn:hover {
-          transform: translateY(-3px) !important;
-          box-shadow: 0 8px 30px rgba(75, 108, 183, 0.4) !important;
-          background: linear-gradient(135deg, rgb(106, 17, 203) 0%, rgb(75, 108, 183) 100%) !important;
-        }
-        .location-btn:active, .main-location-btn:active, .section-btn:active, .sub-location-btn:active, .location2-btn:active {
-          transform: translateY(-1px) !important;
-          box-shadow: 0 4px 20px rgba(75, 108, 183, 0.3) !important;
-        }
-      `}</style>
       
       {/* First Heading */}
       {/* <div className="heading-section">
@@ -1397,27 +1245,18 @@ function ImageEditorPageContent() {
         {/* Done button for annotation mode */}
         {returnTo && checklistId && (
           <button 
-            className="action-btn done-btn"
+            className="action-btn done-btn bg-emerald-600 text-white px-5 py-2 font-semibold text-sm ml-auto mr-2.5"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            style={{
-              backgroundColor: '#059669',
-              color: 'white',
-              padding: '8px 20px',
-              fontWeight: '600',
-              fontSize: '14px',
-              marginLeft: 'auto',
-              marginRight: '10px'
-            }}
           >
             {isSubmitting ? (
               <>
-                <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                <i className="fas fa-spinner fa-spin mr-2"></i>
                 Saving...
               </>
             ) : (
               <>
-                <i className="fas fa-check" style={{ marginRight: '8px' }}></i>
+                <i className="fas fa-check mr-2"></i>
                 Done
               </>
             )}
@@ -1590,61 +1429,55 @@ function ImageEditorPageContent() {
         />
       </div>
 
-      {/* Second Heading */}
-      {/* <div className="heading-section">
-        <div className="heading-content">
-          <i className="fas fa-edit heading-icon"></i>
-          <h2>Image Description</h2>
-          <p>Add details about your edited image</p>
-        </div>
-      </div> */}
+
 
        {/* Description Box - Only show for defect workflow (but not in defect-main annotate mode) */}
        {!returnTo && !checklistId && !isDefectMainMode && (
          <div className="description-box">
-           <textarea
-             placeholder="Describe your edited image here..."
-             value={description}
-             onChange={(e) => setDescription(e.target.value)}
-           />
+           <div className="relative">
+             <textarea
+               placeholder="Describe your edited image here..."
+               value={description}
+               onChange={(e) => setDescription(e.target.value)}
+               className="pr-12"
+             />
+             <button
+               type="button"
+               onClick={() => {
+                 if (isRecording) {
+                   stopRecording();
+                   toast.success('Recording stopped');
+                 } else {
+                   startRecording();
+                   toast.info('Recording started... Speak now');
+                 }
+               }}
+               className={`absolute right-3 top-3 p-2 rounded-full transition-all duration-300 ${
+                 isRecording
+                   ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/50'
+                   : 'bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] text-white hover:from-[rgb(106,17,203)] hover:to-[rgb(75,108,183)] shadow-md'
+               }`}
+               title={isRecording ? 'Stop recording' : 'Start voice recording'}
+               disabled={!!speechError}
+             >
+               <i className={`fas ${isRecording ? 'fa-stop' : 'fa-microphone'}`}></i>
+             </button>
+           </div>
 
            {/* 360° Photo Checkbox */}
-           <div style={{
-             display: 'flex',
-             alignItems: 'center',
-             gap: '10px',
-             marginTop: '12px',
-             padding: '12px',
-             background: 'linear-gradient(135deg, rgba(75, 108, 183, 0.1) 0%, rgba(106, 17, 203, 0.1) 100%)',
-             borderRadius: '8px',
-             border: '1px solid rgba(75, 108, 183, 0.2)'
-           }}>
+           <div className="flex items-center gap-2.5 mt-3 p-3 bg-gradient-to-br from-[rgba(75,108,183,0.1)] to-[rgba(106,17,203,0.1)] rounded-lg border border-[rgba(75,108,183,0.2)]">
              <input
                type="checkbox"
                id="threeSixtyCheckbox"
                checked={isThreeSixty}
                onChange={(e) => setIsThreeSixty(e.target.checked)}
-               style={{
-                 width: '18px',
-                 height: '18px',
-                 cursor: 'pointer',
-                 accentColor: '#4b6cb7'
-               }}
+               className="w-[18px] h-[18px] cursor-pointer accent-[#4b6cb7]"
              />
              <label
                htmlFor="threeSixtyCheckbox"
-               style={{
-                 fontSize: '15px',
-                 fontWeight: '500',
-                 color: '#2d3748',
-                 cursor: 'pointer',
-                 userSelect: 'none',
-                 display: 'flex',
-                 alignItems: 'center',
-                 gap: '6px'
-               }}
+               className="text-[15px] font-medium text-slate-700 cursor-pointer select-none flex items-center gap-1.5"
              >
-               <i className="fas fa-sync-alt" style={{ color: '#4b6cb7' }}></i>
+               <i className="fas fa-sync-alt text-[#4b6cb7]"></i>
                This is a 360° photo
              </label>
            </div>
@@ -1660,30 +1493,8 @@ function ImageEditorPageContent() {
           {!isDefectMainMode && (
           <div className="location-button-container">
             <button
-              className="location-btn location2-btn"
+              className="location-btn location2-btn bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] text-white px-6 py-[18px] rounded-xl text-base font-semibold cursor-pointer transition-all duration-300 shadow-[0_4px_20px_rgba(75,108,183,0.3)] flex items-center justify-between font-['Inter',sans-serif] tracking-[0.3px] border border-white/10 w-[300px] h-[60px] whitespace-nowrap overflow-hidden text-ellipsis hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(75,108,183,0.4)] hover:bg-gradient-to-br hover:from-[rgb(106,17,203)] hover:to-[rgb(75,108,183)] active:-translate-y-px active:shadow-[0_4px_20px_rgba(75,108,183,0.3)]"
               onClick={() => setShowLocationDropdown2(!showLocationDropdown2)}
-              style={{
-                background: 'linear-gradient(135deg, rgb(75, 108, 183) 0%, rgb(106, 17, 203) 100%) !important',
-                color: 'white !important',
-                padding: '18px 24px !important',
-                borderRadius: '12px !important',
-                fontSize: '16px !important',
-                fontWeight: '600 !important',
-                cursor: 'pointer !important',
-                transition: 'all 0.3s ease !important',
-                boxShadow: '0 4px 20px rgba(75, 108, 183, 0.3) !important',
-                display: 'flex !important',
-                alignItems: 'center !important',
-                justifyContent: 'space-between !important',
-                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif !important',
-                letterSpacing: '0.3px !important',
-                border: '1px solid rgba(255, 255, 255, 0.1) !important',
-                width: '300px !important',
-                height: '60px !important',
-                whiteSpace: 'nowrap !important',
-                overflow: 'hidden !important',
-                textOverflow: 'ellipsis !important'
-              }}
             >
               <div className="btn-content">
                 <i className="fas fa-map-marker-alt"></i>
@@ -1707,13 +1518,8 @@ function ImageEditorPageContent() {
                    {/* Add New Location button */}
                    {!showAddLocation && (
                      <div
-                       className="location-option add-new-option"
+                       className="location-option add-new-option border-b border-gray-200 text-[#6a11cb] font-semibold"
                        onClick={() => setShowAddLocation(true)}
-                       style={{
-                         borderBottom: '1px solid #e5e7eb',
-                         color: '#6a11cb',
-                         fontWeight: '600'
-                       }}
                      >
                        <i className="fas fa-plus-circle"></i>
                        <span>Add New Location</span>
@@ -1722,7 +1528,7 @@ function ImageEditorPageContent() {
 
                    {/* Inline input for adding new location */}
                    {showAddLocation && (
-                     <div className="add-new-input-container" style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                     <div className="add-new-input-container p-2 border-b border-gray-200">
                        <input
                          type="text"
                          placeholder="Enter new location..."
@@ -1736,46 +1542,19 @@ function ImageEditorPageContent() {
                            }
                          }}
                          autoFocus
-                         className="location-search-input"
-                         style={{ marginBottom: '8px' }}
+                         className="location-search-input mb-2"
                        />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <div className="flex flex-col gap-1.5">
                         <button
                           onClick={() => handleAddLocation(false)}
-                          style={{
-                            width: '100%',
-                            padding: '5px 8px',
-                            background: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            lineHeight: 1.25,
-                            textAlign: 'center',
-                            whiteSpace: 'normal'
-                          }}
+                          className="w-full py-1.5 px-2 bg-blue-500 text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
                           title="Add only to this inspection"
                         >
                           Add To This Inspection
                         </button>
                         <button
                           onClick={() => handleAddLocation(true)}
-                          style={{
-                            width: '100%',
-                            padding: '5px 8px',
-                            background: '#6a11cb',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            lineHeight: 1.25,
-                            textAlign: 'center',
-                            whiteSpace: 'normal'
-                          }}
+                          className="w-full py-1.5 px-2 bg-[#6a11cb] text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
                           title="Save to template (all inspections)"
                         >
                           Save to Template
@@ -1785,21 +1564,11 @@ function ImageEditorPageContent() {
                             setShowAddLocation(false);
                             setNewLocationInput('');
                           }}
-                          style={{
-                            width: '100%',
-                            padding: '4px 8px',
-                            background: '#e5e7eb',
-                            color: '#374151',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 500
-                          }}
+                          className="w-full py-1 px-2 bg-gray-200 text-gray-700 border-none rounded cursor-pointer text-[10px] font-medium"
                         >
                           Cancel
                         </button>
-                        <div style={{ fontSize: '9px', color: '#6b7280', padding: '2px 0', lineHeight: '1.2' }}>
+                        <div className="text-[9px] text-gray-500 py-0.5 leading-tight">
                           💡 Add = only this inspection • Save = all inspections
                         </div>
                       </div>
@@ -1813,11 +1582,10 @@ function ImageEditorPageContent() {
                      return (
                        <div
                          key={locationItem}
-                         className={`location-option ${selectedLocation2 === locationItem ? 'selected' : ''}`}
-                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                         className={`location-option ${selectedLocation2 === locationItem ? 'selected' : ''} flex items-center justify-between`}
                        >
                          <div
-                           style={{ flex: 1, display: 'flex', alignItems: 'center' }}
+                           className="flex-1 flex items-center"
                            onClick={() => {
                              setSelectedLocation2(locationItem);
                              setShowLocationDropdown2(false);
@@ -1827,25 +1595,19 @@ function ImageEditorPageContent() {
                            <i className="fas fa-map-marker-alt"></i>
                            <span>{locationItem}</span>
                            {isInspectionCustom && (
-                             <span style={{ fontSize: '10px', marginLeft: '6px', color: '#3b82f6', fontWeight: '600' }}>
+                             <span className="text-[10px] ml-1.5 text-blue-500 font-semibold">
                                (This Inspection)
                              </span>
                            )}
                          </div>
                          {isCustom && (
                            <i
-                             className="fas fa-trash-alt"
+                             className="fas fa-trash-alt text-red-500 cursor-pointer py-1 px-2 text-sm"
                              onClick={(e) => {
                                e.stopPropagation();
                                if (confirm(`Delete "${locationItem}"?`)) {
                                  handleDeleteLocation(locationItem, isTemplateCustom);
                                }
-                             }}
-                             style={{
-                               color: '#ef4444',
-                               cursor: 'pointer',
-                               padding: '4px 8px',
-                               fontSize: '14px'
                              }}
                              title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
                            />
@@ -1865,30 +1627,8 @@ function ImageEditorPageContent() {
           {/* Section Button with Dropdown */}
           <div className="location-button-container">
             <button 
-              className="location-btn section-btn"
+              className="location-btn section-btn bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] text-white px-6 py-[18px] rounded-xl text-base font-semibold cursor-pointer transition-all duration-300 shadow-[0_4px_20px_rgba(75,108,183,0.3)] flex items-center justify-between font-['Inter',sans-serif] tracking-[0.3px] border border-white/10 w-[300px] h-[60px] whitespace-nowrap overflow-hidden text-ellipsis hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(75,108,183,0.4)] hover:bg-gradient-to-br hover:from-[rgb(106,17,203)] hover:to-[rgb(75,108,183)] active:-translate-y-px active:shadow-[0_4px_20px_rgba(75,108,183,0.3)]"
               onClick={() => setShowLocationDropdown(!showLocationDropdown)}
-              style={{
-                background: 'linear-gradient(135deg, rgb(75, 108, 183) 0%, rgb(106, 17, 203) 100%) !important',
-                color: 'white !important',
-                padding: '18px 24px !important',
-                borderRadius: '12px !important',
-                fontSize: '16px !important',
-                fontWeight: '600 !important',
-                cursor: 'pointer !important',
-                transition: 'all 0.3s ease !important',
-                boxShadow: '0 4px 20px rgba(75, 108, 183, 0.3) !important',
-                display: 'flex !important',
-                alignItems: 'center !important',
-                justifyContent: 'space-between !important',
-                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif !important',
-                letterSpacing: '0.3px !important',
-                border: '1px solid rgba(255, 255, 255, 0.1) !important',
-                width: '300px !important',
-                height: '60px !important',
-                whiteSpace: 'nowrap !important',
-                overflow: 'hidden !important',
-                textOverflow: 'ellipsis !important'
-              }}
             >
               <div className="btn-content">
               <i className="fas fa-map-marker-alt"></i>
@@ -1912,13 +1652,8 @@ function ImageEditorPageContent() {
                    {/* Add New Section button */}
                    {!showAddSection && (
                      <div
-                       className="location-option add-new-option"
+                       className="location-option add-new-option border-b border-gray-200 text-[#6a11cb] font-semibold"
                        onClick={() => setShowAddSection(true)}
-                       style={{
-                         borderBottom: '1px solid #e5e7eb',
-                         color: '#6a11cb',
-                         fontWeight: '600'
-                       }}
                      >
                        <i className="fas fa-plus-circle"></i>
                        <span>Add New Section</span>
@@ -1927,7 +1662,7 @@ function ImageEditorPageContent() {
 
                    {/* Inline input for adding new section */}
                    {showAddSection && (
-                     <div className="add-new-input-container" style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                     <div className="add-new-input-container p-2 border-b border-gray-200">
                        <input
                          type="text"
                          placeholder="Enter new section..."
@@ -1941,46 +1676,19 @@ function ImageEditorPageContent() {
                            }
                          }}
                          autoFocus
-                         className="location-search-input"
-                         style={{ marginBottom: '8px' }}
+                         className="location-search-input mb-2"
                        />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <div className="flex flex-col gap-1.5">
                         <button
                           onClick={() => handleAddSection(false)}
-                          style={{
-                            width: '100%',
-                            padding: '5px 8px',
-                            background: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            lineHeight: 1.25,
-                            textAlign: 'center',
-                            whiteSpace: 'normal'
-                          }}
+                          className="w-full py-1.5 px-2 bg-blue-500 text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
                           title="Add only to this inspection"
                         >
                           Add To This Inspection
                         </button>
                         <button
                           onClick={() => handleAddSection(true)}
-                          style={{
-                            width: '100%',
-                            padding: '5px 8px',
-                            background: '#6a11cb',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            lineHeight: 1.25,
-                            textAlign: 'center',
-                            whiteSpace: 'normal'
-                          }}
+                          className="w-full py-1.5 px-2 bg-[#6a11cb] text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
                           title="Save to template (all inspections)"
                         >
                           Save to Template
@@ -1990,21 +1698,11 @@ function ImageEditorPageContent() {
                             setShowLocationDropdown(false);
                             setLocationSearch('');
                           }}
-                          style={{
-                            width: '100%',
-                            padding: '4px 8px',
-                            background: '#e5e7eb',
-                            color: '#374151',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 500
-                          }}
+                          className="w-full py-1 px-2 bg-gray-200 text-gray-700 border-none rounded cursor-pointer text-[10px] font-medium"
                         >
                           Cancel
                         </button>
-                        <div style={{ fontSize: '9px', color: '#6b7280', padding: '2px 0', lineHeight: '1.2' }}>
+                        <div className="text-[9px] text-gray-500 py-0.5 leading-tight">
                           💡 Add = only this inspection • Save = all inspections
                         </div>
                       </div>
@@ -2018,11 +1716,10 @@ function ImageEditorPageContent() {
                      return (
                        <div
                          key={sectionItem}
-                         className={`location-option ${selectedLocation === sectionItem ? 'selected' : ''}`}
-                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                         className={`location-option ${selectedLocation === sectionItem ? 'selected' : ''} flex items-center justify-between`}
                        >
                          <div
-                           style={{ flex: 1, display: 'flex', alignItems: 'center' }}
+                           className="flex-1 flex items-center"
                            onClick={() => {
                              setSelectedLocation(sectionItem);
                              setShowLocationDropdown(false);
@@ -2035,25 +1732,19 @@ function ImageEditorPageContent() {
                            <i className="fas fa-map-marker-alt"></i>
                            <span>{sectionItem}</span>
                            {isInspectionCustom && (
-                             <span style={{ fontSize: '10px', marginLeft: '6px', color: '#3b82f6', fontWeight: '600' }}>
+                             <span className="text-[10px] ml-1.5 text-blue-500 font-semibold">
                                (This Inspection)
                              </span>
                            )}
                          </div>
                          {isCustom && (
                            <i
-                             className="fas fa-trash-alt"
+                             className="fas fa-trash-alt text-red-500 cursor-pointer py-1 px-2 text-sm"
                              onClick={(e) => {
                                e.stopPropagation();
                                if (confirm(`Delete "${sectionItem}"?`)) {
                                  handleDeleteSection(sectionItem, isTemplateCustom);
                                }
-                             }}
-                             style={{
-                               color: '#ef4444',
-                               cursor: 'pointer',
-                               padding: '4px 8px',
-                               fontSize: '14px'
                              }}
                              title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
                            />
@@ -2069,32 +1760,9 @@ function ImageEditorPageContent() {
           {/* Sub-Location Dropdown */}
           <div className="location-button-container">
             <button 
-              className={`location-btn sub-location-btn ${!selectedLocation ? 'disabled' : ''}`}
+              className={`location-btn sub-location-btn ${!selectedLocation ? 'disabled opacity-50' : ''} bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] text-white px-6 py-[18px] rounded-xl text-base font-semibold cursor-pointer transition-all duration-300 shadow-[0_4px_20px_rgba(75,108,183,0.3)] flex items-center justify-between font-['Inter',sans-serif] tracking-[0.3px] border border-white/10 w-[300px] h-[60px] whitespace-nowrap overflow-hidden text-ellipsis hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(75,108,183,0.4)] hover:bg-gradient-to-br hover:from-[rgb(106,17,203)] hover:to-[rgb(75,108,183)] active:-translate-y-px active:shadow-[0_4px_20px_rgba(75,108,183,0.3)]`}
               onClick={() => selectedLocation && setShowSubLocationDropdown(!showSubLocationDropdown)}
               disabled={!selectedLocation}
-              style={{
-                background: 'linear-gradient(135deg, rgb(75, 108, 183) 0%, rgb(106, 17, 203) 100%) !important',
-                color: 'white !important',
-                padding: '18px 24px !important',
-                borderRadius: '12px !important',
-                fontSize: '16px !important',
-                fontWeight: '600 !important',
-                cursor: 'pointer !important',
-                transition: 'all 0.3s ease !important',
-                boxShadow: '0 4px 20px rgba(75, 108, 183, 0.3) !important',
-                display: 'flex !important',
-                alignItems: 'center !important',
-                justifyContent: 'space-between !important',
-                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif !important',
-                letterSpacing: '0.3px !important',
-                border: '1px solid rgba(255, 255, 255, 0.1) !important',
-                width: '300px !important',
-                height: '60px !important',
-                whiteSpace: 'nowrap !important',
-                overflow: 'hidden !important',
-                textOverflow: 'ellipsis !important',
-                opacity: !selectedLocation ? '0.5 !important' : '1 !important'
-              }}
             >
               <div className="btn-content">
                 <i className="fas fa-layer-group"></i>
@@ -2118,13 +1786,8 @@ function ImageEditorPageContent() {
                    {/* Add New Sub-Section button */}
                    {!showAddSubSection && (
                      <div
-                       className="location-option add-new-option"
+                       className="location-option add-new-option border-b border-gray-200 text-[#6a11cb] font-semibold"
                        onClick={() => setShowAddSubSection(true)}
-                       style={{
-                         borderBottom: '1px solid #e5e7eb',
-                         color: '#6a11cb',
-                         fontWeight: '600'
-                       }}
                      >
                        <i className="fas fa-plus-circle"></i>
                        <span>Add New Sub-Section</span>
@@ -2133,7 +1796,7 @@ function ImageEditorPageContent() {
 
                    {/* Inline input for adding new subsection */}
                    {showAddSubSection && (
-                     <div className="add-new-input-container" style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                     <div className="add-new-input-container p-2 border-b border-gray-200">
                        <input
                          type="text"
                          placeholder="Enter new sub-section..."
@@ -2147,46 +1810,19 @@ function ImageEditorPageContent() {
                            }
                          }}
                          autoFocus
-                         className="location-search-input"
-                         style={{ marginBottom: '8px' }}
+                         className="location-search-input mb-2"
                        />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <div className="flex flex-col gap-1.5">
                         <button
                           onClick={() => handleAddSubSection(false)}
-                          style={{
-                            width: '100%',
-                            padding: '5px 8px',
-                            background: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            lineHeight: 1.25,
-                            textAlign: 'center',
-                            whiteSpace: 'normal'
-                          }}
+                          className="w-full py-1.5 px-2 bg-blue-500 text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
                           title="Add only to this inspection"
                         >
                           Add To This Inspection
                         </button>
                         <button
                           onClick={() => handleAddSubSection(true)}
-                          style={{
-                            width: '100%',
-                            padding: '5px 8px',
-                            background: '#6a11cb',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            lineHeight: 1.25,
-                            textAlign: 'center',
-                            whiteSpace: 'normal'
-                          }}
+                          className="w-full py-1.5 px-2 bg-[#6a11cb] text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
                           title="Save to template (all inspections)"
                         >
                           Save to Template
@@ -2196,21 +1832,11 @@ function ImageEditorPageContent() {
                             setShowAddSubSection(false);
                             setNewSubSectionInput('');
                           }}
-                          style={{
-                            width: '100%',
-                            padding: '4px 8px',
-                            background: '#e5e7eb',
-                            color: '#374151',
-                            border: 'none',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            fontWeight: 500
-                          }}
+                          className="w-full py-1 px-2 bg-gray-200 text-gray-700 border-none rounded cursor-pointer text-[10px] font-medium"
                         >
                           Cancel
                         </button>
-                        <div style={{ fontSize: '9px', color: '#6b7280', padding: '2px 0', lineHeight: '1.2' }}>
+                        <div className="text-[9px] text-gray-500 py-0.5 leading-tight">
                           💡 Add = only this inspection • Save = all inspections
                         </div>
                       </div>
@@ -2224,11 +1850,10 @@ function ImageEditorPageContent() {
                      return (
                        <div
                          key={subLocation}
-                         className={`location-option ${selectedSubLocation === subLocation ? 'selected' : ''}`}
-                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                         className={`location-option ${selectedSubLocation === subLocation ? 'selected' : ''} flex items-center justify-between`}
                        >
                          <div
-                           style={{ flex: 1, display: 'flex', alignItems: 'center' }}
+                           className="flex-1 flex items-center"
                            onClick={() => {
                              setSelectedSubLocation(subLocation);
                              setShowSubLocationDropdown(false);
@@ -2238,25 +1863,19 @@ function ImageEditorPageContent() {
                            <i className="fas fa-layer-group"></i>
                            <span>{subLocation}</span>
                            {isInspectionCustom && (
-                             <span style={{ fontSize: '10px', marginLeft: '6px', color: '#3b82f6', fontWeight: '600' }}>
+                             <span className="text-[10px] ml-1.5 text-blue-500 font-semibold">
                                (This Inspection)
                              </span>
                            )}
                          </div>
                          {isCustom && (
                            <i
-                             className="fas fa-trash-alt"
+                             className="fas fa-trash-alt text-red-500 cursor-pointer py-1 px-2 text-sm"
                              onClick={(e) => {
                                e.stopPropagation();
                                if (confirm(`Delete "${subLocation}"?`)) {
                                  handleDeleteSubSection(subLocation, !!isTemplateCustom);
                                }
-                             }}
-                             style={{
-                               color: '#ef4444',
-                               cursor: 'pointer',
-                               padding: '4px 8px',
-                               fontSize: '14px'
                              }}
                              title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
                            />
@@ -2275,7 +1894,7 @@ function ImageEditorPageContent() {
           <button className="submit-btn" onClick={handleSubmit} disabled={isSubmitting}>
             {isSubmitting ? (
               <>
-                <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                <i className="fas fa-spinner fa-spin mr-2"></i>
                 {isDefectMainMode ? 'Saving...' : isAdditionalLocationMode ? 'Adding Photo...' : 'Processing...'}
               </>
             ) : (

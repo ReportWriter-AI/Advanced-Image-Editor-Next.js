@@ -108,11 +108,6 @@ const data = {
 			title: "Tools",
 			items: [
 				{
-					title: "Image Editor",
-					url: "/image-editor",
-					icon: ImageIcon,
-				},
-				{
 					title: "Photo Capture",
 					url: "/photo-capture",
 					icon: Camera,
