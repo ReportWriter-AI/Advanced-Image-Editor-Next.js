@@ -25,20 +25,16 @@ export async function POST(req: NextRequest) {
 
     const prompt =
       [
-        // Hard constraint first:
         'Transcribe ONLY the words spoken by the user.',
+        'Generate only English text.',
         'Do NOT add any extra text, URLs, disclaimers, slogans, or advice.',
         'Do NOT infer missing words. If you are unsure, omit that part.',
         '',
-        // Then your domain vocabulary:
-        'Home inspection terminology:',
-        'HVAC, foundation, insulation, ventilation, electrical, plumbing, attic, crawlspace, basement, garage, kitchen, bathroom,',
-        'cracked, damaged, worn, loose, missing, leaking, siding, drywall, shingles, gutter, flashing, roofing, defect, inspection, repair, condition, structural, system.',
       ].join(' ');
 
     const transcription = await openai.audio.transcriptions.create({
       file: fileToSend,
-      
+
       model: 'gpt-4o-mini-transcribe-2025-12-15',
 
       language: 'en',

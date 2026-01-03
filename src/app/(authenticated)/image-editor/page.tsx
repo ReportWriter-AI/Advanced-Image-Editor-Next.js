@@ -1433,6 +1433,11 @@ function ImageEditorPageContent() {
 
        {/* Description Box - Only show for defect workflow (but not in defect-main annotate mode) */}
        {!returnTo && !checklistId && !isDefectMainMode && (
+        <>
+        
+          <p className="mb-2 px-3 py-2 rounded bg-blue-50 border-l-4 border-blue-400 text-blue-800 text-sm font-medium shadow-sm">
+            For optimal results, speak clearly and pause between lines. Your dictation will automatically appear in the description below.
+          </p>
          <div className="description-box">
            <div className="relative">
              <textarea
@@ -1482,6 +1487,7 @@ function ImageEditorPageContent() {
              </label>
            </div>
          </div>
+        </>
        )}
 
       {/* Submit Section - Only show for defect workflow, additional location mode, or defect-main annotate mode */}
