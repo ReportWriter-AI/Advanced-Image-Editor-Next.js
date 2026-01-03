@@ -729,7 +729,6 @@ export default function InspectionEditPage() {
           try {
             const annotation = JSON.parse(pending);
             if (annotation.inspectionId === inspectionId) {
-              console.log('🔄 Switching to Information Sections tab for pending annotation');
               setActiveTab('information');
               alert('✅ Image saved successfully!');
               hasAlerted = true;
@@ -757,7 +756,6 @@ export default function InspectionEditPage() {
           try {
             const annotation = JSON.parse(pending);
             if (annotation.inspectionId === inspectionId) {
-              console.log('📡 Polling detected pending annotation');
               setActiveTab('information');
               alert('✅ Image saved successfully!');
               hasAlerted = true;
@@ -931,20 +929,9 @@ export default function InspectionEditPage() {
   const fetchDefects = async () => {
     try {
       setLoading(true);
-      console.log('📥 Fetching defects for inspection:', inspectionId);
       const response = await fetch(`/api/defects/${inspectionId}`);
       if (response.ok) {
         const data = await response.json();
-        console.log('📊 Fetched defects:', data.length);
-
-        data.forEach((defect: any, idx: number) => {
-          console.log(`Defect ${idx}:`, {
-            id: defect._id,
-            hasAnnotations: !!defect.annotations,
-            annotationsCount: defect.annotations?.length || 0,
-            hasOriginalImage: !!defect.originalImage
-          });
-        });
 
         const safeData = Array.isArray(data) ? data : [];
         setDefects(safeData);
@@ -964,8 +951,6 @@ export default function InspectionEditPage() {
     if (!confirm('Are you sure you want to delete this defect?')) {
       return;
     }
-
-    console.log(defectId)
 
     try {
       setDeleting(defectId);
@@ -1016,7 +1001,6 @@ export default function InspectionEditPage() {
         return String(value).toLowerCase();
       };
 
-      const defectAny = defect as any;
       const fieldsToSearch = [
         defect.location,
         defect.section,
@@ -1091,29 +1075,17 @@ export default function InspectionEditPage() {
       return;
     }
 
-    console.log('🎨 handleAnnotateMainImage called for defect:', defect._id);
-    console.log('📊 Defect data:', {
-      hasAnnotations: !!defect.annotations,
-      annotationsCount: defect.annotations?.length || 0,
-      hasOriginalImage: !!defect.originalImage,
-      originalImage: defect.originalImage,
-      currentImage: defect.image
-    });
-
     localStorage.setItem('editorMode', 'defect-main');
     localStorage.setItem('editingDefectId', defect._id);
     localStorage.setItem('editingInspectionId', inspectionId);
 
     if (defect.annotations && defect.annotations.length > 0) {
-      console.log('✅ Saving annotations to localStorage:', defect.annotations);
       localStorage.setItem('defectAnnotations', JSON.stringify(defect.annotations));
     } else {
-      console.log('⚠️ No annotations found in defect, removing from localStorage');
       localStorage.removeItem('defectAnnotations');
     }
 
     const imageToEdit = defect.originalImage || defect.image;
-    console.log('🖼️ Image to edit:', imageToEdit);
     localStorage.setItem('defectOriginalImage', imageToEdit);
 
     window.open(
@@ -1123,20 +1095,17 @@ export default function InspectionEditPage() {
   };
 
   const handleUpdateLocationForImage = async (index: number, newLocation: string) => {
-    console.log('🔄 handleUpdateLocationForImage called:', { index, newLocation, editingId });
     
     if (!editingId) return;
     const defect = defects.find(d => d._id === editingId);
     if (!defect || !defect.additional_images) return;
-
-    console.log('Current defect.additional_images:', defect.additional_images);
 
     setEditedValues(prev => {
       const currentImages = (prev.additional_images as any) || defect.additional_images || [];
       const updatedImages = currentImages.map((img: any, i: number) =>
         i === index ? { ...img, location: newLocation } : img
       );
-      console.log('Updated editedValues.additional_images:', updatedImages);
+
       return {
         ...prev,
         additional_images: updatedImages,
@@ -1180,7 +1149,6 @@ export default function InspectionEditPage() {
 
   const setHeaderImage = async (imageUrl: string) => {
     try {
-      console.log('🚀 setHeaderImage called with URL:', imageUrl);
       setSavingHeaderImage(true);
       const response = await fetch(`/api/inspections/${inspectionId}`, {
         method: 'PUT',
@@ -1190,12 +1158,9 @@ export default function InspectionEditPage() {
         body: JSON.stringify({ headerImage: imageUrl }),
       });
 
-      console.log('📡 API response status:', response.status);
       if (response.ok) {
         const responseData = await response.json();
-        console.log('✅ API response data:', responseData);
         setInspectionDetails(prev => ({ ...prev, headerImage: imageUrl }));
-        console.log('✅ Updated inspectionDetails with headerImage:', imageUrl);
         alert('Header image updated successfully');
       } else {
         const errorData = await response.json();
@@ -1238,9 +1203,7 @@ export default function InspectionEditPage() {
       });
       
       if (response.ok) {
-        console.log('✅ Hide pricing setting updated:', hide);
       } else {
-        console.error('❌ Failed to update hide pricing setting');
         setInspectionDetails(prev => ({ ...prev, hidePricing: !hide }));
       }
     } catch (e) {
@@ -1779,13 +1742,6 @@ export default function InspectionEditPage() {
           lastModifiedAt: new Date(),
         }
       };
-
-      console.log('Updating inspection end time:', {
-        date,
-        time,
-        dateTimeValue: dateTimeValue?.toISOString(),
-        updatePayload
-      });
 
       const response = await fetch(`/api/inspections/${inspectionId}`, {
         method: 'PUT',
@@ -3183,7 +3139,6 @@ export default function InspectionEditPage() {
       }
   
       const result = await response.json();
-      console.log("✅ Auto-saved successfully:", result.message);
   
       setDefects(prev =>
         prev.map(d => (d._id === editingId ? updated : d))
@@ -3264,56 +3219,6 @@ export default function InspectionEditPage() {
     }
   }, [rescheduleDialogOpen, inspectionDetails.date]);
 
-  const saveEdited = async () => {
-    if (!editingId) return;
-    const index = defects.findIndex(d => d._id === editingId);
-    if (index === -1) return;
-  
-    const updated: Defect = { ...defects[index], ...(editedValues as Defect) };
-  
-    console.log('Edited defect values:', updated);
-  
-    try {
-      const response = await fetch(`/api/defects/${editingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inspection_id: updated.inspection_id,
-          defect_description: updated.defect_description,
-          materials: updated.materials,
-          material_total_cost: updated.material_total_cost,
-          location: updated.location,
-          section: updated.section,
-          subsection: updated.subsection,
-          labor_type: updated.labor_type,
-          labor_rate: updated.labor_rate,
-          hours_required: updated.hours_required,
-          recommendation: updated.recommendation,
-        }),
-      });
-  
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Error updating defect:", errorData.error);
-        alert(`Update failed: ${errorData.error}`);
-        return;
-      }
-  
-      const result = await response.json();
-      console.log("✅ Defect updated successfully:", result.message);
-  
-      setDefects(prev =>
-        prev.map(d => (d._id === editingId ? updated : d))
-      );
-  
-      setEditingId(null);
-      setEditedValues({});
-    } catch (err) {
-      console.error("Unexpected error while saving defect:", err);
-      alert("Something went wrong while saving changes.");
-    }
-  };
-
   const getDisplayDefect = (defect: Defect): Defect => {
     if (editingId === defect._id) {
       const merged = { ...defect, ...(editedValues as Partial<Defect>) } as Defect;
@@ -3322,7 +3227,6 @@ export default function InspectionEditPage() {
         merged.additional_images = editedValues.additional_images as any;
       }
       
-      console.log('getDisplayDefect merged:', merged.additional_images);
       return merged;
     }
     return defect;

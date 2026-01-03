@@ -472,7 +472,6 @@ export default function DefectCard({
               {displayDefect.additional_images && displayDefect.additional_images.length > 0 && (
                 <div className="additional-items-list space-y-3">
                   {displayDefect.additional_images.map((img, idx) => {
-                    console.log(`Additional image ${idx} location:`, img.location);
                     const locationValue = img.location || "";
                     return (
                     <div key={`${img.url}-${idx}`} className="additional-item-row flex flex-wrap gap-3 items-center py-3 border-b">
@@ -491,7 +490,6 @@ export default function DefectCard({
                           options={LOCATION_OPTIONS}
                           value={locationValue}
                           onChangeAction={(val) => {
-                            console.log(`Location changed for index ${idx}:`, val);
                             onUpdateLocationForImage(idx, val);
                           }}
                           placeholder="Type to search…"

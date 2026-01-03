@@ -29,7 +29,6 @@ export async function DELETE(
     const { inspectionId } = await params;
     
     if (!inspectionId) {
-      console.log('123');
       return NextResponse.json(
         { error: "Defect ID is required" },
         { status: 400 }
@@ -108,10 +107,6 @@ export async function PATCH(
     const defectId = inspectionId;
     const body = await req.json();
 
-    console.log('🔧 PATCH /api/defects received request');
-    console.log('  - defectId:', defectId);
-    console.log('📦 Request body keys:', Object.keys(body));
-
     const {
       inspection_id,
       image,
@@ -131,12 +126,6 @@ export async function PATCH(
       annotations,
       originalImage,
     } = body;
-
-    console.log('📊 Annotations in PATCH request:');
-    console.log('  - annotations:', annotations);
-    console.log('  - is array:', Array.isArray(annotations));
-    console.log('  - length:', annotations?.length || 0);
-    console.log('🖼️ originalImage:', originalImage);
 
     const normalizedInspectionId = normalizeObjectId(inspection_id);
 
@@ -166,29 +155,12 @@ export async function PATCH(
       originalImage,
     };
 
-    console.log('💾 Updates object before cleanup:', {
-      hasAnnotations: updates.annotations !== undefined,
-      annotationsLength: updates.annotations?.length || 0,
-      hasOriginalImage: updates.originalImage !== undefined
-    });
-
     // remove undefined keys to avoid overwriting fields accidentally
     Object.keys(updates).forEach(
       (key) => updates[key as keyof typeof updates] === undefined && delete updates[key as keyof typeof updates]
     );
 
-    console.log('💾 Updates object after cleanup:', {
-      hasAnnotations: updates.annotations !== undefined,
-      annotationsLength: updates.annotations?.length || 0,
-      hasOriginalImage: updates.originalImage !== undefined
-    });
-
     const result = await updateDefect(defectId, normalizedInspectionId, updates);
-
-    console.log('✅ updateDefect completed:', {
-      matchedCount: result.matchedCount,
-      modifiedCount: result.modifiedCount
-    });
 
     if (result.matchedCount === 0) {
       return NextResponse.json(
