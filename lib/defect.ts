@@ -64,6 +64,8 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   materials?: string;
   material_total_cost?: number;
   location?: string;
+  section?: string;
+  subsection?: string;
   labor_type?: string;
   labor_rate?: number;
   hours_required?: number;
