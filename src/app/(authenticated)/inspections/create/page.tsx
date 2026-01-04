@@ -1169,7 +1169,7 @@ export default function CreateInspectionPage() {
             </AccordionItem>
           </Accordion>
 
-          <Accordion type="single" collapsible className="border-t pt-4">
+          <Accordion type="single" collapsible defaultValue="client" className="border-t pt-4">
             <AccordionItem value="client" className="border-none">
               <AccordionTrigger className="text-lg font-semibold py-2">
                 Client
@@ -1488,7 +1488,7 @@ export default function CreateInspectionPage() {
             </AccordionItem>
           </Accordion>
 
-          <Accordion type="single" collapsible className="border-t pt-4">
+          <Accordion type="single" collapsible defaultValue="agent" className="border-t pt-4">
             <AccordionItem value="agent" className="border-none">
               <AccordionTrigger className="text-lg font-semibold py-2">
                 Client's Agent
@@ -1937,7 +1937,7 @@ export default function CreateInspectionPage() {
             </AccordionItem>
           </Accordion>
 
-          <Accordion type="single" collapsible className="border-t pt-4">
+          <Accordion type="single" collapsible defaultValue="listingAgent" className="border-t pt-4">
             <AccordionItem value="listingAgent" className="border-none">
               <AccordionTrigger className="text-lg font-semibold py-2">
                 Listing Agent
