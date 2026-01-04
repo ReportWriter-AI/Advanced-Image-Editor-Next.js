@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -2169,24 +2170,39 @@ export default function SchedulePage() {
                   </div>
                 )}
 
-                <div className="flex items-start space-x-2">
-                  <Controller
-                    name="agreeToTerms"
-                    control={form.control}
-                    render={({ field }) => (
-                      <Checkbox
-                        id="agreeToTerms"
-                        checked={field.value}
-                        onCheckedChange={(checked) => field.onChange(checked === true)}
-                      />
-                    )}
-                  />
-                  <Label
-                    htmlFor="agreeToTerms"
-                    className="text-sm font-normal cursor-pointer leading-tight"
-                  >
-                    I agree to receive SMS and emails and accept the privacy policy <span className="text-destructive">*</span>
-                  </Label>
+                <div className="space-y-2">
+                  <div className="flex items-start space-x-2">
+                    <Controller
+                      name="agreeToTerms"
+                      control={form.control}
+                      render={({ field }) => (
+                        <Checkbox
+                          id="agreeToTerms"
+                          checked={field.value}
+                          onCheckedChange={(checked) => field.onChange(checked === true)}
+                          className="mt-0.5"
+                        />
+                      )}
+                    />
+                    <Label
+                      htmlFor="agreeToTerms"
+                      className="text-sm font-medium cursor-pointer leading-tight"
+                    >
+                      I agree to receive text message updates about my inspection <span className="text-destructive">*</span>
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-6 leading-relaxed">
+                    By checking this box, you consent to receive SMS messages from ReportWriterAI. 
+                    Message and data rates may apply. Reply STOP to opt out at any time.{' '}
+                    <Link 
+                      href="https://www.reportwriter.ai/privacy-policy" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Privacy Policy
+                    </Link>
+                  </p>
                 </div>
               </div>
 
