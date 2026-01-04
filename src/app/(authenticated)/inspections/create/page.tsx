@@ -18,10 +18,9 @@ import AsyncSelect from 'react-select/async';
 import CreatableSelect from 'react-select/creatable';
 import AsyncCreatableSelect from 'react-select/async-creatable';
 import { format } from 'date-fns';
-import { CalendarIcon, ArrowLeft, Plus, X, Pencil } from 'lucide-react';
+import { CalendarIcon, ArrowLeft, Plus, X } from 'lucide-react';
 import { cn, splitCommaSeparated } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Info } from 'lucide-react';
 import { ImageUpload } from '@/components/ui/image-upload';
@@ -29,7 +28,7 @@ import CustomFields from '@/components/custom-fields/CustomFields';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { toast } from 'sonner';
 import { checkInspectorAvailability, type InspectorAvailability, getDayKeyFromDate, getAvailableTimesForDate, isDateAvailable } from '@/src/lib/inspection-availability';
-import { formatTimeLabel, timeToMinutes } from '@/src/lib/availability-utils';
+import { formatTimeLabel } from '@/src/lib/availability-utils';
 import { DAY_LABELS } from '@/src/constants/availability';
 import { TimeBlock } from '@/src/models/Availability';
 import EventsManager from '@/components/EventsManager';
@@ -222,6 +221,11 @@ export default function CreateInspectionPage() {
   const [referralSourceOptions, setReferralSourceOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [foundationOptions, setFoundationOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [addonMenuOpen, setAddonMenuOpen] = useState<Record<number, boolean>>({});
+  
+  // State tracking for initial load and auto-set scenarios
+  const isInitialLoad = useRef(true);
+  const isAutoSettingTime = useRef(false);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
 
   useEffect(() => {
     fetchFormData();
@@ -449,16 +453,20 @@ export default function CreateInspectionPage() {
         if (!data.availability) {
           // No availability data for inspector
           setAvailableTimes([]); // No available times
-          toast.error(
-            `${data.inspectorName} is not available for this date`,
-            { duration: 5000 }
-          );
+          // Only show toast if not initial load and user has interacted
+          if (!isInitialLoad.current && hasUserInteracted) {
+            toast.error(
+              `${data.inspectorName} is not available for this date`,
+              { duration: 5000 }
+            );
+          }
+          // Mark initial load as complete
+          if (isInitialLoad.current) {
+            isInitialLoad.current = false;
+          }
           return;
         }
 
-        // Compute available times for this date using the helper function
-        // This considers both weekly schedule and date-specific blocks
-        // IMPORTANT: Date-specific entries indicate when inspector is NOT available (they block times)
         // The helper function filters out blocked times from the weekly schedule
         const computedAvailableTimes = getAvailableTimesForDate(
           date,
@@ -469,37 +477,59 @@ export default function CreateInspectionPage() {
 
         // Handle time selection logic
         if (computedAvailableTimes.length > 0) {
-          // If selected time is not in available times, set the first available time
-          // This handles the case where date-specific blocks make the selected time unavailable
-          // or when a date is first selected and no time is set yet
           const currentTime = form.getValues('time');
           if (!currentTime || !computedAvailableTimes.includes(currentTime)) {
-            // Set the first available time and trigger validation/update
+            // Set flag to indicate we're auto-setting time
+            isAutoSettingTime.current = true;
             form.setValue('time', computedAvailableTimes[0], {
               shouldValidate: true,
               shouldDirty: false,
             });
+            // Reset flag and mark initial load as complete after a brief delay to allow form state to update
+            setTimeout(() => {
+              isAutoSettingTime.current = false;
+              if (isInitialLoad.current) {
+                isInitialLoad.current = false;
+              }
+            }, 0);
+          } else {
+            // Time is already valid, mark initial load as complete
+            if (isInitialLoad.current) {
+              isInitialLoad.current = false;
+            }
           }
         } else {
-          // No available times, clear the selected time
           const currentTime = form.getValues('time');
           if (currentTime) {
+            // Set flag to indicate we're auto-setting time
+            isAutoSettingTime.current = true;
             form.setValue('time', '', {
               shouldValidate: true,
               shouldDirty: false,
             });
+            // Reset flag and mark initial load as complete after a brief delay to allow form state to update
+            setTimeout(() => {
+              isAutoSettingTime.current = false;
+              if (isInitialLoad.current) {
+                isInitialLoad.current = false;
+              }
+            }, 0);
+          } else {
+            // No time and no available times, mark initial load as complete
+            if (isInitialLoad.current) {
+              isInitialLoad.current = false;
+            }
           }
         }
 
         // Get available times for the day (for validation and toast messages)
         const result = checkInspectorAvailability(
           date,
-          time || '00:00', // Use selected time or dummy time to get available times
+          time || '00:00',
           data.viewMode,
           data.availability
         );
 
-        // Get day name for the selected date
         const dayKey = getDayKeyFromDate(date);
         const dayName = DAY_LABELS[dayKey];
 
@@ -520,7 +550,8 @@ export default function CreateInspectionPage() {
         // If time is selected, check if it's available
         if (time) {
           // If selected time is not available, show toast with available times
-          if (!result.available) {
+          // Only show toast if not initial load, not auto-setting, and user has interacted
+          if (!result.available && !isInitialLoad.current && !isAutoSettingTime.current && hasUserInteracted) {
             if (result.availableTimes.length > 0) {
               if (data.viewMode === 'openSchedule') {
                 // For Open Schedule, show regular schedule
@@ -564,6 +595,73 @@ export default function CreateInspectionPage() {
             }
           } else {
             // Inspector is available, check if date is in the past
+            // Only show warning if user has interacted
+            if (hasUserInteracted) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const selectedDate = new Date(date);
+              selectedDate.setHours(0, 0, 0, 0);
+              
+              if (selectedDate < today) {
+                toast.warning(
+                  'Date is in the past, no confirmation email will be sent',
+                  { duration: 5000 }
+                );
+              }
+            }
+            // If available and not in past, silently allow (no toast)
+          }
+        } else {
+          // No time selected yet, show available times so user knows what's available
+          // This helps user know availability when they first select the date
+          // Only show info toast if user has interacted (not on initial load)
+          if (hasUserInteracted && !isAutoSettingTime.current) {
+            if (result.availableTimes.length > 0) {
+              if (data.viewMode === 'openSchedule') {
+                // For Open Schedule, show regular schedule
+                const scheduleBlocks = formatScheduleBlocks();
+                if (scheduleBlocks) {
+                  toast.info(
+                    `${data.inspectorName}'s regular schedule of ${scheduleBlocks} on ${dayName}s.`,
+                    { duration: 5000 }
+                  );
+                } else {
+                  toast.info(
+                    `${data.inspectorName} available on ${dayName}s`,
+                    { duration: 5000 }
+                  );
+                }
+              } else {
+                // For Time Slots, show available time slots with day name
+                const formattedTimes = result.availableTimes.map(formatTimeLabel);
+                
+                // Join times with commas and "or" for last item
+                let timesText = '';
+                if (formattedTimes.length === 1) {
+                  timesText = formattedTimes[0];
+                } else if (formattedTimes.length === 2) {
+                  timesText = `${formattedTimes[0]} or ${formattedTimes[1]}`;
+                } else {
+                  const lastTime = formattedTimes.pop();
+                  timesText = `${formattedTimes.join(', ')}, or ${lastTime}`;
+                }
+
+                toast.info(
+                  `${data.inspectorName} available at ${timesText} on ${dayName}s`,
+                  { duration: 5000 }
+                );
+              }
+            } else {
+              toast.error(
+                `${data.inspectorName} is not available for this date`,
+                { duration: 5000 }
+              );
+            }
+          }
+          
+          // Also check if date is in the past (even if no time selected)
+          // Only show warning if user has interacted
+          if (hasUserInteracted) {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const selectedDate = new Date(date);
@@ -575,64 +673,6 @@ export default function CreateInspectionPage() {
                 { duration: 5000 }
               );
             }
-            // If available and not in past, silently allow (no toast)
-          }
-        } else {
-          // No time selected yet, show available times so user knows what's available
-          // This helps user know availability when they first select the date
-          if (result.availableTimes.length > 0) {
-            if (data.viewMode === 'openSchedule') {
-              // For Open Schedule, show regular schedule
-              const scheduleBlocks = formatScheduleBlocks();
-              if (scheduleBlocks) {
-                toast.info(
-                  `${data.inspectorName}'s regular schedule of ${scheduleBlocks} on ${dayName}s.`,
-                  { duration: 5000 }
-                );
-              } else {
-                toast.info(
-                  `${data.inspectorName} available on ${dayName}s`,
-                  { duration: 5000 }
-                );
-              }
-            } else {
-              // For Time Slots, show available time slots with day name
-              const formattedTimes = result.availableTimes.map(formatTimeLabel);
-              
-              // Join times with commas and "or" for last item
-              let timesText = '';
-              if (formattedTimes.length === 1) {
-                timesText = formattedTimes[0];
-              } else if (formattedTimes.length === 2) {
-                timesText = `${formattedTimes[0]} or ${formattedTimes[1]}`;
-              } else {
-                const lastTime = formattedTimes.pop();
-                timesText = `${formattedTimes.join(', ')}, or ${lastTime}`;
-              }
-
-              toast.info(
-                `${data.inspectorName} available at ${timesText} on ${dayName}s`,
-                { duration: 5000 }
-              );
-            }
-          } else {
-            toast.error(
-              `${data.inspectorName} is not available for this date`,
-              { duration: 5000 }
-            );
-          }
-          
-          // Also check if date is in the past (even if no time selected)
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const selectedDate = new Date(date);
-          selectedDate.setHours(0, 0, 0, 0);
-          
-          if (selectedDate < today) {
-            toast.warning(
-              'Date is in the past, no confirmation email will be sent',
-              { duration: 5000 }
-            );
           }
         }
       } catch (error) {
@@ -652,10 +692,19 @@ export default function CreateInspectionPage() {
     
     // Only auto-set if we have a date, inspector, available times, and no time is currently set
     if (currentDate && currentInspector && availableTimes.length > 0 && !currentTime) {
+      // Set flag to indicate we're auto-setting time
+      isAutoSettingTime.current = true;
       form.setValue('time', availableTimes[0], {
         shouldValidate: true,
         shouldDirty: false,
       });
+      // Reset flag and mark initial load as complete after a brief delay to allow form state to update
+      setTimeout(() => {
+        isAutoSettingTime.current = false;
+        if (isInitialLoad.current) {
+          isInitialLoad.current = false;
+        }
+      }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableTimes]);
@@ -861,7 +910,10 @@ export default function CreateInspectionPage() {
               render={({ field }) => (
             <ReactSelect
                   value={inspectors.find(opt => opt.value === field.value) || null}
-                  onChange={(option) => field.onChange(option?.value || undefined)}
+                  onChange={(option) => {
+                    field.onChange(option?.value || undefined);
+                    setHasUserInteracted(true);
+                  }}
               options={inspectors}
               isClearable
               placeholder="Select an inspector..."
@@ -923,7 +975,10 @@ export default function CreateInspectionPage() {
                           <Calendar
                             mode="single"
                             selected={field.value}
-                            onSelect={field.onChange}
+                            onSelect={(date) => {
+                              field.onChange(date);
+                              setHasUserInteracted(true);
+                            }}
                             initialFocus
                             disabled={(date: Date) => {
                               // If no inspector selected, don't disable any dates
@@ -966,7 +1021,10 @@ export default function CreateInspectionPage() {
                       return (
                         <Select
                           value={field.value && availableTimes.includes(field.value) ? field.value : ''}
-                          onValueChange={field.onChange}
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            setHasUserInteracted(true);
+                          }}
                           disabled={isDisabled}
                         >
                           <SelectTrigger className="w-full">
