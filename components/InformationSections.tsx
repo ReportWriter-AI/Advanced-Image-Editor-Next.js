@@ -76,8 +76,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const [saving, setSaving] = useState(false);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
 
-  // Reorder mode (template-level) for Status and Limitations lists
-  const [reorderMode, setReorderMode] = useState<{ status: boolean; limitations: boolean }>({ status: false, limitations: false });
   const [reorderIds, setReorderIds] = useState<{ status: string[]; limitations: string[] }>({ status: [], limitations: [] });
   const dragStateRef = useRef<{ kind: 'status' | 'limitations' | null; draggingId: string | null }>({ kind: null, draggingId: null });
   const reorderDirtyRef = useRef<{ status: boolean; limitations: boolean }>({ status: false, limitations: false });
@@ -204,7 +202,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
   // UI state: show hidden manager panels inside modal for each area
   const [showHiddenManagerStatus, setShowHiddenManagerStatus] = useState(false);
-  const [showHiddenManagerLimits, setShowHiddenManagerLimits] = useState(false);
 
   // Auto-save state
   const [autoSaving, setAutoSaving] = useState(false);
@@ -219,8 +216,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   // Custom answer inputs for ad-hoc answers during inspection
   const [customAnswerInputs, setCustomAnswerInputs] = useState<Record<string, string>>({});
 
-  // Location dropdown management
-  const [locationDropdownOpen, setLocationDropdownOpen] = useState<Record<string, boolean>>({});
 
   // 360° photo checkbox state (key: checklist_id, value: boolean)
   const [isThreeSixtyMap, setIsThreeSixtyMap] = useState<Record<string, boolean>>({});
@@ -415,29 +410,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     const updated = new Map(hiddenChecklists);
     if (updatedIds.length > 0) updated.set(sectionId, updatedIds); else updated.delete(sectionId);
     setHiddenChecklists(updated);
-  };
-
-  // -------- Reorder helpers (template-level) --------
-  const beginReorder = (kind: 'status' | 'limitations', section: ISection) => {
-    const base = kind === 'status'
-      ? section.checklists.filter(cl => cl.type === 'status')
-      : section.checklists.filter(cl => cl.tab === 'limitations');
-    const ordered = [...base].sort((a, b) => a.order_index - b.order_index).map(cl => cl._id);
-    setReorderIds(prev => ({ ...prev, [kind]: ordered }));
-    reorderDirtyRef.current[kind] = false;
-    setReorderMode(prev => ({ ...prev, [kind]: true }));
-  };
-
-  const cancelReorder = (kind: 'status' | 'limitations') => {
-    setReorderMode(prev => ({ ...prev, [kind]: false }));
-    setReorderIds(prev => ({ ...prev, [kind]: [] }));
-    reorderDirtyRef.current[kind] = false;
-    dragStateRef.current = { kind: null, draggingId: null };
-    // Clear auto-scroll interval
-    if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
-    }
   };
 
   // Auto-scroll logic during drag (desktop pointer) using smooth RAF
@@ -1170,20 +1142,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }
   );
 
-  const saveReorder = async (kind: 'status' | 'limitations', section: ISection) => {
-    try {
-      const sectionId = section._id;
-      const currentIds = reorderIds[kind] || [];
-      const { templateUpdated } = await persistChecklistOrder(kind, sectionId, currentIds);
-      if (templateUpdated) {
-        await fetchSections();
-      }
-      cancelReorder(kind);
-    } catch (err: any) {
-      alert(err.message || 'Failed to save order');
-    }
-  };
-
   // Helper function to get all checklist items for a block (including inspection-only)
   const getBlockChecklists = (block: IInformationBlock): any[] => {
     const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
@@ -1218,116 +1176,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     if (fromTemplate) return fromTemplate;
     const fromInspection = (inspectionChecklists.get(sectionId) || []).find(c => c._id === cl) || null;
     return fromInspection;
-  };
-
-  // Quick toggle for a selected checklist inside an existing block (outside modal)
-  const toggleChecklistInBlock = async (block: IInformationBlock, cl: any) => {
-    try {
-      const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
-      const clId: string = typeof cl === 'string' ? cl : cl._id;
-
-      // Find the section to determine if this is a template item or inspection-only
-      const section = sections.find(s => s._id === sectionId);
-      const isTemplateItem = !!section?.checklists.some(c => c._id === clId);
-
-      // Helper: backup/restore answers like modal does
-      const backupKey = `checklist_backup_${inspectionId}_${clId}`;
-
-      if (isTemplateItem) {
-        // Build updated arrays for block
-        const currentSelected = Array.isArray(block.selected_checklist_ids) ? block.selected_checklist_ids : [];
-        const isCurrentlySelected = currentSelected.some((sel: any) => (typeof sel === 'string' ? sel === clId : sel._id === clId));
-
-        let nextSelected: Array<any> = [];
-        if (isCurrentlySelected) {
-          // Unselect: remove from selected list
-          nextSelected = currentSelected.filter((sel: any) => (typeof sel === 'string' ? sel !== clId : sel._id !== clId));
-
-          // Backup selected answers for this checklist and remove from block
-          const existingAnswersArr = Array.isArray(block.selected_answers) ? block.selected_answers : [];
-          const answersForId = existingAnswersArr.find(a => a && a.checklist_id === clId);
-          if (answersForId && Array.isArray(answersForId.selected_answers) && answersForId.selected_answers.length > 0) {
-            localStorage.setItem(backupKey, JSON.stringify(answersForId.selected_answers));
-          }
-          const cleanedAnswers = existingAnswersArr.filter(a => a && a.checklist_id !== clId);
-
-          // Persist to server
-          const body = {
-            selected_checklist_ids: nextSelected.map((sel: any) => (typeof sel === 'string' ? sel : sel._id)).filter(Boolean),
-            selected_answers: cleanedAnswers,
-            custom_text: block.custom_text || '',
-            images: Array.isArray(block.images) ? block.images : [],
-          };
-
-          const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${block._id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          const json = await res.json();
-          if (!json.success) throw new Error(json.error || 'Failed to update block');
-
-          // Update local state with server result
-          setBlocks(prev => prev.map(b => (b._id === block._id ? json.data : b)));
-        } else {
-          // Select: add to selected list
-          const checklistObj = section?.checklists.find(c => c._id === clId);
-          nextSelected = [...currentSelected, checklistObj || clId];
-
-          // Try to restore answers from backup
-          const existingAnswersArr = Array.isArray(block.selected_answers) ? block.selected_answers : [];
-          let nextAnswers = existingAnswersArr;
-          try {
-            const backup = localStorage.getItem(backupKey);
-            if (backup) {
-              const parsed = JSON.parse(backup);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                // Merge restored answers (avoid duplicate entry for checklist_id)
-                nextAnswers = existingAnswersArr.filter(a => a && a.checklist_id !== clId);
-                nextAnswers = [...nextAnswers, { checklist_id: clId, selected_answers: parsed }];
-              }
-            }
-          } catch (e) {
-            // ignore backup issues
-          }
-
-          // Persist to server
-          const body = {
-            selected_checklist_ids: nextSelected.map((sel: any) => (typeof sel === 'string' ? sel : sel._id)).filter(Boolean),
-            selected_answers: nextAnswers,
-            custom_text: block.custom_text || '',
-            images: Array.isArray(block.images) ? block.images : [],
-          };
-
-          const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${block._id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          const json = await res.json();
-          if (!json.success) throw new Error(json.error || 'Failed to update block');
-
-          // Update local state with server result
-          setBlocks(prev => prev.map(b => (b._id === block._id ? json.data : b)));
-        }
-      } else {
-        // Inspection-only checklist: maintain selection in localStorage only
-        const storageKey = `inspection_selections_${inspectionId}_${sectionId}`;
-        const raw = localStorage.getItem(storageKey);
-        const arr: string[] = raw ? JSON.parse(raw) : [];
-        const idx = arr.indexOf(clId);
-        if (idx >= 0) {
-          arr.splice(idx, 1);
-        } else {
-          arr.push(clId);
-        }
-        localStorage.setItem(storageKey, JSON.stringify(arr));
-        // Force re-render so getBlockChecklists() re-evaluates
-        setBlocks(prev => [...prev]);
-      }
-    } catch (e: any) {
-      alert(e.message || 'Failed to update selection');
-    }
   };
 
   // Initialize locationInputs from formState when images load
@@ -2240,11 +2088,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }, 1000);
   }, [formState, editingBlockId, inspectionId]);
 
-  // Auto-save immediately (for image uploads and checkbox toggles)
-  const performAutoSaveImmediate = useCallback(async () => {
-    await performAutoSave();
-  }, [formState, editingBlockId, inspectionId]);
-
   // Perform auto-save with specific state (for immediate saves after state changes)
   const performAutoSaveWithState = async (stateToSave: AddBlockFormState) => {
     if (!stateToSave || !inspectionId) return;
@@ -2363,11 +2206,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     } finally {
       setAutoSaving(false);
     }
-  };
-
-  const performAutoSave = async () => {
-    if (!formState) return;
-    await performAutoSaveWithState(formState);
   };
 
   // Cleanup timer on unmount
@@ -2922,29 +2760,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     } catch (err) {
       console.error(`Auto-save ${field} failed:`, err);
       // Don't show alert for auto-save failures to avoid interrupting user flow
-    }
-  };
-
-  // Admin: Add new answer choice with auto-save
-  const handleAddAnswerChoice = async () => {
-    const trimmed = newAnswerChoice.trim();
-    if (!trimmed) return;
-    
-    if (checklistFormData.answer_choices.includes(trimmed)) {
-      alert('This option already exists');
-      return;
-    }
-
-    const updatedChoices = [...checklistFormData.answer_choices, trimmed];
-    setChecklistFormData({
-      ...checklistFormData,
-      answer_choices: updatedChoices
-    });
-    setNewAnswerChoice('');
-
-    // Auto-save the new answer choices if editing existing checklist
-    if (editingChecklistId) {
-      await autoSaveChecklistField('answer_choices', updatedChoices);
     }
   };
 

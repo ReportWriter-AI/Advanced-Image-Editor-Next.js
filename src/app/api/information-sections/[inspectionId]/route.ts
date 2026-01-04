@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import InspectionInformationBlock from '@/src/models/InspectionInformationBlock';
-// Import Section and SectionChecklist models to ensure they're registered before populate
 import Section from '@/src/models/Section';
 import SectionChecklist from '@/src/models/SectionChecklist';
 import Inspection from '@/src/models/Inspection';
@@ -12,7 +11,7 @@ async function dbConnect() {
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(process.env.MONGODB_URI!);
   }
-  // Ensure models are registered (this forces them to be loaded)
+
   if (!mongoose.models.Section) {
     mongoose.model('Section', Section.schema);
   }
