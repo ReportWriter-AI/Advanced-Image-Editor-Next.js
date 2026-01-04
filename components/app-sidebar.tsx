@@ -148,8 +148,8 @@ const data = {
 						icon: Settings,
 					},
 					{
-						title: "Reusable Dropdowns",
-						url: "/reusable-dropdowns",
+						title: "Drop-Downs",
+						url: "/drop-downs",
 						icon: ListChecks,
 					},
 				],

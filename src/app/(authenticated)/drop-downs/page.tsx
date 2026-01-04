@@ -48,7 +48,7 @@ export default function ReusableDropdownsPage() {
 
       if (!response.ok) {
         const result = await response.json().catch(() => ({}))
-        throw new Error(result.error || "Failed to load reusable dropdowns")
+        throw new Error(result.error || "Failed to load dropdowns")
       }
 
       const data = (await response.json()) as DropdownData
@@ -66,7 +66,7 @@ export default function ReusableDropdownsPage() {
       initializedRef.current = true
     } catch (err: any) {
       console.error("fetchDropdowns error", err)
-      setError(err?.message || "Failed to load reusable dropdowns")
+      setError(err?.message || "Failed to load dropdowns")
     } finally {
       setLoading(false)
     }
@@ -104,7 +104,7 @@ export default function ReusableDropdownsPage() {
 
         if (!response.ok) {
           const result = await response.json().catch(() => ({}))
-          throw new Error(result.error || "Failed to update reusable dropdowns")
+          throw new Error(result.error || "Failed to update dropdowns")
         }
 
         const result = await response.json() as DropdownData
@@ -180,7 +180,7 @@ export default function ReusableDropdownsPage() {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-border/50 bg-card/60 py-16 backdrop-blur-sm">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="mt-4 text-muted-foreground">Loading reusable dropdowns...</p>
+        <p className="mt-4 text-muted-foreground">Loading dropdowns...</p>
       </div>
     )
   }
@@ -190,7 +190,7 @@ export default function ReusableDropdownsPage() {
       <div className="mx-auto max-w-4xl space-y-8">
         <div className="space-y-4">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight">Reusable Dropdowns</h1>
+            <h1 className="text-4xl font-bold tracking-tight">Drop-Downs</h1>
             <p className="mt-2 text-lg text-muted-foreground">
               Manage dropdown options for foundation, role, and referral sources.
             </p>
@@ -210,7 +210,7 @@ export default function ReusableDropdownsPage() {
 
         <Card className="overflow-hidden border border-border/50 bg-gradient-to-br from-card via-card to-card/80 shadow-lg backdrop-blur-sm">
           <CardHeader className="space-y-4 border-b border-border/30 bg-gradient-to-r from-muted/20 to-transparent px-6 py-5">
-            <CardTitle className="text-xl">Reusable Dropdowns</CardTitle>
+            <CardTitle className="text-xl">Drop-Downs</CardTitle>
             <CardDescription>
               Write values as comma-separated (e.g., Value1, Value2, Value3)
             </CardDescription>
