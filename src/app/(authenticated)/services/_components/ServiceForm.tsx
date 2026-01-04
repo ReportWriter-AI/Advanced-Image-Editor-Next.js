@@ -861,7 +861,7 @@ export function ServiceForm({
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="name">Name *</Label>
+          <Label htmlFor="name">Name <span className="text-red-600">*</span></Label>
           <Input id="name" placeholder="Service name" {...form.register("name")} />
           {form.formState.errors.name && (
             <p className="text-sm text-red-600">{form.formState.errors.name.message}</p>
@@ -869,7 +869,7 @@ export function ServiceForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="serviceCategory">Service Category *</Label>
+          <Label htmlFor="serviceCategory">Service Category <span className="text-red-600">*</span></Label>
           <Controller
             name="serviceCategory"
             control={form.control}
@@ -1712,7 +1712,7 @@ function AddOnCard({
         <>
         <div className="mt-4 space-y-4">
           <div className="space-y-2">
-            <Label>Name *</Label>
+            <Label>Name <span className="text-red-600">*</span></Label>
             <Input
               placeholder="Add-on name"
               {...form.register(`${addOnPath}.name` as const)}
@@ -1720,7 +1720,7 @@ function AddOnCard({
             {addOnErrors?.name && <p className="text-sm text-red-600">{addOnErrors.name.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Service Category *</Label>
+            <Label>Service Category <span className="text-red-600">*</span></Label>
             <Controller
               name={`${addOnPath}.serviceCategory` as const}
               control={form.control}
@@ -2268,7 +2268,7 @@ function TaxCard({
       {!collapsed && (
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Name *</Label>
+            <Label>Name <span className="text-red-600">*</span></Label>
             <Input
               placeholder="Tax name"
               {...form.register(`${taxPath}.name` as const)}
@@ -2276,7 +2276,7 @@ function TaxCard({
             {taxErrors?.name && <p className="text-sm text-red-600">{taxErrors.name.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Add Percent *</Label>
+            <Label>Add Percent <span className="text-red-600">*</span></Label>
             <Input
               type="number"
               step="0.01"

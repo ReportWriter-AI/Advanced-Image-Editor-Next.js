@@ -171,20 +171,29 @@ export function DiscountCodeForm({
     [services]
   );
 
+  const selectedServices = form.watch("appliesToServices");
+
   const addOnOptions: MultiSelectOption[] = useMemo(() => {
+    if (!selectedServices || selectedServices.length === 0) {
+      return [];
+    }
+
     const options: MultiSelectOption[] = [];
     services.forEach((service) => {
-      service.addOns.forEach((addOn, index) => {
-        const orderIndex = addOn.orderIndex ?? index;
-        options.push({
-          value: `${service.id}::${orderIndex}`,
-          label: addOn.name,
-          description: service.name,
+      // Only include add-ons from selected services
+      if (selectedServices.includes(service.id)) {
+        service.addOns.forEach((addOn, index) => {
+          const orderIndex = addOn.orderIndex ?? index;
+          options.push({
+            value: `${service.id}::${orderIndex}`,
+            label: addOn.name,
+            description: service.name,
+          });
         });
-      });
+      }
     });
     return options;
-  }, [services]);
+  }, [services, selectedServices]);
 
   const addOnMetaMap = useMemo(() => {
     const map: Record<
@@ -208,6 +217,26 @@ export function DiscountCodeForm({
     });
     return map;
   }, [services]);
+
+  // Auto-remove add-ons when their parent service is deselected
+  useEffect(() => {
+    const currentAddOns = form.getValues("appliesToAddOns");
+    if (!currentAddOns || currentAddOns.length === 0) {
+      return;
+    }
+
+    const selectedServicesSet = new Set(selectedServices || []);
+    const validAddOns = currentAddOns.filter((addOnValue) => {
+      // Extract service ID from add-on value (format: "serviceId::orderIndex")
+      const [serviceId] = addOnValue.split("::");
+      return selectedServicesSet.has(serviceId);
+    });
+
+    // Only update if there are changes
+    if (validAddOns.length !== currentAddOns.length) {
+      form.setValue("appliesToAddOns", validAddOns);
+    }
+  }, [selectedServices, form]);
 
   const handleSubmit = async (values: DiscountCodeFormValues) => {
     const normalized: DiscountCodeFormNormalizedValues = {
@@ -352,25 +381,32 @@ export function DiscountCodeForm({
         <Controller
           control={form.control}
           name="appliesToAddOns"
-          render={({ field }) => (
-            <MultiSelect
-              value={field.value}
-              onChange={field.onChange}
-              options={addOnOptions}
-              placeholder={
-                servicesLoading
-                  ? "Loading add-ons..."
-                  : addOnOptions.length
-                    ? "Select add-ons"
-                    : "No add-ons found"
-              }
-              disabled={servicesLoading || addOnOptions.length === 0 || isSubmitting}
-            />
-          )}
+          render={({ field }) => {
+            let placeholderText = "Select add-ons";
+            if (servicesLoading) {
+              placeholderText = "Loading add-ons...";
+            } else if (!selectedServices || selectedServices.length === 0) {
+              placeholderText = "Select services first to see add-ons";
+            } else if (addOnOptions.length === 0) {
+              placeholderText = "No add-ons available for selected services";
+            }
+
+            return (
+              <MultiSelect
+                value={field.value}
+                onChange={field.onChange}
+                options={addOnOptions}
+                placeholder={placeholderText}
+                disabled={servicesLoading || addOnOptions.length === 0 || isSubmitting}
+              />
+            );
+          }}
         />
         {!servicesLoading && addOnOptions.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            Add-ons from your services will appear here.
+            {!selectedServices || selectedServices.length === 0
+              ? "Select services above to see their add-ons."
+              : "No add-ons available for the selected services."}
           </p>
         )}
       </div>
