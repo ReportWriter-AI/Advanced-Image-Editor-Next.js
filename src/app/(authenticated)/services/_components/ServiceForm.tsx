@@ -22,7 +22,6 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { SERVICE_CATEGORIES } from "@/constants/serviceCategories";
 import { MODIFIER_FIELDS, MODIFIER_TYPES } from "@/constants/modifierOptions";
 import { cn } from "@/lib/utils";
 import { Check, ChevronDown, ChevronsUpDown, GripVertical, Info, Loader2, PlusCircle, Trash2 } from "lucide-react";
@@ -114,7 +113,6 @@ export const serviceFormSchema = baseServiceFieldsSchema.extend({
   taxes: z.array(taxSchema).default([]),
 });
 
-type BaseServiceFormValues = z.infer<typeof baseServiceFieldsSchema>;
 export type AddOnFormValues = z.infer<typeof addOnSchema>;
 export type TaxFormValues = z.infer<typeof taxSchema>;
 export type ServiceFormValues = z.infer<typeof serviceFormSchema>;
@@ -363,6 +361,8 @@ export function ServiceForm({
   const [agreements, setAgreements] = useState<AgreementOption[]>([]);
   const [agreementsLoading, setAgreementsLoading] = useState(true);
   const [agreementsError, setAgreementsError] = useState<string | null>(null);
+  const [serviceCategories, setServiceCategories] = useState<string[]>([]);
+  const [serviceCategoriesLoading, setServiceCategoriesLoading] = useState(true);
 
   useEffect(() => {
     const fetchModifierOptions = async () => {
@@ -426,6 +426,34 @@ export function ServiceForm({
     };
 
     fetchAgreements();
+  }, []);
+
+  useEffect(() => {
+    const fetchServiceCategories = async () => {
+      try {
+        setServiceCategoriesLoading(true);
+        const response = await fetch("/api/reusable-dropdowns", { credentials: "include" });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || "Failed to load service categories");
+        }
+
+        const categoriesString = result.serviceCategory || "";
+        const categoriesArray = categoriesString
+          .split(",")
+          .map((c: string) => c.trim())
+          .filter((c: string) => c.length > 0);
+        
+        setServiceCategories(categoriesArray);
+      } catch (error: any) {
+        console.error("Service categories error:", error);
+        setServiceCategories([]);
+      } finally {
+        setServiceCategoriesLoading(false);
+      }
+    };
+
+    fetchServiceCategories();
   }, []);
 
   const { fields: modifierFields, append, remove, update, replace } = useFieldArray({
@@ -846,7 +874,7 @@ export function ServiceForm({
             name="serviceCategory"
             control={form.control}
             render={({ field }) => {
-              const selectedLabel = field.value ? SERVICE_CATEGORIES.find((cat) => cat === field.value) : "";
+              const selectedLabel = field.value ? serviceCategories.find((cat) => cat === field.value) : "";
 
               return (
                 <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
@@ -857,9 +885,9 @@ export function ServiceForm({
                       role="combobox"
                       aria-expanded={categoryOpen}
                       className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || serviceCategoriesLoading}
                     >
-                      {selectedLabel || "Select a category"}
+                      {serviceCategoriesLoading ? "Loading categories..." : selectedLabel || "Select a category"}
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
@@ -869,7 +897,7 @@ export function ServiceForm({
                       <CommandEmpty>No category found.</CommandEmpty>
                       <CommandList className="max-h-60 overflow-y-auto">
                         <CommandGroup>
-                          {SERVICE_CATEGORIES.map((category) => (
+                          {serviceCategories.map((category) => (
                             <CommandItem
                               key={category}
                               value={category}
@@ -1353,6 +1381,8 @@ export function ServiceForm({
                           getFieldMeta={getFieldMeta}
                           getDefaultModifierField={getDefaultModifierField}
                           modifierOptionsLoading={modifierOptionsLoading}
+                          serviceCategories={serviceCategories}
+                          serviceCategoriesLoading={serviceCategoriesLoading}
                         />
                       );
                     })}
@@ -1448,6 +1478,8 @@ interface SortableAddOnItemProps {
   getFieldMeta: (fieldKey?: string) => ModifierFieldMeta;
   getDefaultModifierField: () => string;
   modifierOptionsLoading: boolean;
+  serviceCategories: string[];
+  serviceCategoriesLoading: boolean;
 }
 
 function SortableAddOnItem({
@@ -1464,6 +1496,8 @@ function SortableAddOnItem({
   getFieldMeta,
   getDefaultModifierField,
   modifierOptionsLoading,
+  serviceCategories,
+  serviceCategoriesLoading,
 }: SortableAddOnItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: fieldId });
 
@@ -1488,6 +1522,8 @@ function SortableAddOnItem({
         getFieldMeta={getFieldMeta}
         getDefaultModifierField={getDefaultModifierField}
         modifierOptionsLoading={modifierOptionsLoading}
+        serviceCategories={serviceCategories}
+        serviceCategoriesLoading={serviceCategoriesLoading}
       />
     </div>
   );
@@ -1510,6 +1546,8 @@ interface AddOnCardProps {
   getFieldMeta: (fieldKey?: string) => ModifierFieldMeta;
   getDefaultModifierField: () => string;
   modifierOptionsLoading: boolean;
+  serviceCategories: string[];
+  serviceCategoriesLoading: boolean;
 }
 
 function AddOnCard({
@@ -1526,6 +1564,8 @@ function AddOnCard({
   getFieldMeta,
   getDefaultModifierField,
   modifierOptionsLoading,
+  serviceCategories,
+  serviceCategoriesLoading,
 }: AddOnCardProps) {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [modifierCollapsedMap, setModifierCollapsedMap] = useState<Record<string, boolean>>({});
@@ -1685,7 +1725,7 @@ function AddOnCard({
               name={`${addOnPath}.serviceCategory` as const}
               control={form.control}
               render={({ field }) => {
-                const selectedLabel = field.value ? SERVICE_CATEGORIES.find((cat) => cat === field.value) : "";
+                const selectedLabel = field.value ? serviceCategories.find((cat) => cat === field.value) : "";
                 return (
                   <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
                     <PopoverTrigger asChild>
@@ -1695,9 +1735,9 @@ function AddOnCard({
                         role="combobox"
                         aria-expanded={categoryOpen}
                         className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || serviceCategoriesLoading}
                       >
-                        {selectedLabel || "Select a category"}
+                        {serviceCategoriesLoading ? "Loading categories..." : selectedLabel || "Select a category"}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
@@ -1707,7 +1747,7 @@ function AddOnCard({
                         <CommandEmpty>No category found.</CommandEmpty>
                         <CommandList className="max-h-60 overflow-y-auto">
                           <CommandGroup>
-                            {SERVICE_CATEGORIES.map((category) => (
+                            {serviceCategories.map((category) => (
                               <CommandItem
                                 key={category}
                                 value={category}

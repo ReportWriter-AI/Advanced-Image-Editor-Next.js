@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import HeaderImageUploader from '../../../../../../components/HeaderImageUploader';
 import LocationSearch from '../../../../../../components/LocationSearch';
 import FileUpload from '../../../../../../components/FileUpload';
-import { LOCATION_OPTIONS } from '../../../../../../constants/locations';
 import dynamic from 'next/dynamic';
 import { ArrowLeft, X, Plus, Trash2, Power, PowerOff, Download, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -203,8 +202,8 @@ export default function InspectionEditPage() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const pageBodyRef = useRef<HTMLDivElement | null>(null);
 
-  const [customLocations, setCustomLocations] = useState<string[]>([]);
-  const allLocationOptions = [...LOCATION_OPTIONS, ...customLocations];
+  const [locationOptions, setLocationOptions] = useState<string[]>([]);
+  const allLocationOptions = locationOptions;
 
   // States for form data options (for Details tab)
   const [inspectors, setInspectors] = useState<{ value: string; label: string }[]>([]);
@@ -407,6 +406,8 @@ export default function InspectionEditPage() {
             label: value,
           }))
         );
+        const locationValues = splitCommaSeparated(data.location || '');
+        setLocationOptions(locationValues);
       }
 
       if (customFieldsRes.ok) {
@@ -1063,11 +1064,6 @@ export default function InspectionEditPage() {
     }
   };
 
-  const handleAddNewLocation = (newLocation: string) => {
-    if (!customLocations.includes(newLocation) && !LOCATION_OPTIONS.includes(newLocation)) {
-      setCustomLocations(prev => [...prev, newLocation]);
-    }
-  };
 
   const handleAnnotateMainImage = (defect: Defect) => {
     if (!defect.image) {
@@ -3431,7 +3427,6 @@ export default function InspectionEditPage() {
                       onAnnotateMainImage={handleAnnotateMainImage}
                       onUpdateLocationForImage={handleUpdateLocationForImage}
                       onRemoveLocationPhoto={handleRemoveLocationPhoto}
-                      onAddNewLocation={handleAddNewLocation}
                       onSetPlayingVideoId={setPlayingVideoId}
                       onUpdateDefect={handleUpdateDefect}
                       getProxiedSrc={getProxiedSrc}

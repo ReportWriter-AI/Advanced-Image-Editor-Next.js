@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
         location: '',
         section: '',
         subsection: {},
+        serviceCategory: '',
       });
     }
 
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
       location: dropdown.location || '',
       section: dropdown.section || '',
       subsection: dropdown.subsection || {},
+      serviceCategory: dropdown.serviceCategory || '',
     });
   } catch (error: any) {
     console.error('ReusableDropdown GET error:', error);
@@ -54,7 +56,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { foundation, role, referralSources, location, section, subsection } = body;
+    const { foundation, role, referralSources, location, section, subsection, serviceCategory } = body;
 
     // Validate that all fields are strings
     if (foundation !== undefined && typeof foundation !== 'string') {
@@ -74,6 +76,9 @@ export async function PUT(request: NextRequest) {
     }
     if (subsection !== undefined && (typeof subsection !== 'object' || Array.isArray(subsection) || subsection === null)) {
       return NextResponse.json({ error: 'Subsection must be an object' }, { status: 400 });
+    }
+    if (serviceCategory !== undefined && typeof serviceCategory !== 'string') {
+      return NextResponse.json({ error: 'ServiceCategory must be a string' }, { status: 400 });
     }
 
     // Get existing dropdown to preserve values for fields not being updated
@@ -135,6 +140,14 @@ export async function PUT(request: NextRequest) {
       updateData.subsection = {};
     }
 
+    if (serviceCategory !== undefined) {
+      updateData.serviceCategory = serviceCategory;
+    } else if (existing) {
+      updateData.serviceCategory = existing.serviceCategory;
+    } else {
+      updateData.serviceCategory = '';
+    }
+
     // Set createdBy only on creation
     if (!existing) {
       updateData.createdBy = currentUser._id;
@@ -164,6 +177,7 @@ export async function PUT(request: NextRequest) {
       location: dropdown.location || '',
       section: dropdown.section || '',
       subsection: dropdown.subsection || {},
+      serviceCategory: dropdown.serviceCategory || '',
     });
   } catch (error: any) {
     console.error('ReusableDropdown PUT error:', error);

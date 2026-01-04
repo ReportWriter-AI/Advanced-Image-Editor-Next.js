@@ -9,7 +9,6 @@ import { Trash2 } from "lucide-react";
 import {
   CONDITION_TYPES,
   getOperatorsForConditionType,
-  getServiceCategoryOptions,
 } from "@/src/lib/automation-conditions";
 import { ConditionType } from "@/src/models/AutomationAction";
 import { splitCommaSeparated } from "@/lib/utils";
@@ -54,9 +53,11 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [foundationOptions, setFoundationOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [serviceCategoryOptions, setServiceCategoryOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingFoundation, setLoadingFoundation] = useState(false);
+  const [loadingServiceCategories, setLoadingServiceCategories] = useState(false);
 
   const conditionType = condition.type;
   const serviceId = condition.serviceId;
@@ -74,6 +75,9 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
     }
     if (conditionType === "FOUNDATION") {
       fetchFoundationOptions();
+    }
+    if (conditionType === "SERVICE_CATEGORY") {
+      fetchServiceCategoryOptions();
     }
   }, [conditionType]);
 
@@ -134,6 +138,29 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
     }
   };
 
+  const fetchServiceCategoryOptions = async () => {
+    try {
+      setLoadingServiceCategories(true);
+      const response = await fetch("/api/reusable-dropdowns", {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const serviceCategoryString = data.serviceCategory || "";
+        const serviceCategoryValues = splitCommaSeparated(serviceCategoryString);
+        const options = serviceCategoryValues.map((value) => ({
+          value: value.trim(),
+          label: value.trim(),
+        })).filter((opt) => opt.value.length > 0);
+        setServiceCategoryOptions(options);
+      }
+    } catch (error) {
+      console.error("Error fetching service category options:", error);
+    } finally {
+      setLoadingServiceCategories(false);
+    }
+  };
+
   const handleChange = (field: keyof ConditionFormData, value: any) => {
     const updated = { ...condition, [field]: value };
     
@@ -189,7 +216,6 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
     (op) => op.value === condition.operator
   );
 
-  const serviceCategoryOptions = getServiceCategoryOptions();
   const selectedServiceCategory = serviceCategoryOptions.find(
     (opt) => opt.value === condition.serviceCategory
   );
@@ -309,6 +335,7 @@ export function ConditionForm({ condition, index, onChange, onRemove }: Conditio
               value={selectedServiceCategory || null}
               onChange={(option) => handleChange("serviceCategory", option?.value || "")}
               options={serviceCategoryOptions}
+              isLoading={loadingServiceCategories}
               placeholder="Select a service category"
               className="react-select-container"
               classNamePrefix="react-select"

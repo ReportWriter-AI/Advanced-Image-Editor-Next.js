@@ -20,7 +20,7 @@ export default function LocationSearch({
   value,
   onChangeAction,
   placeholder = "Select location…",
-  allowCustom = true,
+  allowCustom = false,
   width = 180,
   autoFocus = false,
   onAddNew,

@@ -21,6 +21,7 @@ interface DropdownData {
   location: string
   section: string
   subsection: { [key: string]: string[] }
+  serviceCategory: string
 }
 
 export default function ReusableDropdownsPage() {
@@ -30,6 +31,7 @@ export default function ReusableDropdownsPage() {
   const [location, setLocation] = useState<string>("")
   const [section, setSection] = useState<string>("")
   const [subsection, setSubsection] = useState<{ [key: string]: string[] }>({})
+  const [serviceCategory, setServiceCategory] = useState<string>("")
   const [selectedSectionForSubsection, setSelectedSectionForSubsection] = useState<string>("")
   const [subsectionInput, setSubsectionInput] = useState<string>("")
   const [loading, setLoading] = useState(true)
@@ -41,6 +43,7 @@ export default function ReusableDropdownsPage() {
     location: { status: "idle" },
     section: { status: "idle" },
     subsection: { status: "idle" },
+    serviceCategory: { status: "idle" },
   })
   const initializedRef = useRef(false)
   const lastSavedRef = useRef<DropdownData>({
@@ -50,6 +53,7 @@ export default function ReusableDropdownsPage() {
     location: "",
     section: "",
     subsection: {},
+    serviceCategory: "",
   })
   const saveTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
 
@@ -75,6 +79,7 @@ export default function ReusableDropdownsPage() {
       setLocation(data.location || "")
       setSection(data.section || "")
       setSubsection(data.subsection || {})
+      setServiceCategory(data.serviceCategory || "")
 
       lastSavedRef.current = {
         foundation: data.foundation || "",
@@ -83,6 +88,7 @@ export default function ReusableDropdownsPage() {
         location: data.location || "",
         section: data.section || "",
         subsection: data.subsection || {},
+        serviceCategory: data.serviceCategory || "",
       }
 
       initializedRef.current = true
@@ -171,6 +177,8 @@ export default function ReusableDropdownsPage() {
         setSection(value as string)
       } else if (field === "subsection") {
         setSubsection(value as { [key: string]: string[] })
+      } else if (field === "serviceCategory") {
+        setServiceCategory(value as string)
       }
 
       // Clear existing timer for this field
@@ -337,6 +345,24 @@ export default function ReusableDropdownsPage() {
               />
               {saveStates.referralSources.status === "error" && saveStates.referralSources.message && (
                 <p className="text-sm text-destructive">{saveStates.referralSources.message}</p>
+              )}
+            </div>
+
+
+            {/* Service Category Field */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="serviceCategory">Service Category</Label>
+                {getStatusIcon(saveStates.serviceCategory)}
+              </div>
+              <Input
+                id="serviceCategory"
+                value={serviceCategory}
+                onChange={(e) => handleFieldChange("serviceCategory", e.target.value)}
+                placeholder="Enter service category options..."
+              />
+              {saveStates.serviceCategory.status === "error" && saveStates.serviceCategory.message && (
+                <p className="text-sm text-destructive">{saveStates.serviceCategory.message}</p>
               )}
             </div>
 

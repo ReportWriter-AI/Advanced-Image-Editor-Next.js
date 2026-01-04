@@ -4,7 +4,6 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import LocationSearch from '@/components/LocationSearch';
 import FileUpload from '@/components/FileUpload';
-import { LOCATION_OPTIONS } from '@/constants/locations';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -84,7 +83,6 @@ interface DefectCardProps {
   onAnnotateMainImage: (defect: Defect) => void;
   onUpdateLocationForImage: (index: number, newLocation: string) => void;
   onRemoveLocationPhoto: (index: number) => void;
-  onAddNewLocation: (newLocation: string) => void;
   onSetPlayingVideoId: (id: string | null) => void;
   onUpdateDefect: (defectId: string, updates: Partial<Defect>) => void;
   getProxiedSrc: (url?: string | null) => string;
@@ -114,7 +112,6 @@ export default function DefectCard({
   onAnnotateMainImage,
   onUpdateLocationForImage,
   onRemoveLocationPhoto,
-  onAddNewLocation,
   onSetPlayingVideoId,
   onUpdateDefect,
   getProxiedSrc,
@@ -267,6 +264,7 @@ export default function DefectCard({
                 onChangeAction={(val) => onFieldChange('location', val)}
                 placeholder="Select location…"
                 width={220}
+                allowCustom={false}
               />
             ) : (
               <span className="text-sm">{displayDefect.location || 'Not specified'}</span>
@@ -427,7 +425,6 @@ export default function DefectCard({
                             <label className="block text-xs mb-1 font-medium">Location</label>
                             <LocationSearch
                               options={allLocationOptions}
-                              onAddNew={onAddNewLocation}
                               value={item.location}
                               onChangeAction={(val) => setBulkItems((prev) => {
                                 const copy = [...prev];
@@ -436,6 +433,7 @@ export default function DefectCard({
                               })}
                               placeholder="Type to search…"
                               width="100%"
+                              allowCustom={false}
                             />
                             <label className="inline-flex items-center gap-2 mt-2 text-xs">
                               <input type="checkbox" checked={item.isThreeSixty} onChange={(e) => setBulkItems((prev) => {
@@ -487,13 +485,14 @@ export default function DefectCard({
                         </label>
                         <LocationSearch
                           key={`location-${displayDefect._id}-${idx}-${img.url}`}
-                          options={LOCATION_OPTIONS}
+                          options={allLocationOptions}
                           value={locationValue}
                           onChangeAction={(val) => {
                             onUpdateLocationForImage(idx, val);
                           }}
                           placeholder="Type to search…"
                           width="100%"
+                          allowCustom={false}
                         />
                       </div>
                       <button

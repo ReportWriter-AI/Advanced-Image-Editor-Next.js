@@ -6,6 +6,7 @@ import Company from '../../../../../src/models/Company';
 import ReusableDropdown from '../../../../../src/models/ReusableDropdown';
 import { sendVerificationEmail } from '../../../../../lib/email';
 import { ensureDefaultModifiersForCompany } from '../../../../../lib/modifier-service';
+import { SERVICE_CATEGORIES } from '../../../../../constants/serviceCategories';
 
 export async function POST(request: NextRequest) {
   try {
@@ -248,6 +249,7 @@ export async function POST(request: NextRequest) {
       location: defaultLocation,
       section: defaultSection,
       subsection: defaultSubsection,
+      serviceCategory: SERVICE_CATEGORIES.join(", "),
     });
 
     // Send verification email
