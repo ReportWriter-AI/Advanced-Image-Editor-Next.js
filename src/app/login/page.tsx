@@ -45,15 +45,10 @@ const resendConfirmationSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
 });
 
-type LoginFormData = z.infer<typeof loginSchema>;
-type SignupFormData = z.infer<typeof signupSchema>;
-type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
-type ResendConfirmationFormData = z.infer<typeof resendConfirmationSchema>;
-
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login: authLogin } = useAuth();
+  const { login: authLogin, isAuthenticated, loading: authLoading } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showResendConfirmation, setShowResendConfirmation] = useState(false);
@@ -103,6 +98,13 @@ function LoginPageContent() {
     },
   });
 
+  // Redirect authenticated users to home page (client-side fallback)
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.push('/');
+    }
+  }, [isAuthenticated, authLoading, router]);
+
   useEffect(() => {
     // Check for verification success
     if (searchParams.get('verified') === 'true') {
@@ -142,7 +144,7 @@ function LoginPageContent() {
       authLogin(result.user);
 
       setTimeout(() => {
-        router.push('/dashboard');
+        router.push('/');
       }, 1000);
 
     } catch (error: any) {
@@ -255,6 +257,23 @@ function LoginPageContent() {
       setLoading(false);
     }
   };
+
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render login page if authenticated (redirect will happen)
+  if (isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 px-4 py-12 relative overflow-hidden">
