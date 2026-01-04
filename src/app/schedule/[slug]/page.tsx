@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ReactSelect, { components } from 'react-select';
 import AsyncSelect from 'react-select/async';
+import CreatableSelect from 'react-select/creatable';
 import { X, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { LocationFields } from '@/components/location/LocationFields';
 import CustomFields from '@/components/custom-fields/CustomFields';
@@ -104,7 +105,6 @@ type Inspector = {
 
 export default function SchedulePage() {
   const params = useParams();
-  const router = useRouter();
   const slug = params.slug as string;
 
   const [companyId, setCompanyId] = useState<string | null>(null);
@@ -126,7 +126,6 @@ export default function SchedulePage() {
   // Calendar state
   const [inspectors, setInspectors] = useState<Inspector[]>([]);
   const [selectedInspectorId, setSelectedInspectorId] = useState<string | null>(null);
-  const [companyOwnerId, setCompanyOwnerId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'openSchedule' | 'timeSlots'>('openSchedule');
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
     // Get current Sunday
@@ -333,7 +332,6 @@ export default function SchedulePage() {
         if (response.ok) {
           const data = await response.json();
           setInspectors(data.inspectors || []);
-          setCompanyOwnerId(data.companyOwnerId);
           setViewMode(data.viewMode || 'openSchedule');
           
           // Set default inspector to company owner or first inspector
@@ -2143,14 +2141,16 @@ export default function SchedulePage() {
                     name="referralSource"
                     control={form.control}
                     render={({ field }) => (
-                      <ReactSelect
+                      <CreatableSelect
                         value={field.value ? { value: field.value, label: field.value } : null}
                         onChange={(option) => field.onChange(option?.value || undefined)}
+                        onCreateOption={(inputValue) => field.onChange(inputValue.trim())}
                         options={referralSourceOptions}
                         isClearable
                         placeholder="Select referral source..."
                         className="react-select-container"
                         classNamePrefix="react-select"
+                        formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
                       />
                     )}
                   />
