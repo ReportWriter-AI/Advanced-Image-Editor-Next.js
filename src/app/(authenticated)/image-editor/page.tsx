@@ -81,188 +81,44 @@ function ImageEditorPageContent() {
   const [inspectionCity, setInspectionCity] = useState<string>('');
   const [inspectionZipCode, setInspectionZipCode] = useState<string>('');
 
-  const [customLocations, setCustomLocations] = useState<string[]>([]);
-  const [customSections, setCustomSections] = useState<string[]>([]);
-  const [customSubsections, setCustomSubsections] = useState<{ [key: string]: string[] }>({});
+  const [location, setLocation] = useState<string[]>([]);
+  const [section, setSection] = useState<string[]>([]);
+  const [subsection, setSubsection] = useState<{ [key: string]: string[] }>({});
 
-  const [inspectionCustomLocations, setInspectionCustomLocations] = useState<string[]>([]);
-  const [inspectionCustomSections, setInspectionCustomSections] = useState<string[]>([]);
-  const [inspectionCustomSubsections, setInspectionCustomSubsections] = useState<{ [key: string]: string[] }>({});
+  // Fetch dropdown data from API
+  useEffect(() => {
+    const fetchDropdownData = async () => {
+      try {
+        const response = await fetch('/api/reusable-dropdowns', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          // Parse comma-separated strings into arrays
+          setLocation(data.location ? data.location.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0) : []);
+          setSection(data.section ? data.section.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0) : []);
+          setSubsection(data.subsection || {});
+        }
+      } catch (error) {
+        console.error('Failed to fetch dropdown data:', error);
+      }
+    };
+    fetchDropdownData();
+  }, []);
 
-  const [showAddLocation, setShowAddLocation] = useState(false);
-  const [showAddSection, setShowAddSection] = useState(false);
-  const [showAddSubSection, setShowAddSubSection] = useState(false);
-  const [newLocationInput, setNewLocationInput] = useState('');
-  const [newSectionInput, setNewSectionInput] = useState('');
-  const [newSubSectionInput, setNewSubSectionInput] = useState('');
-
-  const location = [
-    'Addition', 'All Locations', 'Apartment', 'Attic', 'Back Porch', 'Back Room', 'Balcony',
-    'Bedroom 1', 'Bedroom 2', 'Bedroom 3', 'Bedroom 4', 'Bedroom 5', 'Both Locations', 'Breakfast',
-    'Carport', 'Carport Entry', 'Closet', 'Crawlspace', 'Dining', 'Downstairs', 'Downstairs Bathroom',
-    'Downstairs Bathroom Closet', 'Downstairs Hallway', 'Downstairs Hall Closet', 'Driveway', 'Entry',
-    'Family Room', 'Front Entry', 'Front of House', 'Front Porch', 'Front Room', 'Garage', 'Garage Entry',
-    'Garage Storage Closet', 'Guest Bathroom', 'Guest Bedroom', 'Guest Bedroom Closet', 'Half Bathroom',
-    'Hallway', 'Heater Operation Temp', 'HVAC Closet', 'Keeping Room', 'Kitchen', 'Kitchen Pantry',
-    'Left Side of House', 'Left Wall', 'Living Room', 'Living Room Closet', 'Laundry Room',
-    'Laundry Room Closet', 'Master Bathroom', 'Master Bedroom', 'Master Closet', 'Most Locations',
-    'Multiple Locations', 'Office', 'Office Closet', 'Outdoor Storage', 'Patio', 'Rear Entry',
-    'Rear of House', 'Rear Wall', 'Right Side of House', 'Right Wall', 'Shop', 'Side Entry', 'Staircase',
-    'Sun Room', 'Top of Stairs', 'Upstairs Bathroom', 'Upstairs Bedroom 1', 'Upstairs Bedroom 1 Closet',
-    'Upstairs Bedroom 2', 'Upstairs Bedroom 2 Closet', 'Upstairs Bedroom 3', 'Upstairs Bedroom 3 Closet',
-    'Upstairs Bedroom 4', 'Upstairs Bedroom 4 Closet', 'Upstairs Hallway', 'Upstairs Laundry Room',
-    'Utility Room', 'Water Heater Closet', 'Water Heater Output Temp'
-  ];
-
-  const section = [
-    'AC / Cooling',
-    'Built-In Appliances',
-    'Electrical',
-    'Exterior',
-    'Fireplace / Chimney',
-    'Foundation & Structure',
-    'Furnace / Heater',
-    'Grounds',
-    'Insulation & Ventilation',
-    'Interior',
-    'Plumbing',
-    'Roof',
-    'Swimming Pool & Spa',
-    'Verified Functionality'
-  ];
-
-  const subsection: { [key: string]: string[] } = {
-    'Grounds': [
-      'Vegetation, Grading, & Drainage',
-      'Sidewalks, Porches, Driveways'
-    ],
-    'Foundation & Structure': [
-      'Foundation',
-      'Crawlspace',
-      'Floor Structure',
-      'Wall Structure',
-      'Ceiling Structure'
-    ],
-    'Roof': [
-      'Coverings',
-      'Flashing & Seals',
-      'Roof Penetrations',
-      'Roof Structure & Attic',
-      'Gutters'
-    ],
-    'Exterior': [
-      'Exterior Doors',
-      'Exterior Windows',
-      'Siding, Flashing, & Trim',
-      'Brick/Stone Veneer',
-      'Vinyl Siding',
-      'Soffit & Fascia',
-      'Wall Penetrations',
-      'Doorbell',
-      'Exterior Support Columns',
-      'Steps, Stairways, & Railings'
-    ],
-    'Fireplace / Chimney': [
-      'Fireplace',
-      'Chimney',
-      'Flue'
-    ],
-    'Interior': [
-      'Doors',
-      'Windows',
-      'Floors',
-      'Walls',
-      'Ceilings',
-      'Countertops & Cabinets',
-      'Trim',
-      'Steps, Staircase, & Railings'
-    ],
-    'Insulation & Ventilation': [
-      'Attic Access',
-      'Insulation',
-      'Vapor Barrier',
-      'Ventilation & Exhaust'
-    ],
-    'AC / Cooling': [
-      'Air Conditioning',
-      'Thermostats',
-      'Distribution System'
-    ],
-    'Furnace / Heater': [
-      'Forced Air Furnace'
-    ],
-    'Electrical': [
-      'Sub Panel',
-      'Service Panel',
-      'Branch Wiring & Breakers',
-      'Exterior Lighting',
-      'Fixtures, Fans, Switches, & Receptacles',
-      'GFCI & AFCI',
-      '240 Volt Receptacle',
-      'Smoke / Carbon Monoxide Alarms',
-      'Service Entrance'
-    ],
-    'Plumbing': [
-      'Water Heater',
-      'Drain, Waste, & Vents',
-      'Water Supply',
-      'Water Spigot',
-      'Gas Supply',
-      'Vents & Flues',
-      'Fixtures,Sinks, Tubs, & Toilets'
-    ],
-    'Built-In Appliances': [
-      'Refrigerator',
-      'Dishwasher',
-      'Garbage Disposal',
-      'Microwave',
-      'Range Hood',
-      'Range, Oven & Cooktop'
-    ],
-    'Swimming Pool & Spa': [
-      'Equipment',
-      'Electrical',
-      'Safety Devices',
-      'Coping & Decking',
-      'Vessel Surface',
-      'Drains',
-      'Control Valves',
-      'Filter',
-      'Pool Plumbing',
-      'Pumps',
-      'Spa Controls & Equipment',
-      'Heating',
-      'Diving Board & Slide'
-    ],
-    'Verified Functionality': [
-      'AC Temperature Differential',
-      'Furnace Output Temperature',
-      'Oven Operation Temperature',
-      'Water Heater Output Temperature'
-    ]
-  };
-
-  // Combine default, template custom, and inspection-specific items, then filter
-  const allSections = [...section, ...customSections, ...inspectionCustomSections];
-  const filteredSections = allSections.filter(sectionItem =>
+  // Filter arrays
+  const filteredSections = section.filter(sectionItem =>
     sectionItem.toLowerCase().includes(locationSearch.toLowerCase())
   );
 
-  // Combine default, template, and inspection-specific subsections for selected section
   const allSubsectionsForSection = selectedLocation
-    ? [
-        ...(subsection[selectedLocation as keyof typeof subsection] || []),
-        ...(customSubsections[selectedLocation] || []),
-        ...(inspectionCustomSubsections[selectedLocation] || [])
-      ]
+    ? (subsection[selectedLocation] || [])
     : [];
   const filteredSubsections = allSubsectionsForSection.filter(subLocation =>
     subLocation.toLowerCase().includes(subLocationSearch.toLowerCase())
   );
 
-  // Combine default, template custom, and inspection-specific locations
-  const allLocations = [...location, ...customLocations, ...inspectionCustomLocations];
-  const filteredLocations = allLocations.filter(locationItem =>
+  const filteredLocations = location.filter(locationItem =>
     locationItem.toLowerCase().includes(locationSearch2.toLowerCase())
   );
 
@@ -396,35 +252,6 @@ function ImageEditorPageContent() {
     }
   }, [isDefectMainMode]);
 
-  useEffect(() => {
-    try {
-      // Load TEMPLATE items (global - all inspections)
-      const savedLocations = localStorage.getItem('customLocations');
-      const savedSections = localStorage.getItem('customSections');
-      const savedSubsections = localStorage.getItem('customSubsections');
-
-      if (savedLocations) setCustomLocations(JSON.parse(savedLocations));
-      if (savedSections) setCustomSections(JSON.parse(savedSections));
-      if (savedSubsections) setCustomSubsections(JSON.parse(savedSubsections));
-
-      // Load INSPECTION-SPECIFIC items (this inspection only)
-      if (selectedInspectionId) {
-        const inspLocKey = `inspection_custom_locations_${selectedInspectionId}`;
-        const inspSecKey = `inspection_custom_sections_${selectedInspectionId}`;
-        const inspSubKey = `inspection_custom_subsections_${selectedInspectionId}`;
-
-        const inspLoc = localStorage.getItem(inspLocKey);
-        const inspSec = localStorage.getItem(inspSecKey);
-        const inspSub = localStorage.getItem(inspSubKey);
-
-        if (inspLoc) setInspectionCustomLocations(JSON.parse(inspLoc));
-        if (inspSec) setInspectionCustomSections(JSON.parse(inspSec));
-        if (inspSub) setInspectionCustomSubsections(JSON.parse(inspSub));
-      }
-    } catch (e) {
-      console.log(e);
-    }
-  }, [selectedInspectionId]);
 
   // actions for editing images
   const handleActionClick = (mode: 'none' | 'crop' | 'arrow' | 'circle' | 'square') => {
@@ -473,135 +300,6 @@ function ImageEditorPageContent() {
     window.dispatchEvent(event);
   };
 
-  // Add new location
-  const handleAddLocation = (isTemplate: boolean) => {
-    if (!newLocationInput.trim()) return;
-
-    const newItem = newLocationInput.trim();
-
-    if (isTemplate) {
-      const updated = [...customLocations, newItem];
-      setCustomLocations(updated);
-      localStorage.setItem('customLocations', JSON.stringify(updated));
-    } else {
-      const updated = [...inspectionCustomLocations, newItem];
-      setInspectionCustomLocations(updated);
-      localStorage.setItem(`inspection_custom_locations_${selectedInspectionId}`, JSON.stringify(updated));
-    }
-
-    setSelectedLocation2(newItem);
-    setNewLocationInput('');
-    setShowAddLocation(false);
-    setShowLocationDropdown2(false);
-  };
-
-  // Add new section
-  const handleAddSection = (isTemplate: boolean) => {
-    if (!newSectionInput.trim()) return;
-
-    const newItem = newSectionInput.trim();
-
-    if (isTemplate) {
-      // Save to Template (all inspections)
-      const updated = [...customSections, newItem];
-      setCustomSections(updated);
-      localStorage.setItem('customSections', JSON.stringify(updated));
-      const updatedSubsections = { ...customSubsections, [newItem]: [] };
-      setCustomSubsections(updatedSubsections);
-      localStorage.setItem('customSubsections', JSON.stringify(updatedSubsections));
-    } else {
-      const updated = [...inspectionCustomSections, newItem];
-      setInspectionCustomSections(updated);
-      localStorage.setItem(`inspection_custom_sections_${selectedInspectionId}`, JSON.stringify(updated));
-      // Initialize empty subsection array for new section
-      const updatedSubsections = { ...inspectionCustomSubsections, [newItem]: [] };
-      setInspectionCustomSubsections(updatedSubsections);
-      localStorage.setItem(`inspection_custom_subsections_${selectedInspectionId}`, JSON.stringify(updatedSubsections));
-    }
-
-    setSelectedLocation(newItem);
-    setNewSectionInput('');
-    setShowAddSection(false);
-    setShowLocationDropdown(false);
-  };
-
-  // Add new subsection
-  const handleAddSubSection = (isTemplate: boolean) => {
-    if (!newSubSectionInput.trim() || !selectedLocation) return;
-
-    const newItem = newSubSectionInput.trim();
-
-    if (isTemplate) {
-      // Save to Template (all inspections)
-      const updated = { ...customSubsections };
-      if (!updated[selectedLocation]) {
-        updated[selectedLocation] = [];
-      }
-      updated[selectedLocation] = [...updated[selectedLocation], newItem];
-      setCustomSubsections(updated);
-      localStorage.setItem('customSubsections', JSON.stringify(updated));
-    } else {
-      // Add to This Inspection Only
-      const updated = { ...inspectionCustomSubsections };
-      if (!updated[selectedLocation]) {
-        updated[selectedLocation] = [];
-      }
-      updated[selectedLocation] = [...updated[selectedLocation], newItem];
-      setInspectionCustomSubsections(updated);
-      localStorage.setItem(`inspection_custom_subsections_${selectedInspectionId}`, JSON.stringify(updated));
-    }
-
-    setSelectedSubLocation(newItem);
-    setNewSubSectionInput('');
-    setShowAddSubSection(false);
-    setShowSubLocationDropdown(false);
-  };
-
-  // Delete custom location
-  const handleDeleteLocation = (item: string, isTemplate: boolean) => {
-    if (isTemplate) {
-      const updated = customLocations.filter(loc => loc !== item);
-      setCustomLocations(updated);
-      localStorage.setItem('customLocations', JSON.stringify(updated));
-    } else {
-      const updated = inspectionCustomLocations.filter(loc => loc !== item);
-      setInspectionCustomLocations(updated);
-      localStorage.setItem(`inspection_custom_locations_${selectedInspectionId}`, JSON.stringify(updated));
-    }
-    if (selectedLocation2 === item) setSelectedLocation2('');
-  };
-
-  // Delete custom section
-  const handleDeleteSection = (item: string, isTemplate: boolean) => {
-    if (isTemplate) {
-      const updated = customSections.filter(sec => sec !== item);
-      setCustomSections(updated);
-      localStorage.setItem('customSections', JSON.stringify(updated));
-    } else {
-      const updated = inspectionCustomSections.filter(sec => sec !== item);
-      setInspectionCustomSections(updated);
-      localStorage.setItem(`inspection_custom_sections_${selectedInspectionId}`, JSON.stringify(updated));
-    }
-    if (selectedLocation === item) setSelectedLocation('');
-  };
-
-  // Delete custom subsection
-  const handleDeleteSubSection = (item: string, isTemplate: boolean) => {
-    if (!selectedLocation) return;
-
-    if (isTemplate) {
-      const updated = { ...customSubsections };
-      updated[selectedLocation] = updated[selectedLocation].filter(sub => sub !== item);
-      setCustomSubsections(updated);
-      localStorage.setItem('customSubsections', JSON.stringify(updated));
-    } else {
-      const updated = { ...inspectionCustomSubsections };
-      updated[selectedLocation] = updated[selectedLocation].filter(sub => sub !== item);
-      setInspectionCustomSubsections(updated);
-      localStorage.setItem(`inspection_custom_subsections_${selectedInspectionId}`, JSON.stringify(updated));
-    }
-    if (selectedSubLocation === item) setSelectedSubLocation('');
-  };
 
   const handleCropStateChange = (hasFrame: boolean) => {
     setHasCropFrame(hasFrame);
@@ -1521,106 +1219,20 @@ function ImageEditorPageContent() {
                   />
                 </div>
                  <div className="location-options">
-                   {/* Add New Location button */}
-                   {!showAddLocation && (
+                   {filteredLocations.map(locationItem => (
                      <div
-                       className="location-option add-new-option border-b border-gray-200 text-[#6a11cb] font-semibold"
-                       onClick={() => setShowAddLocation(true)}
+                       key={locationItem}
+                       className={`location-option ${selectedLocation2 === locationItem ? 'selected' : ''}`}
+                       onClick={() => {
+                         setSelectedLocation2(locationItem);
+                         setShowLocationDropdown2(false);
+                         setLocationSearch2('');
+                       }}
                      >
-                       <i className="fas fa-plus-circle"></i>
-                       <span>Add New Location</span>
+                       <i className="fas fa-map-marker-alt"></i>
+                       <span>{locationItem}</span>
                      </div>
-                   )}
-
-                   {/* Inline input for adding new location */}
-                   {showAddLocation && (
-                     <div className="add-new-input-container p-2 border-b border-gray-200">
-                       <input
-                         type="text"
-                         placeholder="Enter new location..."
-                         value={newLocationInput}
-                         onChange={(e) => setNewLocationInput(e.target.value)}
-                         onKeyDown={(e) => {
-                           if (e.key === 'Enter') handleAddLocation(false);
-                           if (e.key === 'Escape') {
-                             setShowAddLocation(false);
-                             setNewLocationInput('');
-                           }
-                         }}
-                         autoFocus
-                         className="location-search-input mb-2"
-                       />
-                      <div className="flex flex-col gap-1.5">
-                        <button
-                          onClick={() => handleAddLocation(false)}
-                          className="w-full py-1.5 px-2 bg-blue-500 text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
-                          title="Add only to this inspection"
-                        >
-                          Add To This Inspection
-                        </button>
-                        <button
-                          onClick={() => handleAddLocation(true)}
-                          className="w-full py-1.5 px-2 bg-[#6a11cb] text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
-                          title="Save to template (all inspections)"
-                        >
-                          Save to Template
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowAddLocation(false);
-                            setNewLocationInput('');
-                          }}
-                          className="w-full py-1 px-2 bg-gray-200 text-gray-700 border-none rounded cursor-pointer text-[10px] font-medium"
-                        >
-                          Cancel
-                        </button>
-                        <div className="text-[9px] text-gray-500 py-0.5 leading-tight">
-                          💡 Add = only this inspection • Save = all inspections
-                        </div>
-                      </div>
-                     </div>
-                   )}
-
-                   {filteredLocations.map(locationItem => {
-                     const isTemplateCustom = customLocations.includes(locationItem);
-                     const isInspectionCustom = inspectionCustomLocations.includes(locationItem);
-                     const isCustom = isTemplateCustom || isInspectionCustom;
-                     return (
-                       <div
-                         key={locationItem}
-                         className={`location-option ${selectedLocation2 === locationItem ? 'selected' : ''} flex items-center justify-between`}
-                       >
-                         <div
-                           className="flex-1 flex items-center"
-                           onClick={() => {
-                             setSelectedLocation2(locationItem);
-                             setShowLocationDropdown2(false);
-                             setLocationSearch2('');
-                           }}
-                         >
-                           <i className="fas fa-map-marker-alt"></i>
-                           <span>{locationItem}</span>
-                           {isInspectionCustom && (
-                             <span className="text-[10px] ml-1.5 text-blue-500 font-semibold">
-                               (This Inspection)
-                             </span>
-                           )}
-                         </div>
-                         {isCustom && (
-                           <i
-                             className="fas fa-trash-alt text-red-500 cursor-pointer py-1 px-2 text-sm"
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               if (confirm(`Delete "${locationItem}"?`)) {
-                                 handleDeleteLocation(locationItem, isTemplateCustom);
-                               }
-                             }}
-                             title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
-                           />
-                         )}
-                       </div>
-                     );
-                   })}
+                   ))}
                  </div>
               </div>
             )}
@@ -1655,109 +1267,23 @@ function ImageEditorPageContent() {
                   />
                 </div>
                  <div className="location-options">
-                   {/* Add New Section button */}
-                   {!showAddSection && (
+                   {filteredSections.map(sectionItem => (
                      <div
-                       className="location-option add-new-option border-b border-gray-200 text-[#6a11cb] font-semibold"
-                       onClick={() => setShowAddSection(true)}
+                       key={sectionItem}
+                       className={`location-option ${selectedLocation === sectionItem ? 'selected' : ''}`}
+                       onClick={() => {
+                         setSelectedLocation(sectionItem);
+                         setShowLocationDropdown(false);
+                         setLocationSearch('');
+                         setSelectedSubLocation(''); // Reset sub-location when main location changes
+                         setSubLocationSearch(''); // Reset sub-location search
+                         setShowSubLocationDropdown(false); // Hide sub-location dropdown initially
+                       }}
                      >
-                       <i className="fas fa-plus-circle"></i>
-                       <span>Add New Section</span>
+                       <i className="fas fa-map-marker-alt"></i>
+                       <span>{sectionItem}</span>
                      </div>
-                   )}
-
-                   {/* Inline input for adding new section */}
-                   {showAddSection && (
-                     <div className="add-new-input-container p-2 border-b border-gray-200">
-                       <input
-                         type="text"
-                         placeholder="Enter new section..."
-                         value={newSectionInput}
-                         onChange={(e) => setNewSectionInput(e.target.value)}
-                         onKeyDown={(e) => {
-                           if (e.key === 'Enter') handleAddSection(false);
-                           if (e.key === 'Escape') {
-                             setShowAddSection(false);
-                             setNewSectionInput('');
-                           }
-                         }}
-                         autoFocus
-                         className="location-search-input mb-2"
-                       />
-                      <div className="flex flex-col gap-1.5">
-                        <button
-                          onClick={() => handleAddSection(false)}
-                          className="w-full py-1.5 px-2 bg-blue-500 text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
-                          title="Add only to this inspection"
-                        >
-                          Add To This Inspection
-                        </button>
-                        <button
-                          onClick={() => handleAddSection(true)}
-                          className="w-full py-1.5 px-2 bg-[#6a11cb] text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
-                          title="Save to template (all inspections)"
-                        >
-                          Save to Template
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowLocationDropdown(false);
-                            setLocationSearch('');
-                          }}
-                          className="w-full py-1 px-2 bg-gray-200 text-gray-700 border-none rounded cursor-pointer text-[10px] font-medium"
-                        >
-                          Cancel
-                        </button>
-                        <div className="text-[9px] text-gray-500 py-0.5 leading-tight">
-                          💡 Add = only this inspection • Save = all inspections
-                        </div>
-                      </div>
-                     </div>
-                   )}
-
-                   {filteredSections.map(sectionItem => {
-                     const isTemplateCustom = customSections.includes(sectionItem);
-                     const isInspectionCustom = inspectionCustomSections.includes(sectionItem);
-                     const isCustom = isTemplateCustom || isInspectionCustom;
-                     return (
-                       <div
-                         key={sectionItem}
-                         className={`location-option ${selectedLocation === sectionItem ? 'selected' : ''} flex items-center justify-between`}
-                       >
-                         <div
-                           className="flex-1 flex items-center"
-                           onClick={() => {
-                             setSelectedLocation(sectionItem);
-                             setShowLocationDropdown(false);
-                             setLocationSearch('');
-                             setSelectedSubLocation(''); // Reset sub-location when main location changes
-                             setSubLocationSearch(''); // Reset sub-location search
-                             setShowSubLocationDropdown(false); // Hide sub-location dropdown initially
-                           }}
-                         >
-                           <i className="fas fa-map-marker-alt"></i>
-                           <span>{sectionItem}</span>
-                           {isInspectionCustom && (
-                             <span className="text-[10px] ml-1.5 text-blue-500 font-semibold">
-                               (This Inspection)
-                             </span>
-                           )}
-                         </div>
-                         {isCustom && (
-                           <i
-                             className="fas fa-trash-alt text-red-500 cursor-pointer py-1 px-2 text-sm"
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               if (confirm(`Delete "${sectionItem}"?`)) {
-                                 handleDeleteSection(sectionItem, isTemplateCustom);
-                               }
-                             }}
-                             title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
-                           />
-                         )}
-                       </div>
-                     );
-                   })}
+                   ))}
                  </div>
               </div>
             )}
@@ -1789,106 +1315,20 @@ function ImageEditorPageContent() {
                   />
                 </div>
                  <div className="location-options">
-                   {/* Add New Sub-Section button */}
-                   {!showAddSubSection && (
+                   {filteredSubsections.map(subLocation => (
                      <div
-                       className="location-option add-new-option border-b border-gray-200 text-[#6a11cb] font-semibold"
-                       onClick={() => setShowAddSubSection(true)}
+                       key={subLocation}
+                       className={`location-option ${selectedSubLocation === subLocation ? 'selected' : ''}`}
+                       onClick={() => {
+                         setSelectedSubLocation(subLocation);
+                         setShowSubLocationDropdown(false);
+                         setSubLocationSearch('');
+                       }}
                      >
-                       <i className="fas fa-plus-circle"></i>
-                       <span>Add New Sub-Section</span>
+                       <i className="fas fa-layer-group"></i>
+                       <span>{subLocation}</span>
                      </div>
-                   )}
-
-                   {/* Inline input for adding new subsection */}
-                   {showAddSubSection && (
-                     <div className="add-new-input-container p-2 border-b border-gray-200">
-                       <input
-                         type="text"
-                         placeholder="Enter new sub-section..."
-                         value={newSubSectionInput}
-                         onChange={(e) => setNewSubSectionInput(e.target.value)}
-                         onKeyDown={(e) => {
-                           if (e.key === 'Enter') handleAddSubSection(false);
-                           if (e.key === 'Escape') {
-                             setShowAddSubSection(false);
-                             setNewSubSectionInput('');
-                           }
-                         }}
-                         autoFocus
-                         className="location-search-input mb-2"
-                       />
-                      <div className="flex flex-col gap-1.5">
-                        <button
-                          onClick={() => handleAddSubSection(false)}
-                          className="w-full py-1.5 px-2 bg-blue-500 text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
-                          title="Add only to this inspection"
-                        >
-                          Add To This Inspection
-                        </button>
-                        <button
-                          onClick={() => handleAddSubSection(true)}
-                          className="w-full py-1.5 px-2 bg-[#6a11cb] text-white border-none rounded cursor-pointer text-[10px] font-semibold leading-tight text-center whitespace-normal"
-                          title="Save to template (all inspections)"
-                        >
-                          Save to Template
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowAddSubSection(false);
-                            setNewSubSectionInput('');
-                          }}
-                          className="w-full py-1 px-2 bg-gray-200 text-gray-700 border-none rounded cursor-pointer text-[10px] font-medium"
-                        >
-                          Cancel
-                        </button>
-                        <div className="text-[9px] text-gray-500 py-0.5 leading-tight">
-                          💡 Add = only this inspection • Save = all inspections
-                        </div>
-                      </div>
-                     </div>
-                   )}
-
-                   {filteredSubsections.map(subLocation => {
-                     const isTemplateCustom = selectedLocation && customSubsections[selectedLocation]?.includes(subLocation);
-                     const isInspectionCustom = selectedLocation && inspectionCustomSubsections[selectedLocation]?.includes(subLocation);
-                     const isCustom = isTemplateCustom || isInspectionCustom;
-                     return (
-                       <div
-                         key={subLocation}
-                         className={`location-option ${selectedSubLocation === subLocation ? 'selected' : ''} flex items-center justify-between`}
-                       >
-                         <div
-                           className="flex-1 flex items-center"
-                           onClick={() => {
-                             setSelectedSubLocation(subLocation);
-                             setShowSubLocationDropdown(false);
-                             setSubLocationSearch('');
-                           }}
-                         >
-                           <i className="fas fa-layer-group"></i>
-                           <span>{subLocation}</span>
-                           {isInspectionCustom && (
-                             <span className="text-[10px] ml-1.5 text-blue-500 font-semibold">
-                               (This Inspection)
-                             </span>
-                           )}
-                         </div>
-                         {isCustom && (
-                           <i
-                             className="fas fa-trash-alt text-red-500 cursor-pointer py-1 px-2 text-sm"
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               if (confirm(`Delete "${subLocation}"?`)) {
-                                 handleDeleteSubSection(subLocation, !!isTemplateCustom);
-                               }
-                             }}
-                             title={isTemplateCustom ? 'Delete from template' : 'Delete from this inspection'}
-                           />
-                         )}
-                       </div>
-                     );
-                   })}
+                   ))}
                  </div>
               </div>
             )}

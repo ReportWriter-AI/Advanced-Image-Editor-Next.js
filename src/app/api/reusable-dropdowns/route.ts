@@ -21,6 +21,9 @@ export async function GET(request: NextRequest) {
         foundation: '',
         role: '',
         referralSources: '',
+        location: '',
+        section: '',
+        subsection: {},
       });
     }
 
@@ -28,6 +31,9 @@ export async function GET(request: NextRequest) {
       foundation: dropdown.foundation || '',
       role: dropdown.role || '',
       referralSources: dropdown.referralSources || '',
+      location: dropdown.location || '',
+      section: dropdown.section || '',
+      subsection: dropdown.subsection || {},
     });
   } catch (error: any) {
     console.error('ReusableDropdown GET error:', error);
@@ -48,7 +54,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { foundation, role, referralSources } = body;
+    const { foundation, role, referralSources, location, section, subsection } = body;
 
     // Validate that all fields are strings
     if (foundation !== undefined && typeof foundation !== 'string') {
@@ -59,6 +65,15 @@ export async function PUT(request: NextRequest) {
     }
     if (referralSources !== undefined && typeof referralSources !== 'string') {
       return NextResponse.json({ error: 'ReferralSources must be a string' }, { status: 400 });
+    }
+    if (location !== undefined && typeof location !== 'string') {
+      return NextResponse.json({ error: 'Location must be a string' }, { status: 400 });
+    }
+    if (section !== undefined && typeof section !== 'string') {
+      return NextResponse.json({ error: 'Section must be a string' }, { status: 400 });
+    }
+    if (subsection !== undefined && (typeof subsection !== 'object' || Array.isArray(subsection) || subsection === null)) {
+      return NextResponse.json({ error: 'Subsection must be an object' }, { status: 400 });
     }
 
     // Get existing dropdown to preserve values for fields not being updated
@@ -96,6 +111,30 @@ export async function PUT(request: NextRequest) {
       updateData.referralSources = '';
     }
 
+    if (location !== undefined) {
+      updateData.location = location;
+    } else if (existing) {
+      updateData.location = existing.location;
+    } else {
+      updateData.location = '';
+    }
+
+    if (section !== undefined) {
+      updateData.section = section;
+    } else if (existing) {
+      updateData.section = existing.section;
+    } else {
+      updateData.section = '';
+    }
+
+    if (subsection !== undefined) {
+      updateData.subsection = subsection;
+    } else if (existing) {
+      updateData.subsection = existing.subsection;
+    } else {
+      updateData.subsection = {};
+    }
+
     // Set createdBy only on creation
     if (!existing) {
       updateData.createdBy = currentUser._id;
@@ -122,6 +161,9 @@ export async function PUT(request: NextRequest) {
       foundation: dropdown.foundation || '',
       role: dropdown.role || '',
       referralSources: dropdown.referralSources || '',
+      location: dropdown.location || '',
+      section: dropdown.section || '',
+      subsection: dropdown.subsection || {},
     });
   } catch (error: any) {
     console.error('ReusableDropdown PUT error:', error);
