@@ -3252,7 +3252,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {sections.map(section => {
+        {sections.map((section, index) => {
           const isComplete = isSectionComplete(section._id);
           
           return (
@@ -3274,7 +3274,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   {isComplete ? '✓' : '○'}
                 </span>
                 <span style={{ color: isComplete ? '#22c55e' : '#374151' }}>
-                  {section.name}
+                    {index+1} - {section.name}
                 </span>
               </h3>
               {/* Header-level Add button removed by request; users can use per-block Add or the empty-state button below */}
