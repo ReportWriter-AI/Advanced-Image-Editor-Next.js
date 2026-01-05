@@ -60,7 +60,7 @@ export async function POST(request: NextRequest, context: RouteParams) {
           { status: 400 }
         );
       }
-      
+      //@ts-ignore
       userId = adminUser._id;
     }
 
