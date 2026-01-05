@@ -77,115 +77,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const [saving, setSaving] = useState(false);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
 
-  const [reorderIds, setReorderIds] = useState<{ status: string[]; limitations: string[] }>({ status: [], limitations: [] });
-  const dragStateRef = useRef<{ kind: 'status' | 'limitations' | null; draggingId: string | null }>({ kind: null, draggingId: null });
-  const reorderDirtyRef = useRef<{ status: boolean; limitations: boolean }>({ status: false, limitations: false });
-  // Drag visuals: track dragging item and current target + insert position for subtle UI
-  const [dragVisual, setDragVisual] = useState<{ kind: 'status' | 'limitations' | null; draggingId: string | null; overId: string | null; position: 'before' | 'after' | null }>({ kind: null, draggingId: null, overId: null, position: null });
-  
-  // Option-level drag state for reordering answer choices (template choices only)
-  const optionDragStateRef = useRef<{ checklistId: string | null; draggingChoice: string | null }>({ checklistId: null, draggingChoice: null });
-  const [optionDragVisual, setOptionDragVisual] = useState<{ checklistId: string | null; draggingChoice: string | null; overChoice: string | null; position: 'before' | 'after' | null; axis: 'horizontal' | 'vertical' | null }>({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
-  
-  // Touch drag state for mobile (iOS Safari fix)
-  const optionTouchStateRef = useRef<{
-    isDragging: boolean;
-    checklistId: string | null;
-    draggingChoice: string | null;
-    startY: number;
-    startX: number;
-    currentY: number;
-    currentX: number;
-    allowDrag?: boolean; // do not start drag if touch began on a checkbox or non-draggable control
-    dragEl?: HTMLElement | null; // the label element being dragged for visual feedback
-  }>({
-    isDragging: false,
-    checklistId: null,
-    draggingChoice: null,
-    startY: 0,
-    startX: 0,
-    currentY: 0,
-    currentX: 0,
-    allowDrag: true,
-    dragEl: null,
-  });
-  // Movement threshold in pixels before initiating an option drag on touch
-  const OPTION_TOUCH_DRAG_THRESHOLD = 10;
-  
-  // Auto-scroll during drag
-  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null); // legacy interval (kept for options if ever needed)
   const modalScrollContainerRef = useRef<HTMLDivElement | null>(null);
-  // Smooth auto-scroll with requestAnimationFrame for item dragging
-  const scrollRafRef = useRef<number | null>(null);
-  const autoScrollStateRef = useRef<{ active: boolean; dir: 'up' | 'down' | null; speed: number }>({ active: false, dir: null, speed: 0 });
-
-  const stopAutoScroll = () => {
-    autoScrollStateRef.current = { active: false, dir: null, speed: 0 };
-    if (scrollRafRef.current) {
-      cancelAnimationFrame(scrollRafRef.current);
-      scrollRafRef.current = null;
-    }
-    // Also clear legacy interval if any
-    if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
-    }
-  };
-
-  const runAutoScrollLoop = () => {
-    if (scrollRafRef.current) return; // already running
-    const tick = () => {
-      scrollRafRef.current = requestAnimationFrame(() => {
-        const state = autoScrollStateRef.current;
-        const container = modalScrollContainerRef.current;
-        if (!state.active || !state.dir || !container) {
-          // stop loop
-          if (scrollRafRef.current) {
-            cancelAnimationFrame(scrollRafRef.current);
-            scrollRafRef.current = null;
-          }
-          return;
-        }
-        const maxScroll = container.scrollHeight - container.clientHeight;
-        if (state.dir === 'up') {
-          container.scrollTop = Math.max(0, container.scrollTop - state.speed);
-        } else {
-          container.scrollTop = Math.min(maxScroll, container.scrollTop + state.speed);
-        }
-        // continue loop
-        tick();
-      });
-    };
-    tick();
-  };
-
-  // Update auto-scroll speed/direction based on pointer Y
-  const updateItemAutoScroll = (clientY: number) => {
-    const container = modalScrollContainerRef.current;
-    if (!container) return stopAutoScroll();
-    const rect = container.getBoundingClientRect();
-    const zone = Math.max(48, Math.min(120, Math.floor(rect.height * 0.18))); // 18% of height, clamped
-
-    if (clientY < rect.top + zone && clientY > rect.top) {
-      const dist = rect.top + zone - clientY; // 0..zone
-      const t = Math.max(0, Math.min(1, dist / zone));
-      const max = 28; // px per frame
-      const min = 4;
-      const speed = min + Math.pow(t, 1.6) * (max - min); // ease-in
-      autoScrollStateRef.current = { active: true, dir: 'up', speed };
-      runAutoScrollLoop();
-    } else if (clientY > rect.bottom - zone && clientY < rect.bottom) {
-      const dist = clientY - (rect.bottom - zone); // 0..zone
-      const t = Math.max(0, Math.min(1, dist / zone));
-      const max = 28;
-      const min = 4;
-      const speed = min + Math.pow(t, 1.6) * (max - min);
-      autoScrollStateRef.current = { active: true, dir: 'down', speed };
-      runAutoScrollLoop();
-    } else {
-      stopAutoScroll();
-    }
-  };
 
   // Track inspection-specific checklists (not saved to template)
   // Key: sectionId, Value: array of inspection-only checklists for that section
@@ -429,735 +321,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     setHiddenChecklists(updated);
   };
 
-  // Auto-scroll logic during drag (desktop pointer) using smooth RAF
-  const handleDragMove = (e: React.DragEvent<HTMLDivElement>) => {
-    updateItemAutoScroll(e.clientY);
-  };
 
-  const onDragStartItem = (kind: 'status' | 'limitations', id: string) => (
-    (e: React.DragEvent<HTMLDivElement>) => {
-      dragStateRef.current = { kind, draggingId: id };
-      e.dataTransfer.effectAllowed = 'move';
-      // Visual: mark dragging
-      setDragVisual({ kind, draggingId: id, overId: null, position: null });
-      // Slightly better drag image (fallback to element itself)
-      try { e.dataTransfer.setDragImage(e.currentTarget, 10, 10); } catch {}
-    }
-  );
-
-  // --- Touch/Pointer fallback for item reordering (iOS Safari) ---
-  const itemTouchStateRef = useRef<{
-    isDragging: boolean;
-    kind: 'status' | 'limitations' | null;
-    draggingId: string | null;
-  }>({ isDragging: false, kind: null, draggingId: null });
-
-  const lockModalScroll = () => {
-    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
-    if (el) {
-      el.style.touchAction = 'none';
-      // Prevent scroll chaining to the page
-      // @ts-ignore
-      el.style.overscrollBehavior = 'contain';
-      // Keep overflowY as auto for item dragging; we don't want to hide scrollbar here
-    }
-  };
-  const unlockModalScroll = () => {
-    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
-    if (el) {
-      // Restore to default modal values
-      el.style.touchAction = 'pan-y';
-      // @ts-ignore
-      el.style.overscrollBehavior = 'contain';
-      el.style.overflowY = 'auto';
-    }
-  };
-
-  // Stronger scroll lock for option dragging (also disables wheel scrolling)
-  const optionWheelBlockerRef = useRef<((ev: WheelEvent) => void) | null>(null);
-  const itemTouchBlockerRef = useRef<((ev: TouchEvent) => void) | null>(null);
-  const prevDocOverscrollRef = useRef<{ html: string; body: string } | null>(null);
-  const lockModalScrollForOptions = () => {
-    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
-    if (el) {
-      el.style.touchAction = 'none';
-      // @ts-ignore
-      el.style.overscrollBehavior = 'contain';
-      el.style.overflowY = 'hidden';
-    }
-    if (typeof window !== 'undefined' && !optionWheelBlockerRef.current) {
-      const handler = (ev: WheelEvent) => { ev.preventDefault(); };
-      window.addEventListener('wheel', handler, { passive: false });
-      optionWheelBlockerRef.current = handler;
-    }
-  };
-  const unlockModalScrollForOptions = () => {
-    const el = modalScrollContainerRef.current as unknown as HTMLElement | null;
-    if (el) {
-      // Restore to modal defaults so scrollbar returns
-      el.style.overflowY = 'auto';
-      el.style.touchAction = 'pan-y';
-      // @ts-ignore
-      el.style.overscrollBehavior = 'contain';
-    }
-    if (typeof window !== 'undefined' && optionWheelBlockerRef.current) {
-      window.removeEventListener('wheel', optionWheelBlockerRef.current as any);
-      optionWheelBlockerRef.current = null;
-    }
-  };
-
-  // Block global touchmove during item drag to prevent page scroll/bounce
-  const lockGlobalScrollDuringItemDrag = () => {
-    if (typeof window !== 'undefined' && !itemTouchBlockerRef.current) {
-      const handler = (ev: TouchEvent) => { ev.preventDefault(); };
-      window.addEventListener('touchmove', handler, { passive: false });
-      itemTouchBlockerRef.current = handler;
-    }
-    // Save previous overscrollBehavior and then disable
-    if (typeof document !== 'undefined') {
-      const html = (document.documentElement as HTMLElement);
-      const body = (document.body as HTMLElement);
-      prevDocOverscrollRef.current = {
-        html: (html.style as any).overscrollBehavior || '',
-        body: (body.style as any).overscrollBehavior || ''
-      };
-      (html.style as any).overscrollBehavior = 'none';
-      (body.style as any).overscrollBehavior = 'none';
-    }
-  };
-  const unlockGlobalScrollDuringItemDrag = () => {
-    if (typeof window !== 'undefined' && itemTouchBlockerRef.current) {
-      window.removeEventListener('touchmove', itemTouchBlockerRef.current as any);
-      itemTouchBlockerRef.current = null;
-    }
-    if (typeof document !== 'undefined') {
-      const html = (document.documentElement as HTMLElement);
-      const body = (document.body as HTMLElement);
-      const prev = prevDocOverscrollRef.current;
-      (html.style as any).overscrollBehavior = prev ? prev.html : '';
-      (body.style as any).overscrollBehavior = prev ? prev.body : '';
-      prevDocOverscrollRef.current = null;
-    }
-  };
-
-  // Ensure no locks linger when modal closes or component unmounts
-  useEffect(() => {
-    if (!modalOpen) {
-      unlockModalScrollForOptions();
-      unlockModalScroll();
-    }
-  }, [modalOpen]);
-  useEffect(() => {
-    return () => {
-      unlockModalScrollForOptions();
-      unlockModalScroll();
-    };
-  }, []);
-
-  const onItemTouchStart = (kind: 'status' | 'limitations', id: string) => (
-    (e: React.TouchEvent<HTMLDivElement>) => {
-      itemTouchStateRef.current = { isDragging: true, kind, draggingId: id };
-      setDragVisual({ kind, draggingId: id, overId: null, position: null });
-      (e.currentTarget as HTMLElement).style.opacity = '0.9';
-      // Mobile: lock native scrolling while dragging items; we'll auto-scroll programmatically near edges
-      lockModalScroll();
-      lockGlobalScrollDuringItemDrag();
-    }
-  );
-
-  const onItemTouchMove = (kind: 'status' | 'limitations') => (
-    (e: React.TouchEvent<HTMLDivElement>) => {
-      if (!itemTouchStateRef.current.isDragging) return;
-      const touch = e.touches[0];
-      // Find target item under finger
-      const el = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
-      const itemEl = el ? el.closest('[data-item-id]') as HTMLElement | null : null;
-      const overId = itemEl?.getAttribute('data-item-id') || null;
-      if (overId) {
-        const rect = itemEl!.getBoundingClientRect();
-        const mid = rect.top + rect.height / 2;
-        const position: 'before' | 'after' = touch.clientY < mid ? 'before' : 'after';
-        setDragVisual(prev => ({ ...prev, kind, overId, position }));
-      }
-      // Smooth auto-scroll near edges using RAF with acceleration
-      updateItemAutoScroll(touch.clientY);
-    }
-  );
-
-  const onItemTouchEnd = (kind: 'status' | 'limitations') => (
-    (_e: React.TouchEvent<HTMLDivElement>) => {
-      if (!itemTouchStateRef.current.isDragging) return;
-      const draggingId = itemTouchStateRef.current.draggingId;
-      const overId = dragVisual.overId;
-      const insertPosition = dragVisual.position || 'after';
-      if (draggingId && overId && draggingId !== overId) {
-        setReorderIds(prev => {
-          const list = [...prev[kind]];
-          const fromIndex = list.indexOf(draggingId);
-          let insertIndex = list.indexOf(overId);
-          if (fromIndex === -1 || insertIndex === -1) return prev;
-          const [dragged] = list.splice(fromIndex, 1);
-          insertIndex = list.indexOf(overId);
-          if (insertPosition === 'after') insertIndex += 1;
-          list.splice(insertIndex, 0, dragged);
-          setTimeout(async () => {
-            if (activeSection) await persistChecklistOrder(kind, activeSection._id, list);
-          }, 50);
-          return { ...prev, [kind]: list };
-        });
-      }
-      itemTouchStateRef.current = { isDragging: false, kind: null, draggingId: null };
-      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
-      stopAutoScroll();
-      unlockModalScroll();
-      unlockGlobalScrollDuringItemDrag();
-    }
-  );
-
-  const onItemTouchCancel = () => (
-    () => {
-      if (!itemTouchStateRef.current.isDragging) return;
-      itemTouchStateRef.current = { isDragging: false, kind: null, draggingId: null };
-      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
-      stopAutoScroll();
-      unlockModalScroll();
-      unlockGlobalScrollDuringItemDrag();
-    }
-  );
-
-  const onItemPointerDown = (kind: 'status' | 'limitations', id: string) => (
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType !== 'touch') return;
-      itemTouchStateRef.current = { isDragging: true, kind, draggingId: id };
-      setDragVisual({ kind, draggingId: id, overId: null, position: null });
-      (e.currentTarget as HTMLElement).style.opacity = '0.9';
-      // Touch: lock native scroll; rely on auto-scroll near edges while dragging items
-      lockModalScroll();
-      lockGlobalScrollDuringItemDrag();
-    }
-  );
-  const onItemPointerUp = (kind: 'status' | 'limitations') => (
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType !== 'touch') return;
-      if (!itemTouchStateRef.current.isDragging) return;
-      onItemTouchEnd(kind)({} as any);
-      (e.currentTarget as HTMLElement).style.opacity = '1';
-      unlockGlobalScrollDuringItemDrag();
-    }
-  );
-
-  const onDragOverItem = (kind: 'status' | 'limitations', targetId: string) => (
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      
-      // Calculate position (before/after) based on mouse position
-      const targetElement = e.currentTarget;
-      const rect = targetElement.getBoundingClientRect();
-      const mouseY = e.clientY;
-      const elementMiddle = rect.top + rect.height / 2;
-      
-      // If mouse is above middle, insert before; if below, insert after
-      const position = mouseY < elementMiddle ? 'before' : 'after';
-      
-      setDragVisual(prev => ({ ...prev, kind, overId: targetId, position }));
-      // Trigger auto-scroll check
-      handleDragMove(e);
-    }
-  );
-
-  const onDropItem = (kind: 'status' | 'limitations', targetId: string) => (
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      const draggingId = dragStateRef.current.draggingId;
-      if (!draggingId || dragStateRef.current.kind !== kind) return;
-      if (draggingId === targetId) return;
-      
-      // Get the position from dragVisual state
-      const insertPosition = dragVisual.position || 'after';
-      
-      setReorderIds(prev => {
-        const list = [...prev[kind]];
-        const fromIndex = list.indexOf(draggingId);
-        const toIndex = list.indexOf(targetId);
-        if (fromIndex === -1 || toIndex === -1) return prev;
-        
-        // INSERT LOGIC (araya ekleme) - Trello/Spotify tarzı
-        // 1. Sürüklenen elemanı listeden çıkar
-        const [draggedItem] = list.splice(fromIndex, 1);
-        
-        // 2. Hedef konuma ekle
-        // 'before' ise hedefin önüne, 'after' ise hedefin arkasına
-        let insertIndex = list.indexOf(targetId);
-        if (insertIndex === -1) return prev; // Güvenlik kontrolü
-        
-        if (insertPosition === 'after') {
-          insertIndex += 1; // Hedefin arkasına ekle
-        }
-        // 'before' ise insertIndex olduğu gibi kalır (hedefin önüne)
-        
-        list.splice(insertIndex, 0, draggedItem);
-        
-        // AUTO-SAVE: Immediately persist the new order after drag and drop
-        setTimeout(async () => {
-          if (activeSection) {
-            try {
-              console.log(`🔄 Auto-saving ${kind} order after drag and drop...`);
-              await persistChecklistOrder(kind, activeSection._id, list);
-              console.log(`✅ ${kind} order auto-saved successfully!`);
-            } catch (error) {
-              console.error(`❌ Failed to auto-save ${kind} order:`, error);
-            }
-          }
-        }, 100); // Small delay to ensure state is updated
-        
-        return { ...prev, [kind]: list };
-      });
-      reorderDirtyRef.current[kind] = true;
-      
-      // Clear visual state
-      dragStateRef.current = { kind: null, draggingId: null };
-      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
-        // Stop any auto-scroll after drop
-        stopAutoScroll();
-      if (scrollIntervalRef.current) {
-        clearInterval(scrollIntervalRef.current);
-        scrollIntervalRef.current = null;
-      }
-    }
-  );
-
-  const onDragEndItem = () => (
-    (_e: React.DragEvent<HTMLDivElement>) => {
-      dragStateRef.current = { kind: null, draggingId: null };
-      setDragVisual({ kind: null, draggingId: null, overId: null, position: null });
-      // Clear auto-scroll interval
-      if (scrollIntervalRef.current) {
-        clearInterval(scrollIntervalRef.current);
-        scrollIntervalRef.current = null;
-      }
-    }
-  );
-
-  const persistChecklistOrder = useCallback(
-    async (kind: 'status' | 'limitations', sectionId: string, orderedIds: string[]) => {
-      const seen = new Set<string>();
-      const sanitized: string[] = [];
-      for (const rawId of orderedIds) {
-        if (typeof rawId !== 'string') continue;
-        const trimmed = rawId.trim();
-        if (!trimmed || seen.has(trimmed)) continue;
-        seen.add(trimmed);
-        sanitized.push(trimmed);
-      }
-
-      if (!sanitized.length) {
-        reorderDirtyRef.current[kind] = false;
-        return { templateUpdated: false };
-      }
-
-      const orderMap = new Map<string, number>();
-      sanitized.forEach((id, index) => orderMap.set(id, index));
-
-      const templateIds = sanitized.filter(id => !id.startsWith('temp_'));
-      let templateUpdated = false;
-
-      if (templateIds.length) {
-        const res = await fetch('/api/information-sections/sections/reorder', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sectionId, kind, orderedIds: templateIds }),
-        });
-        const json = await res.json();
-        if (!json.success) {
-          throw new Error(json.error || 'Failed to save order');
-        }
-        templateUpdated = true;
-      }
-
-      const inspectionOnlyIds = sanitized.filter(id => id.startsWith('temp_'));
-      if (inspectionOnlyIds.length) {
-        setInspectionChecklists(prev => {
-          const existing = prev.get(sectionId);
-          if (!existing || !existing.length) return prev;
-          const next = new Map(prev);
-          const orderedInspection = inspectionOnlyIds
-            .map(id => {
-              const match = existing.find(item => item._id === id);
-              if (!match) return null;
-              return { ...match, order_index: orderMap.get(id)! };
-            })
-            .filter((item): item is ISectionChecklist => !!item);
-          const remainingInspection = existing.filter(item => !inspectionOnlyIds.includes(item._id));
-          next.set(sectionId, [...orderedInspection, ...remainingInspection]);
-          return next;
-        });
-      }
-
-      setActiveSection(prev => {
-        if (!prev || prev._id !== sectionId) return prev;
-        const source = prev.checklists || [];
-        const checklistMap = new Map(source.map(item => [item._id, item]));
-        const ordered = sanitized
-          .map(id => checklistMap.get(id))
-          .filter((item): item is ISectionChecklist => !!item)
-          .map(item => ({ ...item, order_index: orderMap.get(item._id)! }));
-        const remaining = source.filter(item => !orderMap.has(item._id));
-        return {
-          ...prev,
-          checklists: [...ordered, ...remaining],
-        };
-      });
-
-      setReorderIds(prev => ({ ...prev, [kind]: sanitized }));
-      reorderDirtyRef.current[kind] = false;
-
-      return { templateUpdated };
-    },
-    [setActiveSection, setInspectionChecklists, setReorderIds]
-  );
-
-  // Persist reordered template options for a checklist item
-  const persistOptionOrder = useCallback(
-    async (checklistId: string, orderedChoices: string[]) => {
-      try {
-        // Optimistically update activeSection
-        setActiveSection(prev => {
-          if (!prev) return prev;
-          const updated = prev.checklists.map(cl => {
-            if (cl._id === checklistId) {
-              return { ...cl, answer_choices: orderedChoices };
-            }
-            return cl;
-          });
-          return { ...prev, checklists: updated };
-        });
-
-        // Save to template via API (only answer_choices field)
-        const res = await fetch(`/api/checklists/${checklistId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answer_choices: orderedChoices }),
-        });
-        const json = await res.json();
-        if (!json.success) {
-          throw new Error(json.error || 'Failed to save option order');
-        }
-        // No need to refetch sections immediately; UI already updated
-      } catch (err) {
-        console.error('Failed to persist option order:', err);
-        alert('Failed to save option order. Please try again.');
-      }
-    },
-    [setActiveSection]
-  );
-
-  // --- Option drag handlers (template answer choices only) ---
-  const onOptionDragStart = (checklistId: string, choice: string, isCustom: boolean) => (
-    (e: React.DragEvent<HTMLLabelElement>) => {
-      // Only allow dragging template choices
-      if (isCustom) return;
-      // Don't start drag if initiated on checkbox or interactive control
-      const target = e.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.closest('input[type="checkbox"]'))) {
-        return;
-      }
-      // Prevent parent checklist drag handlers
-      e.stopPropagation();
-      // Hard lock modal/page scroll while dragging options (desktop)
-      lockModalScrollForOptions();
-      optionDragStateRef.current = { checklistId, draggingChoice: choice };
-      setOptionDragVisual({ checklistId, draggingChoice: choice, overChoice: null, position: null, axis: null });
-      e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setDragImage(e.currentTarget, 10, 10); } catch {}
-    }
-  );
-
-  const onOptionDragOver = (checklistId: string, targetChoice: string, isTargetCustom: boolean) => (
-    (e: React.DragEvent<HTMLLabelElement>) => {
-  const { checklistId: draggingChecklistId, draggingChoice } = optionDragStateRef.current;
-      // Only allow drop on template choices
-      if (isTargetCustom) return;
-      // Prevent parent checklist drag handlers
-      e.stopPropagation();
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      const rect = e.currentTarget.getBoundingClientRect();
-      const mouseY = e.clientY;
-      const mouseX = e.clientX;
-      const centerY = rect.top + rect.height / 2;
-      const centerX = rect.left + rect.width / 2;
-      const distY = Math.abs(mouseY - centerY);
-      const distX = Math.abs(mouseX - centerX);
-      const axis: 'horizontal' | 'vertical' = distX >= distY ? 'horizontal' : 'vertical';
-      const position: 'before' | 'after' = axis === 'horizontal'
-        ? (mouseX < centerX ? 'before' : 'after')
-        : (mouseY < centerY ? 'before' : 'after');
-      setOptionDragVisual({ checklistId, draggingChoice, overChoice: targetChoice, position, axis });
-    }
-  );
-
-  const onOptionDrop = (checklistId: string, targetChoice: string, isTargetCustom: boolean, templateChoices: string[]) => (
-    async (e: React.DragEvent<HTMLLabelElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const { checklistId: draggingChecklistId, draggingChoice } = optionDragStateRef.current;
-      const insertPos = optionDragVisual.position || 'after';
-      if (!draggingChoice || draggingChecklistId !== checklistId) return;
-      // Only move within template choices
-      if (isTargetCustom) return;
-      if (!templateChoices || !templateChoices.length) return;
-      if (!templateChoices.includes(draggingChoice) || !templateChoices.includes(targetChoice)) return;
-      if (draggingChoice === targetChoice) return;
-
-      const list = [...templateChoices];
-      const fromIndex = list.indexOf(draggingChoice);
-      let toIndex = list.indexOf(targetChoice);
-      if (fromIndex === -1 || toIndex === -1) return;
-
-      // Remove from original
-      list.splice(fromIndex, 1);
-      // Recompute target index after removal if needed
-      toIndex = list.indexOf(targetChoice);
-      if (insertPos === 'after') toIndex += 1;
-      // Insert at new index
-      list.splice(toIndex, 0, draggingChoice);
-
-      // Persist and update UI
-      await persistOptionOrder(checklistId, list);
-
-      // Clear visuals
-      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
-      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
-      unlockModalScrollForOptions();
-    }
-  );
-
-  const onOptionDragEnd = () => (
-    (_e: React.DragEvent<HTMLLabelElement>) => {
-      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
-      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
-      unlockModalScrollForOptions();
-    }
-  );
-
-  // Touch handlers for iOS Safari compatibility
-  const onOptionTouchStart = (checklistId: string, choice: string, isCustom: boolean) => (
-    (e: React.TouchEvent<HTMLLabelElement>) => {
-      if (isCustom) return;
-      // Do not allow drag to begin from checkbox taps
-      const target = e.target as HTMLElement;
-      const beganOnCheckbox = target?.tagName === 'INPUT' || !!target.closest('input[type="checkbox"]');
-      const touch = e.touches[0];
-      optionTouchStateRef.current = {
-        isDragging: false, // start as not dragging; wait for threshold
-        checklistId,
-        draggingChoice: choice,
-        startY: touch.clientY,
-        startX: touch.clientX,
-        currentY: touch.clientY,
-        currentX: touch.clientX,
-        allowDrag: !beganOnCheckbox,
-        dragEl: e.currentTarget as unknown as HTMLElement,
-      };
-    }
-  );
-
-  const onOptionTouchMove = (checklistId: string, templateChoices: string[]) => (
-    (e: React.TouchEvent<HTMLDivElement>) => {
-      const touchState = optionTouchStateRef.current;
-      // Update current coords
-      const touch = e.touches[0];
-      touchState.currentY = touch.clientY;
-      touchState.currentX = touch.clientX;
-
-      // If not yet dragging, check if we crossed the threshold and are allowed to drag
-      if (!touchState.isDragging) {
-        const dx = Math.abs(touchState.currentX - touchState.startX);
-        const dy = Math.abs(touchState.currentY - touchState.startY);
-        const movedEnough = Math.max(dx, dy) >= OPTION_TOUCH_DRAG_THRESHOLD;
-        if (!movedEnough || !touchState.allowDrag) {
-          return; // still a tap/scroll gesture, do nothing
-        }
-        // Start drag officially
-        touchState.isDragging = true;
-        optionDragStateRef.current = { checklistId: touchState.checklistId, draggingChoice: touchState.draggingChoice };
-        setOptionDragVisual({ checklistId, draggingChoice: touchState.draggingChoice!, overChoice: null, position: null, axis: null });
-        // Lock modal scroll hard (also blocks wheel) and set visual
-        lockModalScrollForOptions();
-        if (touchState.dragEl) {
-          try { touchState.dragEl.style.opacity = '0.5'; } catch {}
-        }
-      }
-      // We're dragging now: prevent page scroll via CSS lock and continue
-      
-      // Find element under touch point
-  const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
-      if (!elementUnderTouch) return;
-      
-      // Find closest label with data-choice attribute
-      const targetLabel = elementUnderTouch.closest('[data-choice]') as HTMLElement;
-      if (!targetLabel) return;
-      
-      const targetChoice = targetLabel.getAttribute('data-choice');
-      if (!targetChoice || !templateChoices.includes(targetChoice)) return;
-      
-      const { draggingChoice } = touchState;
-      if (targetChoice === draggingChoice) return;
-      
-      // Calculate position
-      const rect = targetLabel.getBoundingClientRect();
-      const centerY = rect.top + rect.height / 2;
-      const centerX = rect.left + rect.width / 2;
-      const distY = Math.abs(touch.clientY - centerY);
-      const distX = Math.abs(touch.clientX - centerX);
-      const axis: 'horizontal' | 'vertical' = distX >= distY ? 'horizontal' : 'vertical';
-      const position: 'before' | 'after' = axis === 'horizontal'
-        ? (touch.clientX < centerX ? 'before' : 'after')
-        : (touch.clientY < centerY ? 'before' : 'after');
-      
-      setOptionDragVisual({ 
-        checklistId, 
-        draggingChoice, 
-        overChoice: targetChoice, 
-        position, 
-        axis 
-      });
-    }
-  );
-
-  const onOptionTouchEnd = (checklistId: string, templateChoices: string[]) => (
-    async (e: React.TouchEvent<HTMLLabelElement>) => {
-      const touchState = optionTouchStateRef.current;
-      // Always cleanup visual if we had a reference
-      try { if (touchState.dragEl) touchState.dragEl.style.opacity = '1'; } catch {}
-      if (!touchState.isDragging) {
-        // Not a drag, just a tap – nothing to reorder
-        // Ensure scroll is unlocked in case it was changed elsewhere
-  unlockModalScrollForOptions();
-        // Reset state below
-      } else {
-        // Perform drop logic
-        const { draggingChoice } = touchState;
-        const { overChoice, position } = optionDragVisual;
-        
-        if (draggingChoice && overChoice && draggingChoice !== overChoice) {
-          const list = [...templateChoices];
-          const fromIndex = list.indexOf(draggingChoice);
-          let toIndex = list.indexOf(overChoice);
-          
-          if (fromIndex !== -1 && toIndex !== -1) {
-            list.splice(fromIndex, 1);
-            toIndex = list.indexOf(overChoice);
-            if (position === 'after') toIndex += 1;
-            list.splice(toIndex, 0, draggingChoice);
-            
-            await persistOptionOrder(checklistId, list);
-          }
-        }
-      }
-      
-      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
-      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
-      
-      // Reset state
-      optionTouchStateRef.current = {
-        isDragging: false,
-        checklistId: null,
-        draggingChoice: null,
-        startY: 0,
-        startX: 0,
-        currentY: 0,
-        currentX: 0,
-        allowDrag: true,
-        dragEl: null,
-      };
-      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
-      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
-    }
-  );
-
-  // Touch cancel safety for iOS (e.g., interruption, scroll bounce)
-  const onOptionTouchCancel = () => (
-    (_e: React.TouchEvent<any>) => {
-      if (!optionTouchStateRef.current.isDragging) return;
-      // Restore visual and unlock scroll
-      try { if (optionTouchStateRef.current.dragEl) optionTouchStateRef.current.dragEl.style.opacity = '1'; } catch {}
-  unlockModalScrollForOptions();
-      // Reset state
-      optionTouchStateRef.current = {
-        isDragging: false,
-        checklistId: null,
-        draggingChoice: null,
-        startY: 0,
-        startX: 0,
-        currentY: 0,
-        currentX: 0,
-        allowDrag: true,
-        dragEl: null,
-      };
-      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
-      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
-    }
-  );
-
-  // Pointer events fallback (iOS supports PointerEvents) – treat touch pointer as drag
-  const onOptionPointerDown = (checklistId: string, choice: string, isCustom: boolean) => (
-    (e: React.PointerEvent<HTMLLabelElement>) => {
-      if (e.pointerType !== 'touch') return; // only handle touch via pointer events
-      if (isCustom) return;
-      const target = e.target as HTMLElement;
-      const beganOnCheckbox = target?.tagName === 'INPUT' || !!target.closest('input[type="checkbox"]');
-      optionTouchStateRef.current = {
-        isDragging: false, // wait for threshold like touch logic
-        checklistId,
-        draggingChoice: choice,
-        startY: e.clientY,
-        startX: e.clientX,
-        currentY: e.clientY,
-        currentX: e.clientX,
-        allowDrag: !beganOnCheckbox,
-        dragEl: e.currentTarget as unknown as HTMLElement,
-      };
-    }
-  );
-
-  const onOptionPointerUp = (checklistId: string, templateChoices: string[]) => (
-    async (e: React.PointerEvent<HTMLElement>) => {
-      if (e.pointerType !== 'touch') return;
-      if (!optionTouchStateRef.current.isDragging) return;
-      (e.currentTarget as HTMLElement).style.opacity = '1';
-      const draggingChoice = optionTouchStateRef.current.draggingChoice;
-      const { overChoice, position } = optionDragVisual;
-      if (draggingChoice && overChoice && draggingChoice !== overChoice) {
-        const list = [...templateChoices];
-        const fromIndex = list.indexOf(draggingChoice);
-        let toIndex = list.indexOf(overChoice);
-        if (fromIndex !== -1 && toIndex !== -1) {
-          list.splice(fromIndex, 1);
-          toIndex = list.indexOf(overChoice);
-          if (position === 'after') toIndex += 1;
-          list.splice(toIndex, 0, draggingChoice);
-          await persistOptionOrder(checklistId, list);
-        }
-      }
-      // Unlock scroll and reset state
-  unlockModalScrollForOptions();
-      optionTouchStateRef.current = {
-        isDragging: false,
-        checklistId: null,
-        draggingChoice: null,
-        startY: 0,
-        startX: 0,
-        currentY: 0,
-        currentX: 0,
-        allowDrag: true,
-        dragEl: null,
-      };
-      optionDragStateRef.current = { checklistId: null, draggingChoice: null };
-      setOptionDragVisual({ checklistId: null, draggingChoice: null, overChoice: null, position: null, axis: null });
-    }
-  );
 
   // Helper function to get all checklist items for a block (including inspection-only)
   const getBlockChecklists = (block: IInformationBlock): any[] => {
@@ -1495,22 +659,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     };
     
     setActiveSection(mergedSection);
-
-    // Initialize drag order for Status and Limitations lists on modal open
-    try {
-      const statusOrdered = [...mergedSection.checklists]
-        .filter(cl => cl.type === 'status')
-        .sort((a, b) => a.order_index - b.order_index)
-        .map(cl => cl._id);
-      const limitationsOrdered = [...mergedSection.checklists]
-        .filter(cl => cl.tab === 'limitations')
-        .sort((a, b) => a.order_index - b.order_index)
-        .map(cl => cl._id);
-      setReorderIds({ status: statusOrdered, limitations: limitationsOrdered });
-      reorderDirtyRef.current = { status: false, limitations: false };
-    } catch (e) {
-      // Fallback silently if anything goes wrong
-    }
 
     if (existingBlock) {
       // Editing existing block - fetch the latest data from the database to ensure we have the most recent version
@@ -2028,22 +1176,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }));
 
     try {
-      let templateOrderUpdated = false;
-      if (activeSection) {
-        const sectionId = activeSection._id;
-        if (reorderIds.status && reorderIds.status.length && reorderDirtyRef.current.status) {
-          const result = await persistChecklistOrder('status', sectionId, reorderIds.status);
-          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
-        }
-        if (reorderIds.limitations && reorderIds.limitations.length && reorderDirtyRef.current.limitations) {
-          const result = await persistChecklistOrder('limitations', sectionId, reorderIds.limitations);
-          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
-        }
-        if (templateOrderUpdated) {
-          await fetchSections();
-        }
-      }
-
       if (editingBlockId) {
         // Update existing block (only save template IDs to database)
         const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${editingBlockId}`, {
@@ -2139,22 +1271,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }));
 
     try {
-      let templateOrderUpdated = false;
-      if (activeSection) {
-        const sectionId = activeSection._id;
-        if (reorderIds.status && reorderIds.status.length && reorderDirtyRef.current.status) {
-          const result = await persistChecklistOrder('status', sectionId, reorderIds.status);
-          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
-        }
-        if (reorderIds.limitations && reorderIds.limitations.length && reorderDirtyRef.current.limitations) {
-          const result = await persistChecklistOrder('limitations', sectionId, reorderIds.limitations);
-          templateOrderUpdated = templateOrderUpdated || result.templateUpdated;
-        }
-        if (templateOrderUpdated) {
-          await fetchSections();
-        }
-      }
-
       // Check if the block is now empty (no template items and no custom text)
       const hasSelectedItems = templateIds.length > 0;
       const hasCustomText = stateToSave.custom_text && stateToSave.custom_text.trim().length > 0;
@@ -2230,10 +1346,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     return () => {
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
-      }
-      // Cleanup scroll interval
-      if (scrollIntervalRef.current) {
-        clearInterval(scrollIntervalRef.current);
       }
     };
   }, []);
@@ -3005,20 +2117,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             ...activeSection,
             checklists: [...activeSection.checklists, newChecklist]
           });
-          // Ensure it appears in the currently displayed order list without reopening modal
-          setReorderIds(prev => {
-            const isStatus = newChecklist.type === 'status';
-            const isLimitation = newChecklist.tab === 'limitations';
-            if (isStatus) {
-              const current = prev.status && prev.status.length ? [...prev.status] : activeSection.checklists.filter(c => c.type === 'status').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
-              return { ...prev, status: [...current, newChecklist._id] };
-            }
-            if (isLimitation) {
-              const current = prev.limitations && prev.limitations.length ? [...prev.limitations] : activeSection.checklists.filter(c => c.tab === 'limitations').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
-              return { ...prev, limitations: [...current, newChecklist._id] };
-            }
-            return prev;
-          });
           
           console.log('✅ Created template checklist:', newChecklist._id);
         } else {
@@ -3058,27 +2156,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               ...formState,
               selected_checklist_ids: newSelectedIds
             });
-          }
-
-          // Also push into reorderIds for the correct list so it renders in current view immediately
-          setReorderIds(prev => {
-            const isStatus = newChecklist.type === 'status';
-            const isLimitation = newChecklist.tab === 'limitations';
-            if (isStatus) {
-              const current = prev.status && prev.status.length ? [...prev.status] : activeSection.checklists.filter(c => c.type === 'status').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
-              return { ...prev, status: [...current, tempId] };
-            }
-            if (isLimitation) {
-              const current = prev.limitations && prev.limitations.length ? [...prev.limitations] : activeSection.checklists.filter(c => c.tab === 'limitations').sort((a,b)=>a.order_index-b.order_index).map(c=>c._id);
-              return { ...prev, limitations: [...current, tempId] };
-            }
-            return prev;
-          });
-          if (newChecklist.type === 'status') {
-            reorderDirtyRef.current.status = true;
-          }
-          if (newChecklist.tab === 'limitations') {
-            reorderDirtyRef.current.limitations = true;
           }
           
           console.log('✅ Added inspection-only checklist:', tempId);
@@ -3150,12 +2227,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           ...activeSection,
           checklists: updatedChecklists
         });
-        
-        // Update reorderIds to remove the deleted item
-        setReorderIds(prev => ({
-          status: prev.status.filter(id => id !== checklistId),
-          limitations: prev.limitations.filter(id => id !== checklistId)
-        }));
         
         // Also remove from formState if it was selected
         if (formState && formState.selected_checklist_ids.has(checklistId)) {
@@ -3675,9 +2746,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 })()}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {(reorderIds.status && reorderIds.status.length
-                      ? reorderIds.status.map(id => activeSection.checklists.find(c => c._id === id)).filter(Boolean) as ISectionChecklist[]
-                      : activeSection.checklists.filter(cl => cl.type === 'status'))
+                  {activeSection.checklists
+                    .filter(cl => cl.type === 'status')
+                    .sort((a, b) => a.order_index - b.order_index)
                     .filter(cl => !isChecklistHidden(activeSection._id, cl._id))
                     .map(cl => {
                       const isSelected = formState.selected_checklist_ids.has(cl._id);
@@ -3686,62 +2757,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       return (
                         <div
                           key={cl._id}
-                          draggable={true}
-                          onDragStart={onDragStartItem('status', cl._id)}
-                          onDragOver={onDragOverItem('status', cl._id)}
-                          onDrop={onDropItem('status', cl._id)}
-                          onDragEnd={onDragEndItem()}
-                          onTouchStart={onItemTouchStart('status', cl._id)}
-                          onTouchMove={onItemTouchMove('status')}
-                          onTouchEnd={onItemTouchEnd('status')}
-                          onTouchCancel={onItemTouchCancel()}
-                          onPointerDown={onItemPointerDown('status', cl._id)}
-                          onPointerUp={onItemPointerUp('status')}
                           style={{
                             padding: '0.5rem',
                             borderRadius: '0.25rem',
-                            backgroundColor: dragVisual.draggingId === cl._id ? '#eef2ff' : (isSelected ? '#eff6ff' : 'transparent'),
-                            border: `1px solid ${dragVisual.draggingId === cl._id ? '#a466da' : '#e5e7eb'}`,
-                            boxShadow: dragVisual.draggingId === cl._id ? '0 2px 8px rgba(59,130,246,0.20)' : 'none',
-                            cursor: dragVisual.draggingId === cl._id ? 'grabbing' : 'grab',
-                            transition: 'box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
-                            position: 'relative',
-                            touchAction: 'manipulation'
+                            backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                            border: '1px solid #e5e7eb',
+                            position: 'relative'
                           }}
-                          data-item-id={cl._id}
                         >
-                          {/* Insertion line indicator - BEFORE */}
-                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'before' && (
-                            <div style={{ 
-                              position: 'absolute', 
-                              top: '-2px', 
-                              left: '0', 
-                              right: '0', 
-                              height: '3px', 
-                              backgroundColor: '#a466da',
-                              borderRadius: '2px',
-                              boxShadow: '0 0 4px rgba(59,130,246,0.5)',
-                              zIndex: 10,
-                              pointerEvents: 'none'
-                            }} />
-                          )}
-                          
-                          {/* Insertion line indicator - AFTER */}
-                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'after' && (
-                            <div style={{ 
-                              position: 'absolute', 
-                              bottom: '-2px', 
-                              left: '0', 
-                              right: '0', 
-                              height: '3px', 
-                              backgroundColor: '#a466da',
-                              borderRadius: '2px',
-                              boxShadow: '0 0 4px rgba(59,130,246,0.5)',
-                              zIndex: 10,
-                              pointerEvents: 'none'
-                            }} />
-                          )}
-                          
                           {/* Header - selection checkbox + title row (click to expand when collapsed) */}
                           <div style={{ display: 'flex', fontSize: '0.875rem', alignItems: 'flex-start', gap: '0.625rem', padding: '0.125rem 0' }}>
                             <input
@@ -3756,7 +2779,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               title={isSelected ? (isStatusExpanded(cl._id) ? 'Expanded' : 'Click to expand') : 'Select the checkbox to enable'}
                             >
                               <div style={{ fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem', lineHeight: 1.5 }}>
-                                <span style={{ cursor: 'grab', color: '#9ca3af', fontSize: '1rem', flexShrink: 0 }}>⋮⋮</span> 
                                 <span style={{ flex: 1 }}>{cl.text}</span>
                                 {isSelected && isStatusExpanded(cl._id) && (
                                   <button
@@ -3946,10 +2968,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                             </div>
                                             <div
                                               className="checklist-options-grid"
-                                              onTouchMove={onOptionTouchMove(cl._id, templateChoices)}
-                                              onTouchCancel={onOptionTouchCancel()}
-                                              onPointerUp={onOptionPointerUp(cl._id, templateChoices)}
-                                              style={{ touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'manipulation', overscrollBehavior: 'contain' }}
                                             >
                                               {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
                                                 const selectedAnswers = getSelectedAnswers(cl._id);
@@ -3971,7 +2989,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                       fontSize: '0.75rem',
                                                       transition: 'all 0.15s ease',
                                                       position: 'relative',
-                                                      touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto',
                                                       WebkitTapHighlightColor: 'transparent',
                                                       color: isAnswerSelected ? '#111827' : '#374151'
                                                     }}
@@ -3987,28 +3004,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                         e.currentTarget.style.borderColor = '#e5e7eb';
                                                       }
                                                     }}
-                                                    draggable={!isCustom}
-                                                    onDragStart={onOptionDragStart(cl._id, choice, isCustom)}
-                                                    onDragOver={onOptionDragOver(cl._id, choice, isCustom)}
-                                                    onDrop={onOptionDrop(cl._id, choice, isCustom, templateChoices)}
-                                                    onDragEnd={onOptionDragEnd()}
-                                                    onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
-                                                    onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
-                                                    onPointerDown={onOptionPointerDown(cl._id, choice, isCustom)}
                                                   >
-                                                    {/* Insertion line indicators for options */}
-                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
-                                                      <div style={{ position: 'absolute', top: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
-                                                    )}
-                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'after' && (
-                                                      <div style={{ position: 'absolute', bottom: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
-                                                    )}
-                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'before' && (
-                                                      <div style={{ position: 'absolute', left: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
-                                                    )}
-                                                    {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'after' && (
-                                                      <div style={{ position: 'absolute', right: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#8230c9', borderRadius: '2px', boxShadow: '0 0 4px rgba(130,48,201,0.5)', pointerEvents: 'none' }} />
-                                                    )}
                                                     <input
                                                       type="checkbox"
                                                       checked={isAnswerSelected}
@@ -4030,9 +3026,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                       }}>
                                                         Custom
                                                       </span>
-                                                    )}
-                                                    {!isCustom && (
-                                                      <span title="Drag to reorder" style={{ fontSize: '0.9rem', color: '#9ca3af', cursor: 'grab' }}>⋮⋮</span>
                                                     )}
                                                   </label>
                                                 );
@@ -4385,9 +3378,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 })()}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {(reorderIds.limitations && reorderIds.limitations.length
-                      ? reorderIds.limitations.map(id => activeSection.checklists.find(c => c._id === id)).filter(Boolean) as ISectionChecklist[]
-                      : activeSection.checklists.filter(cl => cl.tab === 'limitations'))
+                  {activeSection.checklists
+                    .filter(cl => cl.tab === 'limitations')
+                    .sort((a, b) => a.order_index - b.order_index)
                     .filter(cl => !isChecklistHidden(activeSection._id, cl._id))
                     .map(cl => {
                       const isSelected = formState.selected_checklist_ids.has(cl._id);
@@ -4396,62 +3389,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       return (
                         <div
                           key={cl._id}
-                          draggable={true}
-                          onDragStart={onDragStartItem('limitations', cl._id)}
-                          onDragOver={onDragOverItem('limitations', cl._id)}
-                          onDrop={onDropItem('limitations', cl._id)}
-                          onDragEnd={onDragEndItem()}
-                          onTouchStart={onItemTouchStart('limitations', cl._id)}
-                          onTouchMove={onItemTouchMove('limitations')}
-                          onTouchEnd={onItemTouchEnd('limitations')}
-                          onTouchCancel={onItemTouchCancel()}
-                          onPointerDown={onItemPointerDown('limitations', cl._id)}
-                          onPointerUp={onItemPointerUp('limitations')}
                           style={{
                             padding: '0.5rem',
                             borderRadius: '0.25rem',
-                            backgroundColor: dragVisual.draggingId === cl._id ? '#ecfdf5' : (isSelected ? '#f0fdf4' : 'transparent'),
-                            border: `1px solid ${dragVisual.draggingId === cl._id ? '#10b981' : '#e5e7eb'}`,
-                            boxShadow: dragVisual.draggingId === cl._id ? '0 2px 8px rgba(16,185,129,0.18)' : 'none',
-                            cursor: dragVisual.draggingId === cl._id ? 'grabbing' : 'grab',
-                            transition: 'box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
-                            position: 'relative',
-                            touchAction: 'manipulation'
+                            backgroundColor: isSelected ? '#f0fdf4' : 'transparent',
+                            border: '1px solid #e5e7eb',
+                            position: 'relative'
                           }}
-                          data-item-id={cl._id}
                         >
-                          {/* Insertion line indicator - BEFORE */}
-                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'before' && (
-                            <div style={{ 
-                              position: 'absolute', 
-                              top: '-2px', 
-                              left: '0', 
-                              right: '0', 
-                              height: '3px', 
-                              backgroundColor: '#10b981',
-                              borderRadius: '2px',
-                              boxShadow: '0 0 4px rgba(16,185,129,0.5)',
-                              zIndex: 10,
-                              pointerEvents: 'none'
-                            }} />
-                          )}
-                          
-                          {/* Insertion line indicator - AFTER */}
-                          {dragVisual.overId === cl._id && dragVisual.draggingId !== cl._id && dragVisual.position === 'after' && (
-                            <div style={{ 
-                              position: 'absolute', 
-                              bottom: '-2px', 
-                              left: '0', 
-                              right: '0', 
-                              height: '3px', 
-                              backgroundColor: '#10b981',
-                              borderRadius: '2px',
-                              boxShadow: '0 0 4px rgba(16,185,129,0.5)',
-                              zIndex: 10,
-                              pointerEvents: 'none'
-                            }} />
-                          )}
-                          
                           {/* Header - selection checkbox + title (click to expand when collapsed) */}
                           <div style={{ display: 'flex', fontSize: '0.875rem', alignItems: 'flex-start', gap: '0.625rem', padding: '0.125rem 0' }}>
                             <input
@@ -4467,7 +3412,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               title={isSelected ? (isLimitExpanded(cl._id) ? 'Expanded' : 'Click to expand') : 'Select the checkbox to enable'}
                             >
                               <div style={{ fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: '0.5rem', lineHeight: 1.5 }}>
-                                <span style={{ cursor: 'grab', color: '#9ca3af', fontSize: '1rem', flexShrink: 0 }}>⋮⋮</span>
                                 <span style={{ flex: 1 }}>{cl.text}</span>
                                 {isSelected && isLimitExpanded(cl._id) && (
                                   <button
@@ -4637,17 +3581,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     </div>
                                     <div
                                       className="checklist-options-grid"
-                                      onTouchMove={onOptionTouchMove(cl._id, cl.answer_choices || [])}
-                                      onTouchCancel={onOptionTouchCancel()}
-                                      onPointerUp={onOptionPointerUp(cl._id, cl.answer_choices || [])}
-                                      style={{ touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'manipulation', overscrollBehavior: 'contain' }}
                                     >
                                       {getAllAnswers(cl._id, cl.answer_choices || []).map((choice, idx) => {
                                         const selectedAnswers = getSelectedAnswers(cl._id);
                                         const isAnswerSelected = selectedAnswers.has(choice);
                                         const isCustom = isCustomAnswer(cl._id, choice, cl.answer_choices || []);
-                                        const isTemplateChoice = Array.isArray(cl.answer_choices) && cl.answer_choices.includes(choice);
-                                        const templateChoices = cl.answer_choices || [];
                                         
                                         return (
                                           <label 
@@ -4665,7 +3603,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                               fontSize: '0.75rem',
                                               transition: 'all 0.15s ease',
                                               position: 'relative',
-                                              touchAction: optionTouchStateRef.current.isDragging ? 'none' : 'auto',
                                               WebkitTapHighlightColor: 'transparent',
                                               color: isAnswerSelected ? '#111827' : '#374151'
                                             }}
@@ -4681,28 +3618,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                                 e.currentTarget.style.borderColor = '#e5e7eb';
                                               }
                                             }}
-                                            draggable={!isCustom}
-                                            onDragStart={onOptionDragStart(cl._id, choice, isCustom)}
-                                            onDragOver={onOptionDragOver(cl._id, choice, isCustom)}
-                                            onDrop={onOptionDrop(cl._id, choice, isCustom, templateChoices)}
-                                            onDragEnd={onOptionDragEnd()}
-                                            onTouchStart={onOptionTouchStart(cl._id, choice, isCustom)}
-                                            onTouchEnd={onOptionTouchEnd(cl._id, templateChoices)}
-                                            onPointerDown={onOptionPointerDown(cl._id, choice, isCustom)}
                                           >
-                                            {/* Insertion line indicators for options */}
-                                            {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'before' && (
-                                              <div style={{ position: 'absolute', top: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#10b981', borderRadius: '2px', boxShadow: '0 0 4px rgba(16,185,129,0.5)', pointerEvents: 'none' }} />
-                                            )}
-                                            {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'vertical' && optionDragVisual.position === 'after' && (
-                                              <div style={{ position: 'absolute', bottom: '-2px', left: 0, right: 0, height: '3px', backgroundColor: '#10b981', borderRadius: '2px', boxShadow: '0 0 4px rgba(16,185,129,0.5)', pointerEvents: 'none' }} />
-                                            )}
-                                            {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'before' && (
-                                              <div style={{ position: 'absolute', left: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#10b981', borderRadius: '2px', boxShadow: '0 0 4px rgba(16,185,129,0.5)', pointerEvents: 'none' }} />
-                                            )}
-                                            {optionDragVisual.checklistId === cl._id && optionDragVisual.draggingChoice !== choice && optionDragVisual.overChoice === choice && !isCustom && optionDragVisual.axis === 'horizontal' && optionDragVisual.position === 'after' && (
-                                              <div style={{ position: 'absolute', right: '-2px', top: 0, bottom: 0, width: '3px', backgroundColor: '#10b981', borderRadius: '2px', boxShadow: '0 0 4px rgba(16,185,129,0.5)', pointerEvents: 'none' }} />
-                                            )}
                                             <input
                                               type="checkbox"
                                               checked={isAnswerSelected}
@@ -4724,9 +3640,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                               }}>
                                                 Custom
                                               </span>
-                                            )}
-                                            {!isCustom && (
-                                              <span title="Drag to reorder" style={{ fontSize: '0.9rem', color: '#9ca3af', cursor: 'grab' }}>⋮⋮</span>
                                             )}
                                           </label>
                                         );

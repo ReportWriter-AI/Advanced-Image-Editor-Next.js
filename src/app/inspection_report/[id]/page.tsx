@@ -815,13 +815,9 @@ export default function Page() {
   useEffect(() => {
     const fetchSections = async () => {
       try {
-        const response = await fetch('/api/information-sections/sections');
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.data) {
-            setSections(result.data);
-          }
-        }
+        const response = await fetch('/api/inspection-sections', { cache: 'no-store', credentials: 'include' });
+        const json = await response.json();
+        setSections(json.sections);
       } catch (error) {
         console.error('Error fetching sections:', error);
       }
