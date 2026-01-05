@@ -3609,7 +3609,23 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               <h4 style={{ fontWeight: 600, fontSize: '1.125rem' }}>
                 {editingBlockId ? 'Edit' : 'Add'} Information Block - {activeSection.name}
               </h4>
-              <button onClick={() => { setModalOpen(false); setActiveSection(null); setEditingBlockId(null); setDeleteMenuForId(null); setDeleteAnswerMenuForIndex(null); }} style={{ color: '#6b7280', cursor: 'pointer', border: 'none', background: 'none', fontSize: '1.25rem' }}>✕</button>
+              <button onClick={async () => {
+                // Save before closing
+                if (formState && (formState.selected_checklist_ids.size > 0 || formState.custom_text || formState.images.length > 0)) {
+                  await handleSave();
+                } else {
+                  // No data to save, just close
+                  setModalOpen(false);
+                  setActiveSection(null);
+                  setEditingBlockId(null);
+                  setLastSaved(null);
+                  setDeleteMenuForId(null);
+                  // Clear any pending auto-save timer
+                  if (autoSaveTimerRef.current) {
+                    clearTimeout(autoSaveTimerRef.current);
+                  }
+                }
+                 setModalOpen(false); setActiveSection(null); setEditingBlockId(null); setDeleteMenuForId(null); setDeleteAnswerMenuForIndex(null); }} style={{ color: '#6b7280', cursor: 'pointer', border: 'none', background: 'none', fontSize: '1.25rem' }}>✕</button>
             </div>
             <div
               ref={modalScrollContainerRef}
@@ -3636,7 +3652,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                         {hasStatusSelected && <span style={{ fontSize: '1.125rem', color: '#22c55e' }}>✅</span>}
                         Status Fields
                       </h5>
-                      <button
+                      {/* <button
                         onClick={() => openChecklistForm('status')}
                         style={{
                           padding: '0.25rem 0.5rem',
@@ -3653,7 +3669,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                         onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
                       >
                         + Add New
-                      </button>
+                      </button> */}
                     </div>
                   );
                 })()}
@@ -4346,7 +4362,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       <h5 style={{ fontWeight: 600, fontSize: '1rem', color: '#1f2937', borderBottom: '2px solid #10b981', paddingBottom: '0.5rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         Limitations / Information
                       </h5>
-                      <button
+                      {/* <button
                         onClick={() => openChecklistForm('information', undefined, 'limitations')}
                         style={{
                           padding: '0.25rem 0.5rem',
@@ -4363,7 +4379,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                         onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
                       >
                         + Add New
-                      </button>
+                      </button> */}
                     </div>
                   );
                 })()}
