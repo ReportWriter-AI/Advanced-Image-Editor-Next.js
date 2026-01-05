@@ -496,12 +496,12 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       if (!section) {
                         console.log('⚠️ Sections not loaded yet, fetching...');
                         // Fetch sections if not available
-                        const sectionsRes = await fetch('/api/information-sections/sections');
+                        const sectionsRes = await fetch('/api/inspection-sections', { cache: 'no-store', credentials: 'include' });
                         const sectionsJson = await sectionsRes.json();
                         
                         if (sectionsJson.success) {
-                          setSections(sectionsJson.data);
-                          section = sectionsJson.data.find((s: ISection) => s._id === sectionId);
+                          setSections(sectionsJson.sections);
+                          section = sectionsJson.sections.find((s: ISection) => s._id === sectionId);
                         }
                       }
                       
@@ -636,11 +636,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     // First, fetch the latest section data from database to ensure we have fresh checklist data
     let latestSection = section;
     try {
-  const sectionsRes = await fetch('/api/information-sections/sections', { cache: 'no-store' });
+      const sectionsRes = await fetch('/api/inspection-sections', { cache: 'no-store', credentials: 'include' });
       if (sectionsRes.ok) {
         const sectionsData = await sectionsRes.json();
-        if (sectionsData.success && sectionsData.data) {
-          const freshSection = sectionsData.data.find((s: ISection) => s._id === section._id);
+        if (sectionsData.success && sectionsData.sections) {
+          const freshSection = sectionsData.sections.find((s: ISection) => s._id === section._id);
           if (freshSection) {
             latestSection = freshSection;
             console.log('✅ Loaded fresh section data with', freshSection.checklists.length, 'checklists');
@@ -2681,21 +2681,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 {editingBlockId ? 'Edit' : 'Add'} Information Block - {activeSection.name}
               </h4>
               <button onClick={async () => {
-                // Save before closing
-                if (formState && (formState.selected_checklist_ids.size > 0 || formState.custom_text || formState.images.length > 0)) {
-                  await handleSave();
-                } else {
-                  // No data to save, just close
-                  setModalOpen(false);
-                  setActiveSection(null);
-                  setEditingBlockId(null);
-                  setLastSaved(null);
-                  setDeleteMenuForId(null);
-                  // Clear any pending auto-save timer
-                  if (autoSaveTimerRef.current) {
-                    clearTimeout(autoSaveTimerRef.current);
-                  }
-                }
+                 await fetchBlocks(); // Refresh blocks list before closing
                  setModalOpen(false); setActiveSection(null); setEditingBlockId(null); setDeleteMenuForId(null); setDeleteAnswerMenuForIndex(null); }} style={{ color: '#6b7280', cursor: 'pointer', border: 'none', background: 'none', fontSize: '1.25rem' }}>✕</button>
             </div>
             <div
