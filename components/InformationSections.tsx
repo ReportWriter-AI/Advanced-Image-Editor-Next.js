@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import FileUpload from './FileUpload';
 import LocationSearch from './LocationSearch';
 import { LOCATION_OPTIONS } from '../constants/locations';
+import { splitCommaSeparated } from '@/lib/utils';
 
 interface ISectionChecklist {
   _id: string;
@@ -263,8 +264,8 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     return `/api/proxy-image?url=${encodeURIComponent(url)}`;
   }, []);
 
-  // Shared location options
-  
+  // Shared location options - dynamically fetched from API, fallback to static options
+  const [locationOptions, setLocationOptions] = useState<string[]>(LOCATION_OPTIONS);
 
   // Admin checklist management
   const [checklistFormOpen, setChecklistFormOpen] = useState(false);
@@ -286,10 +287,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     setLoadingSections(true);
     setError(null);
     try {
-      const res = await fetch('/api/information-sections/sections', { cache: 'no-store' });
+      const res = await fetch('/api/inspection-sections', { cache: 'no-store', credentials: 'include' });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Failed to load sections');
-      setSections(json.data);
+      setSections(json.sections);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -312,8 +312,25 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }
   }, [inspectionId]);
 
+  const fetchLocationOptions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/reusable-dropdowns', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        const locationValues = splitCommaSeparated(data.location || '');
+        if (locationValues.length > 0) {
+          setLocationOptions(locationValues);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching location options:', error);
+      // Fallback to static LOCATION_OPTIONS is already set as initial state
+    }
+  }, []);
+
   useEffect(() => { fetchSections(); }, [fetchSections]);
   useEffect(() => { fetchBlocks(); }, [fetchBlocks]);
+  useEffect(() => { fetchLocationOptions(); }, [fetchLocationOptions]);
 
   // Load inspection-specific checklists from localStorage on mount
   useEffect(() => {
@@ -3743,7 +3760,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     ✕
                                   </button>
                                 )}
-                                {!isMobile && (
+                                {/* {!isMobile && (
                                   <label
                                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                     style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
@@ -3758,9 +3775,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     />
                                     Default to checked?
                                   </label>
-                                )}
+                                )} */}
                               </div>
-                              {isMobile && (
+                              {/* {isMobile && (
                                 <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   {isSelected && isStatusExpanded(cl._id) && (
                                     <button
@@ -3795,15 +3812,16 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     Default to checked?
                                   </label>
                                 </div>
-                              )}
+                              )} */}
                               {cl.comment && (
                                 <div style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                                   {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
                                 </div>
                               )}
                             </div>
-                            <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}>
-                              <button
+
+                            {/* <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}> */}
+                              {/* <button
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -3846,9 +3864,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 title="Delete checklist"
                               >
                                 🗑️
-                              </button>
+                              </button> */}
                               {/* Inline delete options menu for template items */}
-                              {deleteMenuForId === cl._id && !cl._id.startsWith('temp_') && (
+                              {/* {deleteMenuForId === cl._id && !cl._id.startsWith('temp_') && (
                                 <div style={{
                                   position: 'absolute',
                                   top: '100%',
@@ -3892,8 +3910,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     </button>
                                   </div>
                                 </div>
-                              )}
-                            </div>
+                              )} */}
+                            {/* </div> */}
+                            
                           </div>
 
                           {/* Content area - NOT clickable to toggle */}
@@ -4231,7 +4250,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                       {/* Location Smart Search */}
                                       <div style={{ position: 'relative', width: '180px' }}>
                                         <LocationSearch
-                                          options={LOCATION_OPTIONS}
+                                          options={locationOptions}
                                           value={locationInputs[`${cl._id}-${idx}`] ?? img.location ?? ''}
                                           onChangeAction={(newLocation) => {
                                             const inputKey = `${cl._id}-${idx}`;
@@ -4452,7 +4471,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     ✕
                                   </button>
                                 )}
-                                {!isMobile && (
+                                {/* {!isMobile && (
                                   <label
                                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                     style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#4b5563', cursor: 'default' }}
@@ -4467,9 +4486,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     />
                                     Default to checked?
                                   </label>
-                                )}
+                                )} */}
                               </div>
-                              {isMobile && (
+                              {/* {isMobile && (
                                 <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   {isSelected && isLimitExpanded(cl._id) && (
                                     <button
@@ -4504,7 +4523,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     Default to checked?
                                   </label>
                                 </div>
-                              )}
+                              )} */}
                               {cl.comment && (
                                 <div style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                                   {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
@@ -4512,7 +4531,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                               )}
                             </div>
                             <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}>
-                              <button
+                              {/* <button
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
@@ -4555,7 +4574,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 title="Delete checklist"
                               >
                                 🗑️
-                              </button>
+                              </button> */}
                               {/* Inline delete options menu for template items */}
                               {deleteMenuForId === cl._id && !cl._id.startsWith('temp_') && (
                                 <div style={{
@@ -4913,7 +4932,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                       {/* Location Smart Search */}
                                       <div style={{ position: 'relative', width: '180px' }}>
                                         <LocationSearch
-                                          options={LOCATION_OPTIONS}
+                                          options={locationOptions}
                                           value={locationInputs[`${cl._id}-${idx}`] ?? img.location ?? ''}
                                           onChangeAction={(newLocation) => {
                                             const inputKey = `${cl._id}-${idx}`;
@@ -5050,13 +5069,13 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               >{saving ? 'Saving...' : '✓ Done'}</button>
               </div>
               {/* Manage hidden toggles when modal open */}
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {/* <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={() => setShowHiddenManagerStatus(v => !v)}
                   style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', borderRadius: '0.25rem', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', cursor: 'pointer' }}
                   title="Manage hidden Status items for this inspection"
                 >{showHiddenManagerStatus ? 'Hide Status Manager' : 'Manage Hidden Status'}</button>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

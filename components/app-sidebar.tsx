@@ -148,6 +148,11 @@ const data = {
 						icon: Settings,
 					},
 					{
+						title: "Sections",
+						url: "/sections",
+						icon: ListChecks,
+					},
+					{
 						title: "Drop-Downs",
 						url: "/drop-downs",
 						icon: ListChecks,

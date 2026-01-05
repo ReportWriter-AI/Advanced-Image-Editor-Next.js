@@ -574,11 +574,11 @@ function LoginPageContent() {
                     />
                     <Label htmlFor="agreedToTerms" className="text-sm font-normal cursor-pointer leading-relaxed">
                       I agree to the{' '}
-                      <a href="/privacy-policy" target="_blank" className="text-primary hover:underline font-medium">
+                      <a href="https://www.reportwriter.ai/privacy-policy" target="_blank" className="text-primary hover:underline font-medium">
                         Privacy Policy
                       </a>
                       {' '}and{' '}
-                      <a href="/terms-and-conditions" target="_blank" className="text-primary hover:underline font-medium">
+                      <a href="https://www.reportwriter.ai/terms-and-conditions" target="_blank" className="text-primary hover:underline font-medium">
                         Terms and Conditions
                       </a>
                       {' '}*

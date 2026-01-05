@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import InspectionInformationBlock from '@/src/models/InspectionInformationBlock';
-import Section from '@/src/models/Section';
-import SectionChecklist from '@/src/models/SectionChecklist';
+import InspectionSection from '@/src/models/InspectionSection';
 import Inspection from '@/src/models/Inspection';
 import { checkAllStatusFieldsComplete } from '@/lib/status-completion-check';
 import { checkAndProcessTriggers } from '@/src/lib/automation-trigger-helper';
@@ -12,11 +11,8 @@ async function dbConnect() {
     await mongoose.connect(process.env.MONGODB_URI!);
   }
 
-  if (!mongoose.models.Section) {
-    mongoose.model('Section', Section.schema);
-  }
-  if (!mongoose.models.SectionChecklist) {
-    mongoose.model('SectionChecklist', SectionChecklist.schema);
+  if (!mongoose.models.InspectionSection) {
+    mongoose.model('InspectionSection', InspectionSection.schema);
   }
 }
 
@@ -35,18 +31,36 @@ export async function GET(
 
     let blocks = await InspectionInformationBlock.find({ inspection_id: inspectionId })
       .populate('section_id')
-      .populate('selected_checklist_ids')
       .sort({ created_at: 1 })
       .lean();
 
-    // Ensure consistent order: sort selected_checklist_ids by order_index ascending
+    // Manually resolve checklist objects from embedded checklists array
     blocks = Array.isArray(blocks) ? blocks.map((blk: any) => {
-      if (Array.isArray(blk?.selected_checklist_ids)) {
-        blk.selected_checklist_ids = [...blk.selected_checklist_ids].sort((a: any, b: any) => {
+      if (blk?.section_id && Array.isArray(blk?.selected_checklist_ids)) {
+        const section = blk.section_id;
+        const checklists = section.checklists || [];
+        
+        // Create a map of checklist _id (as string) to checklist object
+        const checklistMap = new Map<string, any>();
+        checklists.forEach((cl: any) => {
+          if (cl._id) {
+            checklistMap.set(cl._id.toString(), cl);
+          }
+        });
+        
+        // Resolve selected_checklist_ids to full checklist objects
+        const resolvedChecklists = blk.selected_checklist_ids
+          .map((id: string) => checklistMap.get(id))
+          .filter(Boolean);
+        
+        // Sort by order_index
+        resolvedChecklists.sort((a: any, b: any) => {
           const ao = typeof a?.order_index === 'number' ? a.order_index : Number.POSITIVE_INFINITY;
           const bo = typeof b?.order_index === 'number' ? b.order_index : Number.POSITIVE_INFINITY;
           return ao - bo;
         });
+        
+        blk.selected_checklist_ids = resolvedChecklists;
       }
       return blk;
     }) : blocks;
@@ -102,9 +116,9 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'section_id is required and must be valid' }, { status: 400 });
     }
 
-    // Validate checklist IDs
+    // Validate checklist IDs (now strings, not ObjectIds)
     const cleanChecklistIds = Array.isArray(selected_checklist_ids)
-      ? selected_checklist_ids.filter((id: string) => mongoose.isValidObjectId(id))
+      ? selected_checklist_ids.filter((id: any) => typeof id === 'string' && id.trim().length > 0)
       : [];
 
     // Validate and clean selected_answers
@@ -113,11 +127,11 @@ export async function POST(
           .filter((item: any) => 
             item && 
             typeof item.checklist_id === 'string' && 
-            mongoose.isValidObjectId(item.checklist_id) &&
+            item.checklist_id.trim().length > 0 &&
             Array.isArray(item.selected_answers)
           )
           .map((item: any) => ({
-            checklist_id: item.checklist_id,
+            checklist_id: item.checklist_id.trim(),
             selected_answers: item.selected_answers.filter((ans: any) => typeof ans === 'string')
           }))
       : [];
@@ -148,11 +162,31 @@ export async function POST(
       images: cleanImages,
     });
 
-    // Populate before returning
+    // Populate and resolve checklists before returning
     const populated = await InspectionInformationBlock.findById(doc._id)
       .populate('section_id')
-      .populate('selected_checklist_ids')
       .lean();
+    
+    // Manually resolve checklist objects from embedded checklists array
+    if (populated && populated.section_id && Array.isArray(populated.selected_checklist_ids)) {
+      const section = populated.section_id as any;
+      const checklists = section.checklists || [];
+      const checklistMap = new Map<string, any>();
+      checklists.forEach((cl: any) => {
+        if (cl._id) {
+          checklistMap.set(cl._id.toString(), cl);
+        }
+      });
+      const resolvedChecklists = populated.selected_checklist_ids
+        .map((id: string) => checklistMap.get(id))
+        .filter(Boolean)
+        .sort((a: any, b: any) => {
+          const ao = typeof a?.order_index === 'number' ? a.order_index : Number.POSITIVE_INFINITY;
+          const bo = typeof b?.order_index === 'number' ? b.order_index : Number.POSITIVE_INFINITY;
+          return ao - bo;
+        });
+      populated.selected_checklist_ids = resolvedChecklists as any;
+    }
 
     try {
       const inspection = await Inspection.findById(inspectionId).lean();
@@ -241,9 +275,9 @@ export async function PUT(
       imageCount: images.length
     });
 
-    // Validate checklist IDs
+    // Validate checklist IDs (now strings, not ObjectIds)
     const cleanChecklistIds = Array.isArray(selected_checklist_ids)
-      ? selected_checklist_ids.filter((id: string) => mongoose.isValidObjectId(id))
+      ? selected_checklist_ids.filter((id: any) => typeof id === 'string' && id.trim().length > 0)
       : [];
 
     // Validate and clean selected_answers
@@ -252,11 +286,11 @@ export async function PUT(
           .filter((item: any) => 
             item && 
             typeof item.checklist_id === 'string' && 
-            mongoose.isValidObjectId(item.checklist_id) &&
+            item.checklist_id.trim().length > 0 &&
             Array.isArray(item.selected_answers)
           )
           .map((item: any) => ({
-            checklist_id: item.checklist_id,
+            checklist_id: item.checklist_id.trim(),
             selected_answers: item.selected_answers.filter((ans: any) => typeof ans === 'string')
           }))
       : [];
@@ -289,11 +323,31 @@ export async function PUT(
       { new: true }
     )
       .populate('section_id')
-      .populate('selected_checklist_ids')
       .lean();
 
     if (!updated) {
       return NextResponse.json({ success: false, error: 'Block not found' }, { status: 404 });
+    }
+    
+    // Manually resolve checklist objects from embedded checklists array
+    if (updated.section_id && Array.isArray(updated.selected_checklist_ids)) {
+      const section = updated.section_id as any;
+      const checklists = section.checklists || [];
+      const checklistMap = new Map<string, any>();
+      checklists.forEach((cl: any) => {
+        if (cl._id) {
+          checklistMap.set(cl._id.toString(), cl);
+        }
+      });
+      const resolvedChecklists = updated.selected_checklist_ids
+        .map((id: string) => checklistMap.get(id))
+        .filter(Boolean)
+        .sort((a: any, b: any) => {
+          const ao = typeof a?.order_index === 'number' ? a.order_index : Number.POSITIVE_INFINITY;
+          const bo = typeof b?.order_index === 'number' ? b.order_index : Number.POSITIVE_INFINITY;
+          return ao - bo;
+        });
+      updated.selected_checklist_ids = resolvedChecklists as any;
     }
 
     // Check if all status fields are complete and update isReportPublished if needed

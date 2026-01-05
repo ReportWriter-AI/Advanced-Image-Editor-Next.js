@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import Section from '@/src/models/Section';
-import SectionChecklist from '@/src/models/SectionChecklist';
+import InspectionSection from '@/src/models/InspectionSection';
+import { getCurrentUser } from '@/lib/auth-helpers';
 
 const RESOURCES_SECTION_NAME = '18 - Resources and Disclaimers';
 const LEGACY_RESOURCES_SECTION_NAME = 'Resources and Disclaimers';
@@ -111,35 +111,27 @@ async function dbConnect() {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     await dbConnect();
-    await ensureResourcesSection();
-
-    // Fetch all sections sorted by order_index
-    const sections = await Section.find({}).sort({ order_index: 1 }).lean();
     
-    if (!sections.length) {
+    // Get current user to filter by company
+    const currentUser = await getCurrentUser(req);
+    if (!currentUser || !currentUser.company) {
       return NextResponse.json({ success: true, data: [] });
     }
 
-    const sectionIds = sections.map(s => s._id);
+    await ensureResourcesSection(currentUser.company);
 
-    // Fetch all checklists for these sections (comments are now embedded)
-    const checklists = await SectionChecklist.find({ section_id: { $in: sectionIds } }).lean();
+    // Fetch all sections for this company sorted by order_index (checklists are embedded)
+    const sections = await InspectionSection.find({ company: currentUser.company })
+      .sort({ order_index: 1 })
+      .lean();
 
-    // Group checklists by section_id
-    const checklistMap: Record<string, any[]> = {};
-    for (const cl of checklists) {
-      const key = cl.section_id.toString();
-      if (!checklistMap[key]) checklistMap[key] = [];
-      checklistMap[key].push(cl);
-    }
-
-    // Combine sections with their nested data
+    // Sections already have embedded checklists, just ensure they're sorted
     const result = sections.map(section => ({
       ...section,
-      checklists: (checklistMap[section._id.toString()] || []).sort((a, b) => a.order_index - b.order_index),
+      checklists: (section.checklists || []).sort((a: any, b: any) => a.order_index - b.order_index),
     }));
 
     // Ensure no caching in production to always get fresh section/checklist data
@@ -159,11 +151,17 @@ export async function GET() {
   }
 }
 
-async function ensureResourcesSection() {
-  let section = await Section.findOne({ name: RESOURCES_SECTION_NAME });
+async function ensureResourcesSection(companyId: mongoose.Types.ObjectId) {
+  let section = await InspectionSection.findOne({ 
+    company: companyId,
+    name: RESOURCES_SECTION_NAME 
+  });
 
   if (!section) {
-    const legacySection = await Section.findOne({ name: LEGACY_RESOURCES_SECTION_NAME });
+    const legacySection = await InspectionSection.findOne({ 
+      company: companyId,
+      name: LEGACY_RESOURCES_SECTION_NAME 
+    });
     if (legacySection) {
       legacySection.name = RESOURCES_SECTION_NAME;
       await legacySection.save();
@@ -172,55 +170,58 @@ async function ensureResourcesSection() {
   }
 
   if (!section) {
-    const lastSection = await Section.findOne({}).sort({ order_index: -1 }).select('order_index').lean();
+    const lastSection = await InspectionSection.findOne({ company: companyId })
+      .sort({ order_index: -1 })
+      .select('order_index')
+      .lean();
     const orderIndex = lastSection ? lastSection.order_index + 1 : 0;
-    section = await Section.create({
+    
+    const checklists = RESOURCES_CHECKLISTS.map(item => ({
+      text: item.text,
+      comment: item.comment,
+      type: 'information' as const,
+      tab: 'information' as const,
+      order_index: item.order_index,
+    }));
+    
+    section = await InspectionSection.create({
+      company: companyId,
       name: RESOURCES_SECTION_NAME,
       order_index: orderIndex,
+      checklists,
     });
-
-    for (const item of RESOURCES_CHECKLISTS) {
-      await SectionChecklist.create({
-        section_id: section._id,
-        text: item.text,
-        comment: item.comment,
-        type: 'information',
-        tab: 'information',
-        order_index: item.order_index,
-      });
-    }
     return;
   }
 
+  // Ensure all RESOURCES_CHECKLISTS exist in the section's embedded checklists
+  const existingChecklists = section.checklists || [];
+  const checklistTexts = new Set(existingChecklists.map(cl => cl.text));
+  
   for (const item of RESOURCES_CHECKLISTS) {
-    const existingChecklist = await SectionChecklist.findOne({ section_id: section._id, text: item.text });
-    if (!existingChecklist) {
-      await SectionChecklist.create({
-        section_id: section._id,
+    if (!checklistTexts.has(item.text)) {
+      // Add new checklist to embedded array
+      section.checklists.push({
         text: item.text,
         comment: item.comment,
         type: 'information',
         tab: 'information',
         order_index: item.order_index,
       });
-      continue;
-    }
-
-    let shouldSave = false;
-    if (existingChecklist.type !== 'information') {
-      existingChecklist.type = 'information';
-      shouldSave = true;
-    }
-
-    if (existingChecklist.tab !== 'information') {
-      existingChecklist.tab = 'information';
-      shouldSave = true;
-    }
-
-    if (shouldSave) {
-      await existingChecklist.save();
+    } else {
+      // Update existing checklist if needed
+      const existingChecklist = existingChecklists.find(cl => cl.text === item.text);
+      if (existingChecklist) {
+        if (existingChecklist.type !== 'information') {
+          existingChecklist.type = 'information';
+        }
+        if (existingChecklist.tab !== 'information') {
+          existingChecklist.tab = 'information';
+        }
+      }
     }
   }
+  
+  await section.save();
 }
 
 // Force this route to be dynamic and bypass any caching at the framework level

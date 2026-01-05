@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import SectionChecklist from '@/src/models/SectionChecklist';
+import InspectionSection from '@/src/models/InspectionSection';
 
 async function dbConnect() {
   if (mongoose.connection.readyState === 0) {
@@ -17,76 +17,79 @@ export async function PUT(
     await dbConnect();
     const { checklistId } = await params;
 
-    if (!checklistId || !mongoose.isValidObjectId(checklistId)) {
+    if (!checklistId) {
       return NextResponse.json({ success: false, error: 'Invalid checklistId' }, { status: 400 });
     }
 
-  const body = await req.json();
-  const { text, comment, type, tab, answer_choices, default_checked, default_selected_answers } = body || {};
+    const body = await req.json();
+    const { text, comment, type, tab, answer_choices, default_checked, default_selected_answers } = body || {};
 
-    const updateData: any = {};
-    const unsetData: any = {};
-    
-    if (text !== undefined) updateData.text = typeof text === 'string' ? text.trim() : text;
-    
-    // Handle comment: if empty, remove it from database using $unset
-    if (comment !== undefined) {
-      const trimmedComment = typeof comment === 'string' ? comment.trim() : comment;
-      if (trimmedComment && trimmedComment.length > 0) {
-        updateData.comment = trimmedComment;
-      } else {
-        // Comment is empty - remove it from database
-        unsetData.comment = '';
-      }
-    }
-    
-    if (type !== undefined && ['status', 'information'].includes(type)) updateData.type = type;
-    if (tab !== undefined && ['information', 'limitations'].includes(tab)) updateData.tab = tab;
-    if (answer_choices !== undefined) {
-      // If answer_choices provided as a non-empty array, set it.
-      // If provided as an empty array, UNSET the field to fully remove previous options.
-      if (Array.isArray(answer_choices)) {
-        if (answer_choices.length > 0) {
-          updateData.answer_choices = answer_choices;
-        } else {
-          unsetData.answer_choices = '';
-        }
-      }
-    }
-    if (default_checked !== undefined) {
-      updateData.default_checked = Boolean(default_checked);
-    }
-    if (default_selected_answers !== undefined) {
-      if (Array.isArray(default_selected_answers)) {
-        if (default_selected_answers.length > 0) {
-          updateData.default_selected_answers = default_selected_answers;
-        } else {
-          unsetData.default_selected_answers = '';
-        }
-      }
-    }
+    // Find the section containing this checklist
+    const section = await InspectionSection.findOne({
+      'checklists._id': checklistId
+    });
 
-    // Build the update object with both $set and $unset operations
-    const updateOperation: any = {};
-    if (Object.keys(updateData).length > 0) {
-      updateOperation.$set = updateData;
-    }
-    if (Object.keys(unsetData).length > 0) {
-      updateOperation.$unset = unsetData;
-    }
-
-    const updated = await SectionChecklist.findByIdAndUpdate(
-      checklistId,
-      updateOperation,
-      { new: true, runValidators: true }
-    ).lean();
-
-    if (!updated) {
+    if (!section) {
       return NextResponse.json({ success: false, error: 'Checklist not found' }, { status: 404 });
     }
 
+    // Find the checklist in the embedded array
+    const checklistIndex = section.checklists.findIndex((cl: any) => cl._id && cl._id.toString() === checklistId);
+    if (checklistIndex === -1) {
+      return NextResponse.json({ success: false, error: 'Checklist not found' }, { status: 404 });
+    }
+
+    const checklist = section.checklists[checklistIndex];
+
+    // Update fields
+    if (text !== undefined) checklist.text = typeof text === 'string' ? text.trim() : text;
+    
+    if (comment !== undefined) {
+      const trimmedComment = typeof comment === 'string' ? comment.trim() : comment;
+      if (trimmedComment && trimmedComment.length > 0) {
+        checklist.comment = trimmedComment;
+      } else {
+        // Comment is empty - delete the property
+        delete checklist.comment;
+      }
+    }
+    
+    if (type !== undefined && ['status', 'information'].includes(type)) {
+      checklist.type = type;
+    }
+    if (tab !== undefined && ['information', 'limitations'].includes(tab)) {
+      checklist.tab = tab;
+    }
+    
+    if (answer_choices !== undefined) {
+      if (Array.isArray(answer_choices) && answer_choices.length > 0) {
+        checklist.answer_choices = answer_choices;
+      } else {
+        // Empty array - delete the property
+        delete checklist.answer_choices;
+      }
+    }
+    
+    if (default_checked !== undefined) {
+      checklist.default_checked = Boolean(default_checked);
+    }
+    
+    if (default_selected_answers !== undefined) {
+      if (Array.isArray(default_selected_answers) && default_selected_answers.length > 0) {
+        checklist.default_selected_answers = default_selected_answers;
+      } else {
+        // Empty array - delete the property
+        delete checklist.default_selected_answers;
+      }
+    }
+
+    await section.save();
+
+    // Return the updated checklist
+    const updatedChecklist = section.checklists[checklistIndex];
+
     return NextResponse.json(
-      { success: true, data: updated },
+      { success: true, data: updatedChecklist },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -110,15 +113,25 @@ export async function DELETE(
     await dbConnect();
     const { checklistId } = await params;
 
-    if (!checklistId || !mongoose.isValidObjectId(checklistId)) {
+    if (!checklistId) {
       return NextResponse.json({ success: false, error: 'Invalid checklistId' }, { status: 400 });
     }
 
-    const deleted = await SectionChecklist.findByIdAndDelete(checklistId);
+    // Find the section containing this checklist
+    const section = await InspectionSection.findOne({
+      'checklists._id': checklistId
+    });
 
-    if (!deleted) {
+    if (!section) {
       return NextResponse.json({ success: false, error: 'Checklist not found' }, { status: 404 });
     }
+
+    // Remove the checklist from the embedded array
+    section.checklists = section.checklists.filter((cl: any) => {
+      return !cl._id || cl._id.toString() !== checklistId;
+    }) as any;
+
+    await section.save();
 
     return NextResponse.json(
       { success: true, data: { _id: checklistId } },

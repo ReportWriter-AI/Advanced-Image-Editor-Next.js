@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
-import Section from '@/src/models/Section';
-import SectionChecklist from '@/src/models/SectionChecklist';
+import InspectionSection from '@/src/models/InspectionSection';
 import InspectionInformationBlock from '@/src/models/InspectionInformationBlock';
+import Inspection from '@/src/models/Inspection';
 
 /**
  * Checks if all status-type checklist items across all sections are selected for an inspection.
@@ -23,29 +23,38 @@ export async function checkAllStatusFieldsComplete(inspectionId: string): Promis
       return false;
     }
 
-    // 1. Fetch all sections
-    const sections = await Section.find({}).sort({ order_index: 1 }).lean();
+    // Get the inspection to find the company
+    const inspection = await Inspection.findById(inspectionId).select('companyId').lean();
+    if (!inspection || !inspection.companyId) {
+      return false;
+    }
+
+    // 1. Fetch all sections for this company
+    const sections = await InspectionSection.find({ company: inspection.companyId })
+      .sort({ order_index: 1 })
+      .lean();
     
     // If no sections exist, return false (can't be complete without any sections)
     if (!sections || sections.length === 0) {
       return false;
     }
 
-    // 2. Fetch all status-type checklists for all sections
-    const sectionIds = sections.map(s => s._id);
-    const allStatusChecklists = await SectionChecklist.find({
-      section_id: { $in: sectionIds },
-      type: 'status'
-    }).lean();
-
-    // Group status checklists by section_id
+    // 2. Extract all status-type checklists from embedded arrays and group by section_id
     const statusChecklistsBySection = new Map<string, string[]>();
-    for (const checklist of allStatusChecklists) {
-      const sectionId = checklist.section_id.toString();
-      if (!statusChecklistsBySection.has(sectionId)) {
+    for (const section of sections) {
+      const sectionId = section._id.toString();
+      const checklists = section.checklists || [];
+      const statusChecklists = checklists.filter((cl: any) => cl.type === 'status');
+      
+      if (statusChecklists.length > 0) {
         statusChecklistsBySection.set(sectionId, []);
+        for (const checklist of statusChecklists) {
+          const checklistAny = checklist as any;
+          if (checklistAny._id) {
+            statusChecklistsBySection.get(sectionId)!.push(checklistAny._id.toString());
+          }
+        }
       }
-      statusChecklistsBySection.get(sectionId)!.push(checklist._id.toString());
     }
 
     // 3. Fetch all blocks for this inspection
@@ -53,23 +62,25 @@ export async function checkAllStatusFieldsComplete(inspectionId: string): Promis
       inspection_id: inspectionId
     }).lean();
 
-    // 4. Collect all selected checklist IDs from all blocks
+    // 4. Collect all selected checklist IDs from all blocks (now strings)
     const selectedChecklistIds = new Set<string>();
     for (const block of blocks) {
       if (Array.isArray(block.selected_checklist_ids)) {
         for (const checklistId of block.selected_checklist_ids) {
-          // Handle both string IDs and populated objects
-          const id = typeof checklistId === 'string' 
-            ? checklistId 
-            : (checklistId as any)?._id?.toString() || checklistId?.toString();
+          // Handle both string IDs and populated objects (for backwards compatibility)
+          let id: string | undefined;
+          if (typeof checklistId === 'string') {
+            id = checklistId;
+          } else {
+            const checklistAny = checklistId as any;
+            id = checklistAny?._id?.toString() || checklistAny?.toString();
+          }
           if (id) {
             selectedChecklistIds.add(id);
           }
         }
       }
     }
-
-			console.log(sections)
 
     // 5. For each section, verify all status checklist IDs are in the selected set
     for (const section of sections) {

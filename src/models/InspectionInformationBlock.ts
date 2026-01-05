@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
-import { ISection } from './Section';
-import { ISectionChecklist } from './SectionChecklist';
+import { IInspectionSection } from './InspectionSection';
+import { IInspectionChecklist } from './InspectionSection';
 
 export interface IInspectionInformationBlockImage {
   url: string;
@@ -18,8 +18,8 @@ export interface IChecklistSelectedAnswers {
 
 export interface IInspectionInformationBlock extends Document {
   inspection_id: Types.ObjectId;
-  section_id: Types.ObjectId | ISection;
-  selected_checklist_ids: Array<Types.ObjectId | ISectionChecklist>;
+  section_id: Types.ObjectId | IInspectionSection;
+  selected_checklist_ids: string[]; // Array of checklist _id strings from embedded checklists
   selected_answers?: IChecklistSelectedAnswers[]; // Array of checklist IDs with their selected answers
   custom_text?: string;
   images: IInspectionInformationBlockImage[];
@@ -49,8 +49,8 @@ const ChecklistSelectedAnswersSchema = new Schema<IChecklistSelectedAnswers>(
 const InspectionInformationBlockSchema = new Schema<IInspectionInformationBlock>(
   {
     inspection_id: { type: Schema.Types.ObjectId, ref: 'Inspection', required: true, index: true },
-    section_id: { type: Schema.Types.ObjectId, ref: 'Section', required: true, index: true },
-    selected_checklist_ids: [{ type: Schema.Types.ObjectId, ref: 'SectionChecklist' }],
+    section_id: { type: Schema.Types.ObjectId, ref: 'InspectionSection', required: true, index: true },
+    selected_checklist_ids: [{ type: String }], // Checklist _id strings from embedded checklists
     selected_answers: { type: [ChecklistSelectedAnswersSchema], default: [] },
     custom_text: { type: String, trim: true },
     images: { type: [ImageSchema], default: [] },
