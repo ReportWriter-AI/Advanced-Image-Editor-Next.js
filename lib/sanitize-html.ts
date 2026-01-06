@@ -36,13 +36,18 @@ export function sanitizeHtml(html: string | undefined | null): string {
       ALLOWED_TAGS: [
         'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span', 'div',
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code', 'sub', 'sup', 'strike', 's'
+        'blockquote', 'pre', 'code', 'sub', 'sup', 'strike', 's',
+        'a', 'img', 'video', 'audio', 'source', 'iframe'
       ],
       ALLOWED_ATTR: [
         'style', 'class', 'color', 'face', 'size',
-        'align', 'dir', 'lang', 'title'
+        'align', 'dir', 'lang', 'title',
+        'href', 'target', 'rel', 'name', 'id',
+        'src', 'alt', 'width', 'height', 'loading',
+        'controls', 'autoplay', 'loop', 'muted', 'poster',
+        'frameborder', 'allowfullscreen', 'allow', 'sandbox'
       ],
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data|blob):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
       ALLOW_DATA_ATTR: false,
       KEEP_CONTENT: true,
       RETURN_DOM_FRAGMENT: false,
@@ -60,13 +65,26 @@ export function sanitizeHtml(html: string | undefined | null): string {
         allowedTags: [
           'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span', 'div',
           'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
-          'blockquote', 'pre', 'code', 'sub', 'sup', 'strike', 's'
+          'blockquote', 'pre', 'code', 'sub', 'sup', 'strike', 's',
+          'a', 'img', 'video', 'audio', 'source', 'iframe'
         ],
         allowedAttributes: {
-          '*': ['style', 'class', 'color', 'face', 'size', 'align', 'dir', 'lang', 'title']
+          '*': ['style', 'class', 'color', 'face', 'size', 'align', 'dir', 'lang', 'title'],
+          'a': ['href', 'target', 'rel', 'name', 'id'],
+          'img': ['src', 'alt', 'width', 'height', 'loading', 'style', 'class'],
+          'video': ['src', 'width', 'height', 'controls', 'autoplay', 'loop', 'muted', 'poster', 'style', 'class'],
+          'audio': ['src', 'controls', 'autoplay', 'loop', 'muted', 'style', 'class'],
+          'source': ['src', 'type'],
+          'iframe': ['src', 'width', 'height', 'frameborder', 'allowfullscreen', 'allow', 'sandbox', 'style', 'class']
         },
-        allowedSchemes: ['http', 'https', 'mailto', 'tel', 'data'],
-        allowedSchemesByTag: {},
+        allowedSchemes: ['http', 'https', 'mailto', 'tel', 'data', 'blob'],
+        allowedSchemesByTag: {
+          'img': ['http', 'https', 'data'],
+          'video': ['http', 'https', 'data', 'blob'],
+          'audio': ['http', 'https', 'data', 'blob'],
+          'source': ['http', 'https', 'data', 'blob'],
+          'iframe': ['http', 'https']
+        },
         allowedSchemesAppliedToAttributes: ['href', 'src', 'cite'],
         allowProtocolRelative: false,
       });

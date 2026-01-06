@@ -4,13 +4,12 @@ import { useEffect, useState } from "react";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Plus, Trash2, GripVertical, X } from "lucide-react";
+import { Loader2, Plus, Trash2, GripVertical, X, CheckCircle2, Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -110,29 +109,141 @@ export function SectionForm({
     })
   );
 
-  const handleChecklistDragEnd = (event: DragEndEvent) => {
+  // Watch all checklist values to filter by type
+  const checklistValues = form.watch("checklists");
+
+  // Helper function to get items by type with their original indices
+  const getItemsByType = (type: "status" | "information") => {
+    return checklistFields
+      .map((field, index) => ({ field, index, type: checklistValues[index]?.type }))
+      .filter((item) => item.type === type)
+      .map((item) => ({ field: item.field, originalIndex: item.index }));
+  };
+
+  // Separate items by type
+  const statusItems = getItemsByType("status");
+  const informationItems = getItemsByType("information");
+
+  // Helper function to recalculate global order indices
+  const recalculateOrderIndices = () => {
+    const allItems = form.getValues("checklists");
+    
+    // Create a map to track original items by their current position
+    const itemsWithOriginalIndex = allItems.map((item, idx) => ({ item, originalIdx: idx }));
+    
+    // Group by type while preserving order
+    const statusItemsWithIdx = itemsWithOriginalIndex.filter(({ item }) => item.type === "status");
+    const informationItemsWithIdx = itemsWithOriginalIndex.filter(({ item }) => item.type === "information");
+
+    // Create updated items array - status items first, then information items
+    const updatedItems: typeof allItems = [];
+    
+    statusItemsWithIdx.forEach(({ item, originalIdx }, index) => {
+      updatedItems[originalIdx] = { ...item, order_index: index };
+    });
+    
+    informationItemsWithIdx.forEach(({ item, originalIdx }, index) => {
+      updatedItems[originalIdx] = { ...item, order_index: statusItemsWithIdx.length + index };
+    });
+
+    form.setValue("checklists", updatedItems, { shouldValidate: false });
+  };
+
+  const handleStatusDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) {
       return;
     }
 
-    const oldIndex = Number(active.id);
-    const newIndex = Number(over.id);
+    const oldIndex = Number(String(active.id).replace("status-", ""));
+    const newIndex = Number(String(over.id).replace("status-", ""));
 
-    if (oldIndex === -1 || newIndex === -1 || oldIndex < 0 || newIndex < 0) {
+    if (isNaN(oldIndex) || isNaN(newIndex) || oldIndex < 0 || newIndex < 0) {
       return;
     }
 
     const currentChecklists = form.getValues("checklists");
-    const reordered = arrayMove(currentChecklists, oldIndex, newIndex).map((item, index) => ({
-      ...item,
-      order_index: index,
-    }));
+    
+    // Recompute status and information items with current state
+    const currentStatusItems = getItemsByType("status");
+    const currentInformationItems = getItemsByType("information");
+    
+    if (oldIndex >= currentStatusItems.length || newIndex >= currentStatusItems.length) {
+      return;
+    }
+
+    // Reorder status items only
+    const statusIndices = currentStatusItems.map((item) => item.originalIndex);
+    const statusItemsArray = statusIndices.map((idx) => currentChecklists[idx]);
+    const reorderedStatus = arrayMove(statusItemsArray, oldIndex, newIndex);
+
+    // Rebuild the full array: reordered status items + information items
+    const informationIndices = currentInformationItems.map((item) => item.originalIndex);
+    const informationItemsArray = informationIndices.map((idx) => currentChecklists[idx]);
+    const reordered = [...reorderedStatus, ...informationItemsArray];
+
     form.setValue("checklists", reordered);
+    setTimeout(() => recalculateOrderIndices(), 0);
   };
 
-  const addChecklistItem = () => {
-    const newIndex = checklistFields.length;
+  const handleInformationDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = Number(String(active.id).replace("info-", ""));
+    const newIndex = Number(String(over.id).replace("info-", ""));
+
+    if (isNaN(oldIndex) || isNaN(newIndex) || oldIndex < 0 || newIndex < 0) {
+      return;
+    }
+
+    const currentChecklists = form.getValues("checklists");
+    
+    // Recompute status and information items with current state
+    const currentStatusItems = getItemsByType("status");
+    const currentInformationItems = getItemsByType("information");
+    
+    if (oldIndex >= currentInformationItems.length || newIndex >= currentInformationItems.length) {
+      return;
+    }
+
+    // Reorder information items only
+    const informationIndices = currentInformationItems.map((item) => item.originalIndex);
+    const informationItemsArray = informationIndices.map((idx) => currentChecklists[idx]);
+    const reorderedInformation = arrayMove(informationItemsArray, oldIndex, newIndex);
+
+    // Rebuild the full array: status items + reordered information items
+    const statusIndices = currentStatusItems.map((item) => item.originalIndex);
+    const statusItemsArray = statusIndices.map((idx) => currentChecklists[idx]);
+    const reordered = [...statusItemsArray, ...reorderedInformation];
+
+    form.setValue("checklists", reordered);
+    setTimeout(() => recalculateOrderIndices(), 0);
+  };
+
+  const addStatusItem = () => {
+    const currentChecklists = form.getValues("checklists");
+    const statusCount = currentChecklists.filter((item) => item.type === "status").length;
+    
+    appendChecklist({
+      text: "",
+      comment: "",
+      type: "status",
+      answer_choices: [],
+      default_checked: false,
+      default_selected_answers: [],
+      order_index: statusCount,
+    });
+    setTimeout(() => recalculateOrderIndices(), 0);
+  };
+
+  const addInformationItem = () => {
+    const currentChecklists = form.getValues("checklists");
+    const statusCount = currentChecklists.filter((item) => item.type === "status").length;
+    const informationCount = currentChecklists.filter((item) => item.type === "information").length;
+    
     appendChecklist({
       text: "",
       comment: "",
@@ -140,18 +251,35 @@ export function SectionForm({
       answer_choices: [],
       default_checked: false,
       default_selected_answers: [],
-      order_index: newIndex,
+      order_index: statusCount + informationCount,
     });
+    setTimeout(() => recalculateOrderIndices(), 0);
   };
 
   const removeChecklistItem = (index: number) => {
     removeChecklist(index);
+    setTimeout(() => recalculateOrderIndices(), 0);
   };
 
   const handleSubmit = async (values: SectionFormValues) => {
+    // Ensure order_index is recalculated before submit
+    recalculateOrderIndices();
+    
+    // Get the latest values - use values parameter which should be up to date
+    // But we need to recalculate order_index for the current state
+    const allItems = values.checklists;
+    const statusItems = allItems.filter((item) => item.type === "status");
+    const informationItems = allItems.filter((item) => item.type === "information");
+    
+    // Create properly ordered array with correct order_index
+    const sortedChecklists = [
+      ...statusItems.map((item, index) => ({ ...item, order_index: index })),
+      ...informationItems.map((item, index) => ({ ...item, order_index: statusItems.length + index })),
+    ];
+    
     const normalized: SectionFormNormalizedValues = {
       name: values.name.trim(),
-      checklists: values.checklists.map((item, index) => ({
+      checklists: sortedChecklists.map((item) => ({
         text: item.text.trim(),
         comment: item.comment?.trim() || undefined,
         type: item.type,
@@ -164,7 +292,7 @@ export function SectionForm({
           Array.isArray(item.default_selected_answers) && item.default_selected_answers.length > 0
             ? item.default_selected_answers
             : undefined,
-        order_index: index,
+        order_index: item.order_index,
       })),
     };
 
@@ -188,39 +316,122 @@ export function SectionForm({
         )}
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Label>Checklist Items</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addChecklistItem}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Checklist Item
-          </Button>
-        </div>
+      <div className="space-y-6">
+        <Label className="text-base font-semibold">Checklist Items</Label>
+        
+        <Accordion type="multiple" defaultValue={["status", "information"]} className="space-y-4">
+          {/* Status Items Section */}
+          <AccordionItem value="status" className="rounded-lg border border-blue-200 bg-blue-50/30 px-4">
+            <div className="flex items-center justify-between py-2">
+              <AccordionTrigger className="hover:no-underline flex-1">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-blue-600" />
+                  <span className="font-semibold text-blue-900">Status Items</span>
+                  <span className="ml-2 rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium text-white">
+                    {statusItems.length}
+                  </span>
+                </div>
+              </AccordionTrigger>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  addStatusItem();
+                }}
+                disabled={isSubmitting}
+                className="ml-2 border-blue-300 bg-white hover:bg-blue-50"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Status Item
+              </Button>
+            </div>
+            <AccordionContent className="pb-4 pt-2">
+              {statusItems.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-blue-300 bg-white p-6 text-center text-sm text-blue-700">
+                  <p>No status items yet. Click "Add Status Item" to get started.</p>
+                </div>
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleStatusDragEnd}>
+                  <SortableContext
+                    items={statusItems.map((_, index) => `status-${index}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <Accordion type="multiple" className="space-y-2">
+                      {statusItems.map((item, sectionIndex) => (
+                        <ChecklistItemField
+                          key={item.field.id}
+                          index={item.originalIndex}
+                          sortableId={`status-${sectionIndex}`}
+                          form={form}
+                          onRemove={() => removeChecklistItem(item.originalIndex)}
+                          disabled={isSubmitting}
+                        />
+                      ))}
+                    </Accordion>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </AccordionContent>
+          </AccordionItem>
 
-        {checklistFields.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-            <p>No checklist items yet. Click "Add Checklist Item" to get started.</p>
-          </div>
-        ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleChecklistDragEnd}>
-            <SortableContext
-              items={checklistFields.map((_, index) => index)}
-              strategy={verticalListSortingStrategy}
-            >
-              <Accordion type="multiple" className="space-y-2">
-                {checklistFields.map((field, index) => (
-                  <ChecklistItemField
-                    key={field.id}
-                    index={index}
-                    form={form}
-                    onRemove={() => removeChecklistItem(index)}
-                    disabled={isSubmitting}
-                  />
-                ))}
-              </Accordion>
-            </SortableContext>
-          </DndContext>
-        )}
+          {/* Information Items Section */}
+          <AccordionItem value="information" className="rounded-lg border border-emerald-200 bg-emerald-50/30 px-4">
+            <div className="flex items-center justify-between py-2">
+              <AccordionTrigger className="hover:no-underline flex-1">
+                <div className="flex items-center gap-2">
+                  <Info className="h-5 w-5 text-emerald-600" />
+                  <span className="font-semibold text-emerald-900">Information Items</span>
+                  <span className="ml-2 rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white">
+                    {informationItems.length}
+                  </span>
+                </div>
+              </AccordionTrigger>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  addInformationItem();
+                }}
+                disabled={isSubmitting}
+                className="ml-2 border-emerald-300 bg-white hover:bg-emerald-50"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Information Item
+              </Button>
+            </div>
+            <AccordionContent className="pb-4 pt-2">
+              {informationItems.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-emerald-300 bg-white p-6 text-center text-sm text-emerald-700">
+                  <p>No information items yet. Click "Add Information Item" to get started.</p>
+                </div>
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleInformationDragEnd}>
+                  <SortableContext
+                    items={informationItems.map((_, index) => `info-${index}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <Accordion type="multiple" className="space-y-2">
+                      {informationItems.map((item, sectionIndex) => (
+                        <ChecklistItemField
+                          key={item.field.id}
+                          index={item.originalIndex}
+                          sortableId={`info-${sectionIndex}`}
+                          form={form}
+                          onRemove={() => removeChecklistItem(item.originalIndex)}
+                          disabled={isSubmitting}
+                        />
+                      ))}
+                    </Accordion>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       <div className="flex items-center justify-end gap-3">
@@ -411,14 +622,17 @@ function SortableChoiceItem({ index, choice, onRemove, disabled }: SortableChoic
 
 interface ChecklistItemFieldProps {
   index: number;
+  sortableId: string;
   form: ReturnType<typeof useForm<SectionFormValues>>;
   onRemove: () => void;
   disabled?: boolean;
 }
 
-function ChecklistItemField({ index, form, onRemove, disabled }: ChecklistItemFieldProps) {
+function ChecklistItemField({ index, sortableId, form, onRemove, disabled }: ChecklistItemFieldProps) {
+  const itemType = form.watch(`checklists.${index}.type`);
+  
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: index,
+    id: sortableId,
     disabled,
   });
 
@@ -476,25 +690,6 @@ function ChecklistItemField({ index, form, onRemove, disabled }: ChecklistItemFi
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor={`checklists.${index}.type`}>Type *</Label>
-              <Controller
-                control={form.control}
-                name={`checklists.${index}.type`}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger id={`checklists.${index}.type`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="status">Status</SelectItem>
-                      <SelectItem value="information">Information</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor={`checklists.${index}.comment`}>Comment</Label>
               <Controller
                 control={form.control}
@@ -505,8 +700,8 @@ function ChecklistItemField({ index, form, onRemove, disabled }: ChecklistItemFi
                       value={field.value || ""}
                       onChange={field.onChange}
                       height={300}
-                      plugins={['textcolor']}
-                      toolbar="bold italic underline | forecolor backcolor"
+                      plugins={['textcolor', 'link', 'image', 'media']}
+                      toolbar="bold italic underline | forecolor backcolor | link image media"
                     />
                     {fieldState.error && (
                       <p className="mt-1 text-sm text-red-600">{fieldState.error.message}</p>
@@ -516,7 +711,9 @@ function ChecklistItemField({ index, form, onRemove, disabled }: ChecklistItemFi
               />
             </div>
 
-            <AnswerChoicesField checklistIndex={index} form={form} disabled={disabled} />
+            {itemType === "status" && (
+              <AnswerChoicesField checklistIndex={index} form={form} disabled={disabled} />
+            )}
 
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div>
