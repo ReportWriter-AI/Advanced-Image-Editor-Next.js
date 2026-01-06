@@ -85,7 +85,6 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         text: item.text || '',
         comment: item.comment || undefined,
         type: (item.type === 'status' ? 'status' : 'information') as 'status' | 'information',
-        tab: (item.tab === 'limitations' ? 'limitations' : 'information') as 'information' | 'limitations',
         answer_choices: Array.isArray(item.answer_choices) ? item.answer_choices : undefined,
         default_checked: Boolean(item.default_checked),
         default_selected_answers: Array.isArray(item.default_selected_answers)

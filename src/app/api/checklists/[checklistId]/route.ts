@@ -22,7 +22,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const { text, comment, type, tab, answer_choices, default_checked, default_selected_answers } = body || {};
+    const { text, comment, type, answer_choices, default_checked, default_selected_answers } = body || {};
 
     // Find the section containing this checklist
     const section = await InspectionSection.findOne({
@@ -56,9 +56,6 @@ export async function PUT(
     
     if (type !== undefined && ['status', 'information'].includes(type)) {
       checklist.type = type;
-    }
-    if (tab !== undefined && ['information', 'limitations'].includes(tab)) {
-      checklist.tab = tab;
     }
     
     if (answer_choices !== undefined) {

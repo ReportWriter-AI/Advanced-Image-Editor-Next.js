@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Plus, Trash2, GripVertical } from "lucide-react";
+import { Loader2, Plus, Trash2, GripVertical, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
@@ -27,6 +27,7 @@ import {
   arrayMove,
   useSortable,
   verticalListSortingStrategy,
+  rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -34,7 +35,6 @@ const checklistItemSchema = z.object({
   text: z.string().trim().min(1, "Text is required"),
   comment: z.string().trim().optional(),
   type: z.enum(["status", "information"]),
-  tab: z.enum(["information", "limitations"]),
   answer_choices: z.array(z.string().trim()).optional(),
   default_checked: z.boolean(),
   default_selected_answers: z.array(z.string().trim()).optional(),
@@ -54,7 +54,6 @@ export interface SectionFormNormalizedValues {
     text: string;
     comment?: string;
     type: "status" | "information";
-    tab: "information" | "limitations";
     answer_choices?: string[];
     default_checked: boolean;
     default_selected_answers?: string[];
@@ -138,7 +137,6 @@ export function SectionForm({
       text: "",
       comment: "",
       type: "information",
-      tab: "information",
       answer_choices: [],
       default_checked: false,
       default_selected_answers: [],
@@ -157,7 +155,6 @@ export function SectionForm({
         text: item.text.trim(),
         comment: item.comment?.trim() || undefined,
         type: item.type,
-        tab: item.tab,
         answer_choices:
           Array.isArray(item.answer_choices) && item.answer_choices.length > 0
             ? item.answer_choices
@@ -245,6 +242,173 @@ export function SectionForm({
   );
 }
 
+interface AnswerChoicesFieldProps {
+  checklistIndex: number;
+  form: ReturnType<typeof useForm<SectionFormValues>>;
+  disabled?: boolean;
+}
+
+function AnswerChoicesField({ checklistIndex, form, disabled }: AnswerChoicesFieldProps) {
+  const [newChoiceInput, setNewChoiceInput] = useState("");
+
+  const currentChoices = form.watch(`checklists.${checklistIndex}.answer_choices`) || [];
+  const choiceFields = currentChoices.map((choice, idx) => ({ id: `choice-${idx}`, value: choice }));
+
+  const choiceSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
+
+  const handleChoiceDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = Number(active.id);
+    const newIndex = Number(over.id);
+
+    if (oldIndex === -1 || newIndex === -1 || oldIndex < 0 || newIndex < 0) {
+      return;
+    }
+
+    const reordered = arrayMove(currentChoices, oldIndex, newIndex);
+    form.setValue(`checklists.${checklistIndex}.answer_choices`, reordered, {
+      shouldValidate: true,
+    });
+  };
+
+  const addChoice = () => {
+    const trimmed = newChoiceInput.trim();
+    if (trimmed) {
+      const updated = [...currentChoices, trimmed];
+      form.setValue(`checklists.${checklistIndex}.answer_choices`, updated, {
+        shouldValidate: true,
+      });
+      setNewChoiceInput("");
+    }
+  };
+
+  const removeChoice = (index: number) => {
+    const updated = currentChoices.filter((_, idx) => idx !== index);
+    form.setValue(`checklists.${checklistIndex}.answer_choices`, updated, {
+      shouldValidate: true,
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addChoice();
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={`checklists.${checklistIndex}.answer_choices`}>Answer Choices</Label>
+      
+      {choiceFields.length > 0 && (
+        <DndContext
+          sensors={choiceSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleChoiceDragEnd}
+        >
+          <SortableContext
+            items={choiceFields.map((_, idx) => idx)}
+            strategy={rectSortingStrategy}
+          >
+            <div className="flex flex-wrap gap-2">
+              {choiceFields.map((field, idx) => (
+                <SortableChoiceItem
+                  key={field.id}
+                  index={idx}
+                  choice={field.value}
+                  onRemove={() => removeChoice(idx)}
+                  disabled={disabled}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+
+      <div className="mt-3 border-t border-gray-200 pt-3">
+        <div className="text-xs font-semibold text-gray-600 mb-2">Add Answer Choice:</div>
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            placeholder="Type answer choice..."
+            value={newChoiceInput}
+            onChange={(e) => setNewChoiceInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="flex-1 text-xs"
+            disabled={disabled}
+          />
+          <Button
+            type="button"
+            onClick={addChoice}
+            disabled={disabled || !newChoiceInput.trim()}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white whitespace-nowrap text-xs font-semibold px-3"
+          >
+            Add
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface SortableChoiceItemProps {
+  index: number;
+  choice: string;
+  onRemove: () => void;
+  disabled?: boolean;
+}
+
+function SortableChoiceItem({ index, choice, onRemove, disabled }: SortableChoiceItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: index,
+    disabled,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center gap-2 px-2 py-1.5 rounded border bg-gray-50 hover:bg-gray-100 transition-all cursor-pointer group",
+        isDragging && "opacity-60"
+      )}
+    >
+      <div
+        className="cursor-grab active:cursor-grabbing touch-none text-gray-400 hover:text-gray-600"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-3 w-3" />
+      </div>
+      <span className="text-xs text-gray-700 select-none flex-1">{choice}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        disabled={disabled}
+        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-red-100 rounded text-red-600"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 interface ChecklistItemFieldProps {
   index: number;
   form: ReturnType<typeof useForm<SectionFormValues>>;
@@ -311,77 +475,48 @@ function ChecklistItemField({ index, form, onRemove, disabled }: ChecklistItemFi
               )}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor={`checklists.${index}.type`}>Type *</Label>
-                <Controller
-                  control={form.control}
-                  name={`checklists.${index}.type`}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id={`checklists.${index}.type`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="status">Status</SelectItem>
-                        <SelectItem value="information">Information</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor={`checklists.${index}.tab`}>Tab *</Label>
-                <Controller
-                  control={form.control}
-                  name={`checklists.${index}.tab`}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger id={`checklists.${index}.tab`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="information">Information</SelectItem>
-                        <SelectItem value="limitations">Limitations</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor={`checklists.${index}.type`}>Type *</Label>
+              <Controller
+                control={form.control}
+                name={`checklists.${index}.type`}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger id={`checklists.${index}.type`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="status">Status</SelectItem>
+                      <SelectItem value="information">Information</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor={`checklists.${index}.comment`}>Comment</Label>
-              <Textarea
-                id={`checklists.${index}.comment`}
-                rows={4}
-                {...form.register(`checklists.${index}.comment`)}
-                placeholder="Template text or description..."
+              <Controller
+                control={form.control}
+                name={`checklists.${index}.comment`}
+                render={({ field, fieldState }) => (
+                  <div>
+                    <TinyMCERichTextEditor
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      height={300}
+                      plugins={['textcolor']}
+                      toolbar="bold italic underline | forecolor backcolor"
+                    />
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-red-600">{fieldState.error.message}</p>
+                    )}
+                  </div>
+                )}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor={`checklists.${index}.answer_choices`}>Answer Choices</Label>
-              <Input
-                id={`checklists.${index}.answer_choices`}
-                placeholder="Comma-separated values (e.g., Option 1, Option 2, Option 3)"
-                onChange={(e) => {
-                  const value = e.target.value;
-                  const choices = value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean);
-                  form.setValue(`checklists.${index}.answer_choices`, choices, {
-                    shouldValidate: true,
-                  });
-                }}
-                defaultValue={form.watch(`checklists.${index}.answer_choices`)?.join(", ") || ""}
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter multiple options separated by commas
-              </p>
-            </div>
+            <AnswerChoicesField checklistIndex={index} form={form} disabled={disabled} />
 
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div>

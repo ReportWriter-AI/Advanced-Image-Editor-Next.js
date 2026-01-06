@@ -18,6 +18,10 @@ interface TinyMCERichTextEditorProps {
 	onChange?: (value: string) => void;
 	initialValue?: string;
 	placeholderSections?: PlaceholderSection[];
+	enablePlaceholders?: boolean;
+	plugins?: string[];
+	toolbar?: string;
+	height?: number;
 }
 
 export interface TinyMCERichTextEditorRef {
@@ -31,11 +35,9 @@ const convertPlaceholdersToMergeTagsList = (sections?: PlaceholderSection[]) => 
 	}
 
 	return sections.map((section) => {
-		// Filter out placeholders with input: true (interactive inputs, not merge tags)
 		const mergeTagItems = section.placeholders
 			.filter((p) => !p.input)
 			.map((placeholder) => {
-				// Extract token value by removing brackets: [ADDRESS] -> ADDRESS
 				const tokenValue = placeholder.token.replace(/^\[|\]$/g, '');
 				return {
 					value: tokenValue,
@@ -43,7 +45,6 @@ const convertPlaceholdersToMergeTagsList = (sections?: PlaceholderSection[]) => 
 				};
 			});
 
-		// Only include sections that have merge tag items
 		if (mergeTagItems.length === 0) {
 			return null;
 		}
@@ -55,24 +56,39 @@ const convertPlaceholdersToMergeTagsList = (sections?: PlaceholderSection[]) => 
 	}).filter((item): item is { title: string; menu: Array<{ value: string; title: string }> } => item !== null);
 };
 
+// Default plugins array
+const DEFAULT_PLUGINS = [
+	'lists',
+	'link',
+	'image',
+	'media',
+	'textcolor',
+	'table',
+	'code',
+	'align',
+	'fontfamily',
+	'fontsize',
+];
+
+// Default toolbar configuration
+const DEFAULT_TOOLBAR = "blocks fontfamily fontsize | bold forecolor backcolor removeformat | align numlist bullist | link image | table media | lineheight outdent indent | charmap emoticons | code fullscreen preview | pagebreak anchor codesample | ltr rtl | strikethrough";
+
 const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTextEditorProps>(
-	({ value, onChange, initialValue, placeholderSections }, ref) => {
+	({ value, onChange, initialValue, placeholderSections, enablePlaceholders = false, plugins, toolbar, height = 400 }, ref) => {
 		const apiKey = process.env.NEXT_PUBLIC_TINYMCE_API_KEY;
 		const editorRef = React.useRef<any | null>(null);
 
-		// Convert placeholder sections to TinyMCE mergetags_list format
 		const mergetagsList = useMemo(() => {
+			if (!enablePlaceholders) {
+				return [];
+			}
 			return convertPlaceholdersToMergeTagsList(placeholderSections);
-		}, [placeholderSections]);
+		}, [placeholderSections, enablePlaceholders]);
 
 		useImperativeHandle(ref, () => ({
 			getEditor: () => editorRef.current,
 		}));
 
-		// Prevent Dialog from intercepting focus events on TinyMCE modals
-		// Radix UI Dialog's focus trap prevents focusing elements outside the modal.
-		// TinyMCE dialogs are appended to body (outside the modal), so we need to
-		// prevent the modal's focus trap handler from running when focusing within TinyMCE dialogs.
 		React.useEffect(() => {
 			const handleFocusIn = (e: FocusEvent) => {
 				const target = e.target as HTMLElement;
@@ -85,8 +101,6 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 						target.closest('.tam-assetmanager-root') ||
 						target.closest('.mce-container'))
 				) {
-					// Use stopImmediatePropagation() in capture phase to prevent the modal's
-					// focus trap handler from running. This allows TinyMCE inputs to receive focus.
 					e.stopImmediatePropagation();
 				}
 			};
@@ -111,22 +125,13 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 				}}
 				initialValue={initialValue}
 				init={{
-					height: 400,
+					height: height,
 					menubar: false,
 					plugins: [
-						'lists',
-						'link',
-						'image',
-						'media',
-						'textcolor',
-						'table',
-						'code',
-						'align',
-						'fontfamily',
-						'fontsize',
-						...(mergetagsList.length > 0 ? ['mergetags'] : []),
+						...(plugins || DEFAULT_PLUGINS),
+						...(enablePlaceholders && mergetagsList.length > 0 ? ['mergetags'] : []),
 					],
-					toolbar: "blocks fontfamily fontsize | bold forecolor backcolor removeformat | align numlist bullist | link image | table media | lineheight outdent indent | charmap emoticons | code fullscreen preview | pagebreak anchor codesample | ltr rtl  | strikethrough",
+					toolbar: toolbar || DEFAULT_TOOLBAR,
 					content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
 					block_formats: 'Paragraph=p; Heading 1=h1; Heading 2=h2; Heading 3=h3; Heading 4=h4; Heading 5=h5; Heading 6=h6',
 					font_family_formats: 'Andale Mono=andale mono,times; Arial=arial,helvetica,sans-serif; Arial Black=arial black,avant garde; Book Antiqua=book antiqua,palatino; Comic Sans MS=comic sans ms,sans-serif; Courier New=courier new,courier; Georgia=georgia,palatino; Helvetica=helvetica; Impact=impact,chicago; Symbol=symbol; Tahoma=tahoma,arial,helvetica,sans-serif; Terminal=terminal,monaco; Times New Roman=times new roman,times; Trebuchet MS=trebuchet ms,geneva; Verdana=verdana,geneva; Webdings=webdings; Wingdings=wingdings,zapf dingbats',
@@ -138,15 +143,13 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 					valid_styles: {
 						'*': 'color,font-size,font-family,background-color,font-weight,font-style,text-decoration,text-align,border,border-radius,padding,margin,display,vertical-align,white-space,line-height'
 					},
-					...(mergetagsList.length > 0 && {
+					...(enablePlaceholders && mergetagsList.length > 0 && {
 						mergetags_prefix: '[',
 						mergetags_suffix: ']',
 						mergetags_list: mergetagsList,
 					}),
 					setup: (editor: any) => {
-						// Only set up merge tag protection if merge tags are enabled
-						if (mergetagsList.length > 0) {
-							// List of formatting commands that should exclude merge tags
+						if (enablePlaceholders && mergetagsList.length > 0) {
 							const formattingCommands = [
 								'forecolor',
 								'backcolor',
@@ -159,7 +162,6 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 								'removeformat',
 							];
 
-							// Helper function to check if a node or its parents are merge tags
 							const isInMergeTag = (node: Node | null, body: Element): boolean => {
 								if (!node) return false;
 								
@@ -180,11 +182,9 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 								return false;
 							};
 
-							// Intercept formatting commands to preserve merge tags
 							editor.on('BeforeExecCommand', (e: any) => {
 								const command = e.command;
 								
-								// Only handle formatting commands
 								if (!formattingCommands.includes(command)) {
 									return;
 								}
@@ -198,7 +198,6 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 
 								const body = editor.getBody();
 								
-								// Check if selection contains merge tags
 								const selectedContent = selection.getContent({ format: 'html' });
 								const tempDiv = editor.dom.create('div', {}, selectedContent);
 								const mergeTags = tempDiv.querySelectorAll('.mce-mergetag');
@@ -208,27 +207,17 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 									return;
 								}
 
-								// Selection contains merge tags - we need to exclude them from formatting
 								e.preventDefault();
+							
 								
-								// Get the range boundaries
-								const startContainer = rng.startContainer;
-								const endContainer = rng.endContainer;
-								const startOffset = rng.startOffset;
-								const endOffset = rng.endOffset;
-								
-								// Find all text nodes in the selection that are NOT in merge tags
 								const textNodes: Node[] = [];
 								
-								// Use TreeWalker to find all nodes in the range
 								const walker = document.createTreeWalker(
 									body,
 									NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
 									{
 										acceptNode: (node) => {
-											// Check if node is in the selection range
 											if (rng.intersectsNode(node)) {
-												// Reject if it's inside a merge tag
 												if (isInMergeTag(node, body)) {
 													return NodeFilter.FILTER_REJECT;
 												}
@@ -247,7 +236,6 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 									}
 								}
 								
-								// If we have nodes to format, apply formatting to each
 								if (textNodes.length > 0) {
 									const bookmark = selection.getBookmark(2, true);
 									
@@ -263,20 +251,16 @@ const TinyMCERichTextEditor = forwardRef<TinyMCERichTextEditorRef, TinyMCERichTe
 											selection.setRng(nodeRng);
 											editor.execCommand(command, false, e.value);
 										} catch (err) {
-											// Ignore errors for individual nodes
 										}
 									});
 									
-									// Restore original selection
 									selection.moveToBookmark(bookmark);
 								}
 								
 								editor.dom.remove(tempDiv);
 							});
 
-							// Monitor for broken merge tags and restore them
 							editor.on('NodeChange', () => {
-								// Check if any merge tags lost their structure
 								const body = editor.getBody();
 								const mergeTagSpans = body.querySelectorAll('span.mce-mergetag');
 								

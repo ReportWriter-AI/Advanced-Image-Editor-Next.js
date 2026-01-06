@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const checklists = section.checklists || [];
     const filteredChecklists = checklists.filter((cl: any) => {
       if (kind === 'status') return cl.type === 'status';
-      if (kind === 'limitations') return cl.tab === 'limitations';
+      if (kind === 'limitations') return cl.type === 'information';
       return false;
     });
 
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     // Get the other checklists (not being reordered)
     const otherChecklists = checklists.filter((cl: any) => {
       if (kind === 'status') return cl.type !== 'status';
-      if (kind === 'limitations') return cl.tab !== 'limitations';
+      if (kind === 'limitations') return cl.type !== 'information';
       return false;
     });
 

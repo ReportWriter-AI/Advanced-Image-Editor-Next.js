@@ -4,7 +4,6 @@ export interface IInspectionChecklist {
   text: string;
   comment?: string;
   type: 'status' | 'information';
-  tab: 'information' | 'limitations';
   answer_choices?: string[];
   default_checked?: boolean;
   default_selected_answers?: string[];
@@ -36,12 +35,6 @@ const InspectionChecklistSchema = new Schema<IInspectionChecklist>(
     type: {
       type: String,
       enum: ['status', 'information'],
-      required: true,
-      default: 'information',
-    },
-    tab: {
-      type: String,
-      enum: ['information', 'limitations'],
       required: true,
       default: 'information',
     },

@@ -1109,6 +1109,7 @@ export function ActionForm({
                       value={field.value || ""}
                       onChange={field.onChange}
                       placeholderSections={PLACEHOLDER_SECTIONS}
+                      enablePlaceholders={true}
                     />
                     {fieldState.error && (
                       <p className="mt-1 text-sm text-destructive">{fieldState.error.message}</p>

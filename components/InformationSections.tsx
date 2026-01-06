@@ -5,13 +5,13 @@ import FileUpload from './FileUpload';
 import LocationSearch from './LocationSearch';
 import { LOCATION_OPTIONS } from '../constants/locations';
 import { splitCommaSeparated } from '@/lib/utils';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 
 interface ISectionChecklist {
   _id: string;
   text: string;
   comment?: string;
   type: 'status' | 'information';
-  tab: 'information' | 'limitations'; // Which tab to display this item in
   answer_choices?: string[]; // NEW: Predefined answer choices for this checklist item
   default_checked?: boolean; // NEW
   order_index: number;
@@ -166,10 +166,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     text: string;
     comment: string;
     type: 'status' | 'information';
-    tab: 'information' | 'limitations';
     answer_choices: string[];
     default_checked: boolean;
-  }>({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [], default_checked: false });
+  }>({ text: '', comment: '', type: 'status', answer_choices: [], default_checked: false });
   const [savingChecklist, setSavingChecklist] = useState(false);
   const [newAnswerChoice, setNewAnswerChoice] = useState('');
   const [editingAnswerIndex, setEditingAnswerIndex] = useState<number | null>(null);
@@ -1011,6 +1010,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   };
 
   // Add custom answer AND save it permanently to the template
+  //@ts-ignore
   const addCustomAnswerPermanently = async (checklistId: string) => {
     const inputKey = `custom-${checklistId}`;
     const customAnswer = customAnswerInputs[inputKey]?.trim();
@@ -1045,7 +1045,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           text: checklist.text,
           comment: checklist.comment,
           type: checklist.type,
-          tab: checklist.tab,
           answer_choices: updatedChoices
         }),
       });
@@ -1579,7 +1578,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   };
 
   // Admin: Open checklist form for creating/editing
-  const openChecklistForm = (type: 'status' | 'information', existingChecklist?: ISectionChecklist, tab?: 'information' | 'limitations') => {
+  const openChecklistForm = (type: 'status' | 'information', existingChecklist?: ISectionChecklist) => {
     if (existingChecklist) {
       setEditingChecklistId(existingChecklist._id);
       
@@ -1594,7 +1593,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         text: existingChecklist.text,
         comment: existingChecklist.comment || '',
         type: existingChecklist.type,
-        tab: existingChecklist.tab || 'information',
         answer_choices: allChoices,
         default_checked: !!existingChecklist.default_checked,
       });
@@ -1604,7 +1602,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         text: '', 
         comment: '', 
         type, 
-        tab: tab || 'information',
         answer_choices: [],
         default_checked: false,
       });
@@ -1918,7 +1915,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 text: checklistFormData.text,
                 comment: checklistFormData.comment,
                 type: checklistFormData.type,
-                tab: checklistFormData.tab,
                 answer_choices: checklistFormData.answer_choices,
                 default_checked: checklistFormData.default_checked,
               };
@@ -1938,7 +1934,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 text: checklistFormData.text,
                 comment: checklistFormData.comment,
                 type: checklistFormData.type,
-                tab: checklistFormData.tab,
                 answer_choices: checklistFormData.answer_choices,
                 default_checked: checklistFormData.default_checked,
               };
@@ -1980,7 +1975,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               text: checklistFormData.text,
               comment: checklistFormData.comment,
               type: checklistFormData.type,
-              tab: checklistFormData.tab,
               answer_choices: templateChoices,
               default_checked: checklistFormData.default_checked,
             }),
@@ -2060,7 +2054,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             text: checklistFormData.text,
             comment: checklistFormData.comment || '',
             type: checklistFormData.type,
-            tab: checklistFormData.tab,
             answer_choices: checklistFormData.answer_choices,
             default_checked: checklistFormData.default_checked,
             order_index: activeSection.checklists.length
@@ -2095,7 +2088,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       setChecklistFormOpen(false);
       setEditingChecklistId(null);
-      setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [], default_checked: false });
+      setChecklistFormData({ text: '', comment: '', type: 'status', answer_choices: [], default_checked: false });
       setNewAnswerChoice('');
       setEditingAnswerIndex(null);
       setEditingAnswerValue('');
@@ -2404,7 +2397,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       {(() => {
                         const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
                         const rawItems = getBlockChecklists(block);
-                        // Resolve to full objects so we can reliably read type/tab/text/comment
+                        // Resolve to full objects so we can reliably read type/text/comment
                         const resolved = rawItems
                           .map((cl: any) => resolveChecklist(sectionId, cl))
                           .filter(Boolean) as ISectionChecklist[];
@@ -2439,9 +2432,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                       <span style={{ fontWeight: 600, color: '#111827', lineHeight: 1.45, whiteSpace: 'normal' }}>{item.text}</span>
                                     </div>
                                     {item.comment && item.comment.trim() !== '' && (
-                                      <div style={{ marginLeft: '2rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.6 }} title={item.comment}>
-                                        {item.comment.length > 150 ? item.comment.slice(0, 150) + '…' : item.comment}
-                                      </div>
+                                      <div 
+                                        style={{ marginLeft: '2rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.6 }} 
+                                        title={item.comment.replace(/<[^>]*>/g, '')}
+                                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.comment) }}
+                                      />
                                     )}
                                   </div>
                                 ))}
@@ -2474,22 +2469,24 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     alignItems: 'center',
                                     justifyContent: 'center'
                                   }}>
-                                    {item.tab === 'limitations' ? 'Limitation' : 'Information'}
+                                    {item.type === 'information' ? 'Information' : 'Status'}
                                   </span>
                                   <span style={{ fontWeight: 600, color: '#111827', lineHeight: 1.45, whiteSpace: 'normal', flex: 1, minWidth: 0 }}>{item.text}</span>
                                 </div>
                                 {item.comment && item.comment.trim() !== '' && (
-                                  <div style={{ 
-                                    marginLeft: isMobile ? 0 : '8.125rem',
-                                    color: '#6b7280',
-                                    fontSize: '0.8125rem',
-                                    paddingTop: '0.125rem',
-                                    lineHeight: 1.6,
-                                    whiteSpace: 'normal',
-                                    wordBreak: 'break-word'
-                                  }} title={item.comment}>
-                                    {item.comment.length > 150 ? item.comment.slice(0, 150) + '…' : item.comment}
-                                  </div>
+                                  <div 
+                                    style={{ 
+                                      marginLeft: isMobile ? 0 : '8.125rem',
+                                      color: '#6b7280',
+                                      fontSize: '0.8125rem',
+                                      paddingTop: '0.125rem',
+                                      lineHeight: 1.6,
+                                      whiteSpace: 'normal',
+                                      wordBreak: 'break-word'
+                                    }} 
+                                    title={item.comment.replace(/<[^>]*>/g, '')}
+                                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.comment) }}
+                                  />
                                 )}
                               </div>
                             ))}
@@ -2766,9 +2763,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 </div>
                               )} */}
                               {cl.comment && (
-                                <div style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
-                                  {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
-                                </div>
+                                <div 
+                                  style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}
+                                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(cl.comment) }}
+                                />
                               )}
                             </div>
 
@@ -3264,7 +3262,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                         Limitations / Information
                       </h5>
                       {/* <button
-                        onClick={() => openChecklistForm('information', undefined, 'limitations')}
+                        onClick={() => openChecklistForm('information')}
                         style={{
                           padding: '0.25rem 0.5rem',
                           fontSize: '0.75rem',
@@ -3287,7 +3285,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {activeSection.checklists
-                    .filter(cl => cl.tab === 'limitations')
+                    .filter(cl => cl.type === 'information')
                     .sort((a, b) => a.order_index - b.order_index)
                     .filter(cl => !isChecklistHidden(activeSection._id, cl._id))
                     .map(cl => {
@@ -3393,9 +3391,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                 </div>
                               )} */}
                               {cl.comment && (
-                                <div style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
-                                  {cl.comment.length > 150 ? cl.comment.slice(0, 150) + '…' : cl.comment}
-                                </div>
+                                <div 
+                                  style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}
+                                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(cl.comment) }}
+                                />
                               )}
                             </div>
                             <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}>
@@ -3926,7 +3925,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 onClick={() => {
                   setChecklistFormOpen(false);
                   setEditingChecklistId(null);
-                  setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [], default_checked: false });
+                  setChecklistFormData({ text: '', comment: '', type: 'status', answer_choices: [], default_checked: false });
                   setNewAnswerChoice('');
                   setEditingAnswerIndex(null);
                   setEditingAnswerValue('');
@@ -4255,7 +4254,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                 onClick={() => {
                   setChecklistFormOpen(false);
                   setEditingChecklistId(null);
-                  setChecklistFormData({ text: '', comment: '', type: 'status', tab: 'information', answer_choices: [], default_checked: false });
+                  setChecklistFormData({ text: '', comment: '', type: 'status', answer_choices: [], default_checked: false });
                   setNewAnswerChoice('');
                   setEditingAnswerIndex(null);
                   setEditingAnswerValue('');

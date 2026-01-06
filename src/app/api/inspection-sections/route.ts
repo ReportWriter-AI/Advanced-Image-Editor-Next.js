@@ -65,7 +65,6 @@ export async function POST(request: NextRequest) {
           text: item.text || '',
           comment: item.comment || undefined,
           type: item.type === 'status' ? 'status' : 'information',
-          tab: item.tab === 'limitations' ? 'limitations' : 'information',
           answer_choices: Array.isArray(item.answer_choices) ? item.answer_choices : undefined,
           default_checked: Boolean(item.default_checked),
           default_selected_answers: Array.isArray(item.default_selected_answers)

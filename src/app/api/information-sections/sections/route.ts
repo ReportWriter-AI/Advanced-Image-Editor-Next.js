@@ -180,7 +180,6 @@ async function ensureResourcesSection(companyId: mongoose.Types.ObjectId) {
       text: item.text,
       comment: item.comment,
       type: 'information' as const,
-      tab: 'information' as const,
       order_index: item.order_index,
     }));
     
@@ -204,7 +203,6 @@ async function ensureResourcesSection(companyId: mongoose.Types.ObjectId) {
         text: item.text,
         comment: item.comment,
         type: 'information',
-        tab: 'information',
         order_index: item.order_index,
       });
     } else {
@@ -213,9 +211,6 @@ async function ensureResourcesSection(companyId: mongoose.Types.ObjectId) {
       if (existingChecklist) {
         if (existingChecklist.type !== 'information') {
           existingChecklist.type = 'information';
-        }
-        if (existingChecklist.tab !== 'information') {
-          existingChecklist.tab = 'information';
         }
       }
     }

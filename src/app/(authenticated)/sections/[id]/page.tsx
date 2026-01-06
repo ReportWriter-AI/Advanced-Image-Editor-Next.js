@@ -23,7 +23,6 @@ interface InspectionSectionApiResponse {
       text: string;
       comment?: string;
       type: "status" | "information";
-      tab: "information" | "limitations";
       answer_choices?: string[];
       default_checked?: boolean;
       default_selected_answers?: string[];
@@ -71,7 +70,6 @@ export default function EditSectionPage() {
             text: item.text,
             comment: item.comment || "",
             type: item.type,
-            tab: item.tab,
             answer_choices: item.answer_choices || [],
             default_checked: item.default_checked || false,
             default_selected_answers: item.default_selected_answers || [],

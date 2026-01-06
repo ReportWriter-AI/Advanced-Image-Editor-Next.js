@@ -7,7 +7,6 @@ export interface ISectionChecklist extends Document {
   value?: string; // For status items - user-entered values (e.g., "Concrete", "Rain")
   comment?: string; // For information items - template text
   type: 'status' | 'information';
-  tab: 'information' | 'limitations'; // Which tab to display this item in
   answer_choices?: string[]; // NEW: Predefined answer choices (e.g., ["AO Smith", "Rheem", "GE"])
   default_checked?: boolean; // NEW: If true, auto-select for new inspections/blocks
   default_selected_answers?: string[]; // NEW: If default_checked and options exist, preselect these template options
@@ -23,7 +22,6 @@ const SectionChecklistSchema = new Schema<ISectionChecklist>(
     value: { type: String, trim: true }, // Optional - for status items (user-entered values)
     comment: { type: String, trim: true }, // Optional - for information items (template text)
     type: { type: String, enum: ['status', 'information'], required: true, default: 'information' },
-    tab: { type: String, enum: ['information', 'limitations'], required: true, default: 'information' },
     answer_choices: { type: [String], default: undefined }, // NEW: Array of predefined answer choices
     default_checked: { type: Boolean, default: false }, // NEW: Auto-selected by default on new blocks/inspections
     default_selected_answers: { type: [String], default: undefined }, // NEW: Template-level default selected options

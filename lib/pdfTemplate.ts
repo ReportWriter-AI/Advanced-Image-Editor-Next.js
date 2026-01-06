@@ -59,6 +59,8 @@ export type ReportMeta = {
   hidePricing?: boolean; // Hide all cost/pricing information
 };
 
+import { sanitizeHtml } from './sanitize-html';
+
 function escapeHtml(str: string = ""): string {
   return str
     .replace(/&/g, "&amp;")
@@ -259,7 +261,7 @@ function generateInformationSectionHTML(block: InformationBlock): string {
           </div>
           ${item.comment ? `
           <div style="font-size: 0.875rem; color: #374151; line-height: 1.6; margin-top: 0.375rem;">
-            ${escapeHtml(item.comment)}
+            ${sanitizeHtml(item.comment)}
           </div>` : ''}
           ${selectedAnswers.length > 0 ? `
           <div style="margin-left: 0.25rem; font-weight: 400; color: #6b7280; font-size: 0.875rem;">
@@ -286,7 +288,7 @@ function generateInformationSectionHTML(block: InformationBlock): string {
           </div>
           ${item.comment ? `
           <div style="margin-left: 0.75rem; font-size: 0.8125rem; color: #4a5568; line-height: 1.4;">
-            ${escapeHtml(item.comment)}
+            ${sanitizeHtml(item.comment)}
           </div>` : ''}
           ${selectedAnswers.length > 0 ? `
           <div style="margin-left: 0.75rem; font-size: 0.8125rem; color: #6b7280; line-height: 1.4;">

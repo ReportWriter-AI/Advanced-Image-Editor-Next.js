@@ -6,6 +6,7 @@ import Button from "@/components/Button";
 import PermanentReportLinks from "@/components/PermanentReportLinks";
 import DefectPhotoGrid from "@/components/DefectPhotoGrid";
 import dynamic from 'next/dynamic';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { Button as UiButton } from "@/components/ui/button";
 import {
   Dialog,
@@ -572,8 +573,16 @@ export default function Page() {
     if (!hasContent) return '';
 
     // Preprocess long paragraphs for better readability in HTML export/on-screen
-    const formatTextForHTML = (text: string): string => {
+    // For rich text comments, sanitize HTML instead of escaping
+    const formatTextForHTML = (text: string, isRichText: boolean = true): string => {
       if (!text) return '';
+      
+      // If it's rich text (from TinyMCE), sanitize and return
+      if (isRichText) {
+        return sanitizeHtml(text);
+      }
+      
+      // Otherwise, use the old paragraph formatting logic for plain text
       let preprocessed = text
         .replace(/(Purpose:)(\s*The home)/g, '$1\n\n$2')
         .replace(/(sections\.)(\s*No responsibility)/g, '$1\n\n$2')
@@ -640,7 +649,7 @@ export default function Page() {
         const parts = (item.text || '').split(':');
         const label = parts[0]?.trim() || '';
         const value = parts.slice(1).join(':').trim() || '';
-        const formattedComment = item.comment ? formatTextForHTML(item.comment) : '';
+        const formattedComment = item.comment ? formatTextForHTML(item.comment, true) : '';
         return `
           <div class="rpt-info-grid-item">
             <div>
@@ -701,7 +710,7 @@ export default function Page() {
         const itemId = item._id || '';
         const itemImages = (block.images || []).filter((img: any) => img.checklist_id === itemId);
         const selectedAnswers = selectedAnswersMap.get(itemId) || [];
-        const formattedComment = item.comment ? formatTextForHTML(item.comment) : '';
+        const formattedComment = item.comment ? formatTextForHTML(item.comment, true) : '';
         return `
           <div style="display: flex; flex-direction: column; gap: 0.5rem;">
             <div style="font-weight: 700; color: #000000; font-size: 0.9375rem;">
@@ -2934,15 +2943,15 @@ export default function Page() {
                                                 </span>
                                               )}
                                               {item.comment && (
-                                                <div style={{ 
-                                                  fontSize: '0.875rem',
-                                                  color: '#374151',
-                                                  lineHeight: 1.6,
-                                                  marginTop: '0.5rem',
-                                                  whiteSpace: 'pre-wrap'
-                                                }}>
-                                                  {item.comment}
-                                                </div>
+                                                <div 
+                                                  style={{ 
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151',
+                                                    lineHeight: 1.6,
+                                                    marginTop: '0.5rem'
+                                                  }}
+                                                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.comment) }}
+                                                />
                                               )}
                                               {selectedAnswers.length > 0 && (
                                                 <div style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280', fontSize: '0.875rem' }}>
@@ -3026,14 +3035,14 @@ export default function Page() {
                                               {itemText}
                                             </div>
                                             {itemComment && (
-                                              <div style={{ 
-                                                fontSize: '0.875rem',
-                                                color: '#374151',
-                                                lineHeight: '1.6',
-                                                whiteSpace: 'pre-wrap'
-                                              }}>
-                                                {itemComment}
-                                              </div>
+                                              <div 
+                                                style={{ 
+                                                  fontSize: '0.875rem',
+                                                  color: '#374151',
+                                                  lineHeight: '1.6'
+                                                }}
+                                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(itemComment) }}
+                                              />
                                             )}
                                             {selectedAnswers.length > 0 && (
                                               <div style={{ 
@@ -3247,15 +3256,15 @@ export default function Page() {
                                                 </span>
                                               )}
                                               {item.comment && (
-                                                <div style={{ 
-                                                  fontSize: '0.875rem', 
-                                                  color: '#374151', 
-                                                  lineHeight: 1.6, 
-                                                  marginTop: '0.5rem',
-                                                  whiteSpace: 'pre-wrap'
-                                                }}>
-                                                  {item.comment}
-                                                </div>
+                                                <div 
+                                                  style={{ 
+                                                    fontSize: '0.875rem', 
+                                                    color: '#374151', 
+                                                    lineHeight: 1.6, 
+                                                    marginTop: '0.5rem'
+                                                  }}
+                                                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.comment) }}
+                                                />
                                               )}
                                               {selectedAnswers.length > 0 && (
                                                 <div style={{ marginLeft: '0.25rem', fontWeight: 400, color: '#6b7280', fontSize: '0.875rem' }}>
@@ -3633,13 +3642,14 @@ export default function Page() {
                                             
                                             {/* Formatted Content */}
                                             {itemComment && (
-                                              <div style={{ 
-                                                fontSize: '0.875rem',
-                                                color: '#374151',
-                                                lineHeight: '1.6'
-                                              }}>
-                                                {formatContent(itemComment)}
-                                              </div>
+                                              <div 
+                                                style={{ 
+                                                  fontSize: '0.875rem',
+                                                  color: '#374151',
+                                                  lineHeight: '1.6'
+                                                }}
+                                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(itemComment) }}
+                                              />
                                             )}
                                             
                                             {/* Answer Choices */}
