@@ -239,7 +239,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           checklistsMap.set(sectionId, checklists as ISectionChecklist[]);
         });
         setInspectionChecklists(checklistsMap);
-        console.log('📂 Loaded inspection-specific checklists from localStorage:', checklistsMap);
+        
       }
 
       // Load hidden template checklist ids map
@@ -397,7 +397,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       try {
         const annotation = JSON.parse(pendingData);
-        console.log('🎨 Found pending annotation:', annotation);
 
         // Check if we should auto-reopen the modal
         const returnToSectionData = localStorage.getItem('returnToSection');
@@ -405,13 +404,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
         // If modal is open, update the formState immediately
         if (modalOpen && formState) {
-          console.log('📝 Modal is open, updating formState with annotation');
           
           // Find the image in formState that matches the checklistId
           const imageIndex = formState.images.findIndex(img => img.checklist_id === annotation.checklistId);
 
           if (imageIndex !== -1) {
-            console.log(`✅ Found image at index ${imageIndex}, updating with annotated version`);
             
             // Update the existing image with the annotated version
             const updatedImages = [...formState.images];
@@ -427,23 +424,18 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             };
 
             setFormState(updatedFormState);
-
-            console.log('✅ Updated image with annotations in formState');
             
             // Trigger auto-save to persist the change
             await performAutoSaveWithState(updatedFormState);
             
             // Clear the pending annotation ONLY after successful save
             localStorage.removeItem('pendingAnnotation');
-            console.log('✅ Annotation processing complete, cleared from localStorage');
           } else {
             console.warn('⚠️ Image not found in formState images, will retry...');
             // Don't clear localStorage - let polling retry
           }
         } else {
           // Modal is closed - save to database and optionally reopen
-          console.log('💾 Modal closed, saving annotation directly to database');
-
           try {
             // Fetch all blocks to find the one containing this checklist
             const blocksRes = await fetch(`/api/information-sections/${inspectionId}`);
@@ -459,13 +451,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               });
 
               if (targetBlock) {
-                console.log('📦 Found target block:', targetBlock._id);
 
                 // Find the image to update
                 const imageIndex = targetBlock.images.findIndex((img: IBlockImage) => img.checklist_id === annotation.checklistId);
 
                 if (imageIndex !== -1) {
-                  console.log(`✅ Found image at index ${imageIndex} in block`);
                   
                   // Update the image with the annotated version
                   const updatedImages = [...targetBlock.images];
@@ -488,13 +478,11 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   if (shouldReopenModal && returnToSectionData) {
                     try {
                       const { sectionId } = JSON.parse(returnToSectionData);
-                      console.log('🚀 INSTANT REOPEN: Opening modal immediately');
                       
                       // Find the section - if sections is empty, fetch it
                       let section = sections.find((s: ISection) => s._id === sectionId);
                       
                       if (!section) {
-                        console.log('⚠️ Sections not loaded yet, fetching...');
                         // Fetch sections if not available
                         const sectionsRes = await fetch('/api/inspection-sections', { cache: 'no-store', credentials: 'include' });
                         const sectionsJson = await sectionsRes.json();
@@ -506,7 +494,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                       }
                       
                       if (section) {
-                        console.log('✅ Opening modal INSTANTLY with annotated image');
                         // Update blocks state immediately
                         setBlocks(blocksJson.data.map((b: IInformationBlock) => 
                           b._id === targetBlock._id ? updatedBlock : b
@@ -525,7 +512,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   }
 
                     // BACKGROUND SAVE: Save to database in the background (doesn't block UI)
-                    console.log('💾 Saving annotation to database in background...');
                     try {
                       const updateRes = await fetch(`/api/information-sections/${inspectionId}?blockId=${targetBlock._id}`, {
                         method: 'PUT',
@@ -541,11 +527,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
                       const updateJson = await updateRes.json();
                       if (updateJson.success) {
-                        console.log('✅ Annotation saved to database (background)');
                         
                         // Clear the pending annotation ONLY after successful database save
                         localStorage.removeItem('pendingAnnotation');
-                        console.log('✅ Cleared pendingAnnotation from localStorage after successful save');
+    
                         
                         // Refresh blocks if modal wasn't reopened
                         if (!shouldReopenModal) {
@@ -592,14 +577,12 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
     // Check on window focus (when user returns from image-editor)
     const handleFocus = () => {
-      console.log('🔍 Window focused, checking for pending annotation');
       checkPendingAnnotation();
     };
 
     // Listen for storage events from other tabs
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'pendingAnnotation' && e.newValue) {
-        console.log('🔔 Storage event detected for pendingAnnotation');
         setTimeout(() => checkPendingAnnotation(), 100);
       }
     };
@@ -616,11 +599,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       pollCount++;
       const pending = localStorage.getItem('pendingAnnotation');
       if (pending) {
-        console.log(`📡 Poll #${pollCount}/${maxPolls}: Found pending annotation, processing...`);
+        
         checkPendingAnnotation();
       }
       if (pollCount >= maxPolls) {
-        console.log(`⏱️ Polling complete after ${pollCount} attempts`);
         clearInterval(pollInterval);
       }
     }, 300); // Check every 300ms (was 500ms)
@@ -643,7 +625,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           const freshSection = sectionsData.sections.find((s: ISection) => s._id === section._id);
           if (freshSection) {
             latestSection = freshSection;
-            console.log('✅ Loaded fresh section data with', freshSection.checklists.length, 'checklists');
           }
         }
       }
@@ -662,7 +643,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
     if (existingBlock) {
       // Editing existing block - fetch the latest data from the database to ensure we have the most recent version
-      console.log('📂 Opening existing block, fetching latest data...');
 
       try {
         const res = await fetch(`/api/information-sections/${inspectionId}`);
@@ -673,7 +653,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           const latestBlock = json.data.find((b: IInformationBlock) => b._id === existingBlock._id);
 
           if (latestBlock) {
-            console.log('✅ Using latest block data with', latestBlock.images.length, 'images');
 
             setEditingBlockId(latestBlock._id);
             const selectedIds = Array.isArray(latestBlock.selected_checklist_ids)
@@ -813,7 +792,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       if (currentAnswers && currentAnswers.size > 0) {
         const backupKey = `checklist_backup_${inspectionId}_${id}`;
         localStorage.setItem(backupKey, JSON.stringify(Array.from(currentAnswers)));
-        console.log('💾 Backed up answers to localStorage:', Array.from(currentAnswers));
       }
       
       // Clear from selected_answers
@@ -856,7 +834,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
               selected_checklist_ids: setIds, 
               selected_answers: newAnswers 
             };
-            console.log('♻️ Restored answers from localStorage backup:', backedUpAnswers);
           }
         } catch (e) {
           console.error('Error parsing localStorage backup:', e);
@@ -1052,9 +1029,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         return;
       }
 
-      console.log('📝 Before save - Current answer_choices:', checklist.answer_choices);
-      console.log('➕ Adding new answer:', customAnswer);
-
       // Check if answer already exists in template
       if (checklist.answer_choices?.includes(customAnswer)) {
         alert('This option already exists in the template');
@@ -1063,7 +1037,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       // Add to template via API
       const updatedChoices = [...(checklist.answer_choices || []), customAnswer];
-      console.log('📤 Sending to API - updatedChoices:', updatedChoices);
       
       const res = await fetch(`/api/checklists/${checklistId}`, {
         method: 'PUT',
@@ -1079,8 +1052,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Failed to save to template');
-
-      console.log('✅ API response:', json.data);
 
       // Update activeSection immediately with new choice (before fetching sections)
       if (activeSection) {
@@ -1098,8 +1069,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           checklists: updatedChecklists
         };
         setActiveSection(newActiveSection);
-        console.log('✅ Updated activeSection with new answer choice:', customAnswer);
-        console.log('📋 Current answer_choices for this item:', updatedChoices);
       }
 
       // Refresh sections in background to sync with database
@@ -1138,7 +1107,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       // Trigger auto-save
       setTimeout(() => performAutoSaveWithState(updatedFormState), 100);
 
-      console.log('✅ Answer saved to template and selected for this inspection!');
     } catch (e: any) {
       alert('Error saving to template: ' + e.message);
     }
@@ -1147,12 +1115,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const handleSave = async () => {
     if (!formState || !inspectionId) return;
     setSaving(true);
-
-    console.log('💾 Saving information block with images:', {
-      images: formState.images,
-      imageCount: formState.images.length,
-      imagesWithChecklistId: formState.images.filter(img => img.checklist_id).length
-    });
 
     // Separate template checklist IDs from inspection-only IDs
     const allSelectedIds = Array.from(formState.selected_checklist_ids);
@@ -1243,12 +1205,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     
     setAutoSaving(true);
 
-    console.log('💾 Auto-saving information block with images:', {
-      images: stateToSave.images,
-      imageCount: stateToSave.images.length,
-      imagesWithChecklistId: stateToSave.images.filter(img => img.checklist_id).length
-    });
-
     // Separate template checklist IDs from inspection-only IDs
     const allSelectedIds = Array.from(stateToSave.selected_checklist_ids);
     const templateIds = allSelectedIds.filter(id => !id.startsWith('temp_'));
@@ -1278,7 +1234,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
       if (editingBlockId && isEmpty) {
         // Delete the block if it's empty, but keep the modal open
-        console.log('🗑️ Block is empty, deleting in background...');
         const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${editingBlockId}`, {
           method: 'DELETE',
         });
@@ -1291,7 +1246,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         // Refresh blocks list in background
         await fetchBlocks();
         
-        console.log('✅ Empty block deleted successfully (modal stays open)');
       } else if (editingBlockId) {
         // Update existing block (only save template IDs to database)
         const res = await fetch(`/api/information-sections/${inspectionId}?blockId=${editingBlockId}`, {
@@ -1332,7 +1286,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       const now = new Date();
       setLastSaved(now.toLocaleTimeString());
       
-      console.log('✅ Auto-saved successfully at', now.toLocaleTimeString());
       
     } catch (e: any) {
       console.error('Auto-save error:', e);
@@ -1371,8 +1324,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const handleImageSelect = async (checklistId: string, file: File) => {
     if (!formState) return;
 
-    console.log('📸 File selected for checklist:', checklistId, 'type:', file.type);
-
     // Check file size and warn for large files (360° photos)
         const fileSizeMB = file.size / (1024 * 1024);
         // Vercel has a 100MB body size limit on Pro plan, 4.5MB on Hobby
@@ -1403,7 +1354,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         });
         
         const megapixels = (img.width * img.height) / 1000000;
-        console.log('📐 360° Image dimensions:', img.width, 'x', img.height, '(' + megapixels.toFixed(1), 'MP)');
         
         // Warn if image is too large
         if (megapixels > 50) {
@@ -1439,10 +1389,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       }
     }
 
-    // Show progress indicator for large files
-    if (fileSizeMB > 10) {
-      console.log(`⏳ Uploading large file (${fileSizeMB.toFixed(1)}MB), this may take a minute...`);
-    }
 
     // Normalize smartphone EXIF orientation for JPEG/PNG before upload (HEIC handled on server)
     const fixOrientationIfNeeded = async (f: File): Promise<File> => {
@@ -1488,7 +1434,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       file = await fixOrientationIfNeeded(file);
       
       // NEW: Direct R2 upload using presigned URL (bypasses Vercel's 4.5MB body limit)
-      console.log('🚀 Starting direct R2 upload for file:', file.name, 'size:', file.size);
       
       // Step 1: Get presigned upload URL from server
       const presignedRes = await fetch(
@@ -1500,7 +1445,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       }
       
       const { uploadUrl, publicUrl } = await presignedRes.json();
-      console.log('✅ Got presigned URL, uploading directly to R2...');
       
       // Step 2: Upload file DIRECTLY to R2 using presigned URL
       const uploadRes = await fetch(uploadUrl, {
@@ -1515,11 +1459,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         throw new Error(`Direct R2 upload failed with status ${uploadRes.status}`);
       }
       
-      console.log('✅ File uploaded directly to R2:', publicUrl);
 
       // Check if this should be a 360° photo
       const isThreeSixty = isThreeSixtyMap[checklistId] || false;
-      console.log('🔍 360° checkbox state for checklist', checklistId, ':', isThreeSixty);
 
       // Add image to formState
       const newImage: IBlockImage = {
@@ -1530,8 +1472,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         // We'll reuse the existing image structure; location/annotations remain compatible for video
       };
 
-      console.log('💾 Adding image to formState:', newImage);
-      console.log('📸 isThreeSixty field value:', newImage.isThreeSixty);
 
       // Use functional update to avoid stale state when batching multiple uploads
       let committedState: AddBlockFormState | null = null;
@@ -1549,8 +1489,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       // User can manually uncheck if they want to upload regular images
       // setIsThreeSixtyMap(prev => ({ ...prev, [checklistId]: false }));
 
-  console.log('✅ FormState updated with new image');
-      console.log('📌 Image uploaded successfully. Auto-saving now...');
 
       // Save immediately with the updated state
       if (committedState) {
@@ -1589,11 +1527,9 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
   const handleImagesSelect = async (checklistId: string, files: File[] | FileList) => {
     const fileArray = Array.from(files || []);
     if (!fileArray.length) return;
-    console.log(`📦 ${fileArray.length} file(s) selected for checklist ${checklistId}`);
     // Process sequentially to preserve formState consistency and avoid race conditions
     for (let i = 0; i < fileArray.length; i++) {
       const f = fileArray[i];
-      console.log(`⬆️ Uploading ${i + 1}/${fileArray.length}: ${f.name}`);
       // Intentionally await to ensure state updates are serialized
       await handleImageSelect(checklistId, f);
     }
@@ -1632,7 +1568,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       images: updatedImages,
     });
 
-    console.log('📍 Location updated for image:', location);
     
     // Trigger debounced auto-save (waits 1 second after user stops typing)
     triggerAutoSave();
@@ -1861,7 +1796,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         );
         setActiveSection({ ...activeSection, checklists: updatedChecklists });
       }
-      console.log(`✅ Auto-saved ${field} for inspection-only checklist`);
+
       return;
     }
 
@@ -1885,7 +1820,7 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
         );
         setActiveSection({ ...activeSection, checklists: updatedChecklists });
       }
-      console.log(`✅ Auto-saved ${field} to server`);
+
     } catch (err) {
       console.error(`Auto-save ${field} failed:`, err);
       // Don't show alert for auto-save failures to avoid interrupting user flow
@@ -2015,7 +1950,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             checklists: updatedChecklists
           });
           
-          console.log('✅ Updated inspection-only checklist:', editingChecklistId);
         } else {
           // Editing template item - save to database
           // Get the original checklist to determine which choices are custom
@@ -2078,7 +2012,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                     checklists: [...updatedSection.checklists, ...inspectionSpecificChecklists]
                   };
                   setActiveSection(mergedSection);
-                  console.log('✅ Refreshed section and activeSection with latest checklist data');
                 }
               }
             }
@@ -2118,7 +2051,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             checklists: [...activeSection.checklists, newChecklist]
           });
           
-          console.log('✅ Created template checklist:', newChecklist._id);
         } else {
           // Add to This Inspection Only - Save to inspectionChecklists state (persisted in localStorage)
           const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -2158,8 +2090,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
             });
           }
           
-          console.log('✅ Added inspection-only checklist:', tempId);
-          console.log('💾 Will be saved to localStorage for this inspection only');
         }
       }
 
@@ -2202,7 +2132,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       if (updatedInspectionChecklists.length > 0) newInspectionChecklistsMap.set(activeSection._id, updatedInspectionChecklists); else newInspectionChecklistsMap.delete(activeSection._id);
       setInspectionChecklists(newInspectionChecklistsMap);
       setActiveSection({ ...activeSection, checklists: activeSection.checklists.filter(cl => cl._id !== checklistId) });
-      console.log('✅ Deleted inspection-only checklist:', checklistId);
     } else {
       // For template items, show two explicit choices via inline menu
       setDeleteMenuForId(checklistId);
@@ -2241,7 +2170,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           });
         }
         
-        console.log('✅ Template checklist deleted and UI updated immediately');
       }
       
       // Also close any open menu
@@ -3173,19 +3101,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   {checklistImages.map((img, idx) => {
                                     // Generate preview URL - handle both string URLs and File objects
                                     const getPreviewUrl = (imgData: any) => {
-                                      console.log('🖼️ Image data:', imgData);
-                                      console.log('🔍 URL type:', typeof imgData.url);
-                                      console.log('📦 URL value:', imgData.url);
                                       
                                       if (typeof imgData.url === 'string') {
                                         // String URL from database - use proxy
                                         const proxied = getProxiedSrc(imgData.url);
-                                        console.log('✅ String URL proxied:', proxied);
                                         return proxied;
                                       } else if (imgData.url && typeof imgData.url === 'object' && imgData.url instanceof File) {
                                         // File object - create blob URL
                                         const blobUrl = URL.createObjectURL(imgData.url);
-                                        console.log('✅ File object blob URL:', blobUrl);
                                         return blobUrl;
                                       }
                                       console.warn('⚠️ No valid URL found');
@@ -3193,7 +3116,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     };
                                     
                                     const previewUrl = getPreviewUrl(img);
-                                    console.log('🎨 Final preview URL:', previewUrl);
                                     const isVideo = /\.(mp4|mov|webm|3gp|3gpp|m4v)(\?.*)?$/i.test(previewUrl);
                                     
                                     return (
@@ -3782,19 +3704,16 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   {checklistImages.map((img, idx) => {
                                     // Generate preview URL - handle both string URLs and File objects
                                     const getPreviewUrl = (imgData: any) => {
-                                      console.log('🖼️ Limitations Image data:', imgData);
-                                      console.log('🔍 Limitations URL type:', typeof imgData.url);
-                                      console.log('📦 Limitations URL value:', imgData.url);
-                                      
+                                    
                                       if (typeof imgData.url === 'string') {
                                         // String URL from database - use proxy
                                         const proxied = getProxiedSrc(imgData.url);
-                                        console.log('✅ Limitations String URL proxied:', proxied);
+                                        
                                         return proxied;
                                       } else if (imgData.url && typeof imgData.url === 'object' && imgData.url instanceof File) {
                                         // File object - create blob URL
                                         const blobUrl = URL.createObjectURL(imgData.url);
-                                        console.log('✅ Limitations File object blob URL:', blobUrl);
+                                       
                                         return blobUrl;
                                       }
                                       console.warn('⚠️ Limitations No valid URL found');
@@ -3802,7 +3721,6 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                     };
                                     
                                     const previewUrl = getPreviewUrl(img);
-                                    console.log('🎨 Limitations Final preview URL:', previewUrl);
                                     
                                     return (
                                     <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '180px' }}>
