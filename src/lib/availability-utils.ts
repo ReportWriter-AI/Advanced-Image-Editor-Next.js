@@ -48,7 +48,12 @@ export function isValidTime(value: string) {
   return ALLOWED_TIMES.includes(value);
 }
 
-export function timeToMinutes(value: string) {
+export function timeToMinutes(value: string | undefined | null): number {
+  if (!value || typeof value !== "string") {
+    // Return 0 (midnight) as a safe default for undefined/null values
+    // This prevents crashes while maintaining valid comparisons
+    return 0;
+  }
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
 }

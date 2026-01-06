@@ -216,7 +216,15 @@ function findNextAvailableBlock(blocks: TimeBlockForm[], allowedTimes: string[])
   return null
 }
 
-function addMinutesToTime(value: string, minutesToAdd: number) {
+function addMinutesToTime(value: string | undefined | null, minutesToAdd: number) {
+  if (!value || typeof value !== "string") {
+    // Return a safe default (00:00 + minutesToAdd) if value is undefined/null
+    const defaultMinutes = minutesToAdd
+    const clamped = Math.min(Math.max(defaultMinutes, 0), 23 * 60 + 59)
+    const newHours = Math.floor(clamped / 60)
+    const newMinutes = clamped % 60
+    return `${newHours.toString().padStart(2, "0")}:${newMinutes.toString().padStart(2, "0")}`
+  }
   const [hours, minutes] = value.split(":").map(Number)
   const totalMinutes = hours * 60 + minutes + minutesToAdd
   const clamped = Math.min(Math.max(totalMinutes, 0), 23 * 60 + 59)
@@ -236,6 +244,9 @@ function AvailabilityPage() {
   const [updatingViewMode, setUpdatingViewMode] = useState(false)
   const initializedRef = useRef(false)
   const lastSavedPayloadRef = useRef<Record<string, string>>({})
+  const abortControllersRef = useRef<Record<string, AbortController>>({})
+  const debounceTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
+  const requestVersionsRef = useRef<Record<string, number>>({})
 
   const viewMode = useWatch({ control: form.control, name: "viewMode" })
 
@@ -278,7 +289,15 @@ function AvailabilityPage() {
       initializedRef.current = true
     } catch (err: any) {
       console.error("fetchAvailability error", err)
-      setError(err?.message || "Failed to load availability")
+      const errorMessage = err?.message || "Failed to load availability"
+      setError(errorMessage)
+      toast.error(errorMessage, {
+        duration: 5000,
+        action: {
+          label: "Retry",
+          onClick: fetchAvailability,
+        },
+      })
     } finally {
       setLoading(false)
     }
@@ -295,9 +314,24 @@ function AvailabilityPage() {
 
       const payload = buildInspectorPayload(days, dateSpecific)
       const payloadKey = JSON.stringify(payload)
+      
+      // Skip if payload hasn't changed
       if (lastSavedPayloadRef.current[inspectorId] === payloadKey) {
         return
       }
+
+      // Cancel any in-flight request for this inspector
+      if (abortControllersRef.current[inspectorId]) {
+        abortControllersRef.current[inspectorId].abort()
+      }
+
+      // Create new abort controller for this request
+      const abortController = new AbortController()
+      abortControllersRef.current[inspectorId] = abortController
+
+      // Increment request version for deduplication
+      const currentVersion = (requestVersionsRef.current[inspectorId] || 0) + 1
+      requestVersionsRef.current[inspectorId] = currentVersion
 
       setSaveStates((prev) => ({
         ...prev,
@@ -312,7 +346,13 @@ function AvailabilityPage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ inspectorId, ...payload }),
+          signal: abortController.signal,
         })
+
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          return
+        }
 
         if (!response.ok) {
           const result = await response.json().catch(() => ({}))
@@ -320,6 +360,13 @@ function AvailabilityPage() {
         }
 
         const result = await response.json()
+        
+        // Check if this response is still the latest version (handle out-of-order responses)
+        if (requestVersionsRef.current[inspectorId] !== currentVersion) {
+          // This response is stale, ignore it
+          return
+        }
+
         const inspectors = form.getValues("inspectors")
         const inspectorIndex = inspectors.findIndex((item) => item.inspectorId === inspectorId)
         const inspectorName = inspectorIndex >= 0 ? inspectors[inspectorIndex]?.inspectorName : undefined
@@ -368,18 +415,50 @@ function AvailabilityPage() {
           lastSavedPayloadRef.current[inspectorId] = payloadKey
         }
 
+        // Clean up abort controller on success
+        delete abortControllersRef.current[inspectorId]
+
         setSaveStates((prev) => ({
           ...prev,
           [inspectorId]: { status: "saved" },
         }))
         toast.success("Availability updated successfully")
       } catch (err: any) {
+        // Ignore abort errors
+        if (err?.name === "AbortError" || abortController.signal.aborted) {
+          return
+        }
+
         console.error("autoSave error", err)
-        setSaveStates((prev) => ({
-          ...prev,
-          [inspectorId]: { status: "error", message: err?.message || "Update failed" },
-        }))
-        toast.error(err?.message || "Failed to save availability")
+        
+        // Only update error state if this is still the latest request
+        if (requestVersionsRef.current[inspectorId] === currentVersion) {
+          const errorMessage = err?.message || "Failed to save availability"
+          setSaveStates((prev) => ({
+            ...prev,
+            [inspectorId]: { status: "error", message: errorMessage },
+          }))
+          
+          // Show error toast with retry option
+          toast.error(errorMessage, {
+            duration: 5000,
+            action: {
+              label: "Retry",
+              onClick: () => {
+                // Retry the save with current form values
+                const currentInspector = form.getValues("inspectors").find(
+                  (item) => item.inspectorId === inspectorId
+                )
+                if (currentInspector) {
+                  handleAutoSave(inspectorId, currentInspector.days, currentInspector.dateSpecific)
+                }
+              },
+            },
+          })
+        }
+        
+        // Clean up abort controller on error
+        delete abortControllersRef.current[inspectorId]
       }
     },
     [form],
@@ -404,7 +483,16 @@ function AvailabilityPage() {
       }
     } catch (err: any) {
       console.error("handleModeToggle error", err)
-      toast.error(err?.message || "Failed to save view preference")
+      const errorMessage = err?.message || "Failed to save view preference"
+      toast.error(errorMessage, {
+        duration: 5000,
+        action: {
+          label: "Retry",
+          onClick: () => handleModeToggle(mode),
+        },
+      })
+      // Revert view mode on error
+      form.setValue("viewMode", viewMode, { shouldDirty: false, shouldTouch: false })
     } finally {
       setUpdatingViewMode(false)
     }
@@ -498,6 +586,7 @@ function AvailabilityPage() {
                     saveState={saveStates[inspector.inspectorId] ?? { status: "idle" }}
                     isInitialized={initializedRef.current}
                     inspectorFirstName={inspector.inspectorFirstName}
+                    debounceTimersRef={debounceTimersRef}
                   />
                 )
               })}
@@ -517,6 +606,7 @@ interface InspectorAvailabilityCardProps {
   saveState: SaveState
   isInitialized: boolean
   inspectorFirstName: string
+  debounceTimersRef: React.MutableRefObject<Record<string, NodeJS.Timeout>>
 }
 
 function InspectorAvailabilityCard({
@@ -527,18 +617,26 @@ function InspectorAvailabilityCard({
   saveState,
   isInitialized,
   inspectorFirstName,
+  debounceTimersRef,
 }: InspectorAvailabilityCardProps) {
   const { control, getValues, setError, clearErrors, formState, setValue } = useFormContext<AvailabilityFormValues>()
   const inspector = useWatch({ control, name: `inspectors.${index}` })
   const days = useWatch({ control, name: `inspectors.${index}.days` }) as Record<DayKey, DayForm>
   const dateSpecific = (useWatch({ control, name: `inspectors.${index}.dateSpecific` }) as DateSpecificForm[]) ?? []
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const [dateDialogOpen, setDateDialogOpen] = useState(false)
 
   useEffect(() => {
     if (!isInitialized || !inspector?.inspectorId || !days) return
 
-    const handler = setTimeout(() => {
+    // Cancel previous debounce timer for this inspector
+    const inspectorId = inspector.inspectorId
+    if (debounceTimersRef.current[inspectorId]) {
+      clearTimeout(debounceTimersRef.current[inspectorId])
+    }
+
+    // Set new debounce timer (increased to 1000ms for better batching)
+    const timerId = setTimeout(() => {
       const payload = buildInspectorPayload(days, dateSpecific ?? [])
       const openScheduleErrors = DAY_KEYS.some((day) => {
         const result = validateOpenSchedule(payload.days[day].openSchedule)
@@ -550,11 +648,21 @@ function InspectorAvailabilityCard({
       })
 
       if (!openScheduleErrors && !timeSlotErrors) {
-        onAutoSave(inspector.inspectorId, days, dateSpecific ?? [])
+        onAutoSave(inspectorId, days, dateSpecific ?? [])
       }
-    }, 600)
+      
+      // Clear timer reference after execution
+      delete debounceTimersRef.current[inspectorId]
+    }, 1000)
 
-    return () => clearTimeout(handler)
+    debounceTimersRef.current[inspectorId] = timerId
+
+    return () => {
+      if (debounceTimersRef.current[inspectorId]) {
+        clearTimeout(debounceTimersRef.current[inspectorId])
+        delete debounceTimersRef.current[inspectorId]
+      }
+    }
   }, [days, dateSpecific, inspector?.inspectorId, isInitialized, onAutoSave])
 
   const inspectorErrors = formState.errors.inspectors?.[index]
@@ -874,7 +982,7 @@ function DayScheduleCard({
             ) : (
               <div className="space-y-2">
                 {openScheduleFields.map((field, idx) => {
-                  const startValue = getValues(`${openSchedulePath}.${idx}.start` as const)
+                  const startValue = getValues(`${openSchedulePath}.${idx}.start` as const) ?? allowedTimes[0] ?? "00:00"
                   const endOptions = allowedTimes.filter((time) => timeToMinutes(time) > timeToMinutes(startValue))
 
                   return (
@@ -904,7 +1012,7 @@ function DayScheduleCard({
                                   const currentBlock = currentBlocks[idx]
                                   let candidateEnd: string | undefined
 
-                                  if (currentBlock && timeToMinutes(currentBlock.end) > timeToMinutes(value)) {
+                                  if (currentBlock && currentBlock.end && timeToMinutes(currentBlock.end) > timeToMinutes(value)) {
                                     candidateEnd = currentBlock.end
                                   } else {
                                     candidateEnd = allowedTimes.find(

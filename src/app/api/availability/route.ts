@@ -151,10 +151,14 @@ export async function GET(request: NextRequest) {
       .select("_id firstName lastName email")
       .sort({ firstName: 1, lastName: 1 });
 
+    // Optimize query with lean() and select only needed fields
+    const inspectorIds = inspectors.map((i) => i._id);
     const availabilityDocs = (await Availability.find({
       company: currentUser.company,
-      inspector: { $in: inspectors.map((i) => i._id) },
-    })) as unknown as IAvailability[];
+      inspector: { $in: inspectorIds },
+    })
+      .select("inspector days dateSpecific")
+      .lean()) as unknown as IAvailability[];
 
     const availabilityMap = formatAvailabilityResponse(availabilityDocs);
 
@@ -181,15 +185,26 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const company = await Company.findById(currentUser.company).select("availabilityViewMode");
+    // Optimize company query with lean()
+    const company = await Company.findById(currentUser.company)
+      .select("availabilityViewMode")
+      .lean();
     const viewMode = company?.availabilityViewMode === "timeSlots" ? "timeSlots" : "openSchedule";
 
     return NextResponse.json({ inspectors: response, allowedTimes: ALLOWED_TIMES, viewMode });
   } catch (error: any) {
     console.error("Availability GET error:", error);
+    
+    // Provide more specific error messages
+    const errorMessage = error?.message ?? "Failed to fetch availability";
+    const statusCode = error?.statusCode || 500;
+    
     return NextResponse.json(
-      { error: error?.message ?? "Failed to fetch availability" },
-      { status: 500 }
+      { 
+        error: errorMessage,
+        ...(process.env.NODE_ENV === "development" && { stack: error?.stack }),
+      },
+      { status: statusCode }
     );
   }
 }
@@ -205,24 +220,43 @@ export async function PUT(request: NextRequest) {
 
     const body = (await request.json()) as UpdatePayload;
 
+    // Early validation - check required fields before database queries
     if (!body?.inspectorId) {
       return NextResponse.json({ error: "inspectorId is required" }, { status: 400 });
     }
 
+    if (!body?.days) {
+      return NextResponse.json({ error: "days are required" }, { status: 400 });
+    }
+
+    // Validate and normalize data early (before database queries)
+    let normalizedDays;
+    let normalizedDateSpecific;
+    try {
+      normalizedDays = normalizeDays(body.days);
+      normalizedDateSpecific = normalizeDateSpecific(body.dateSpecific ?? []);
+    } catch (validationError: any) {
+      return NextResponse.json(
+        { error: validationError?.message ?? "Validation failed" },
+        { status: 400 }
+      );
+    }
+
+    // Database query with optimized field selection
     const inspector = await User.findOne({
       _id: body.inspectorId,
       company: currentUser.company,
       role: "inspector",
       isActive: true,
-    });
+    })
+      .select("_id")
+      .lean();
 
     if (!inspector) {
       return NextResponse.json({ error: "Inspector not found" }, { status: 404 });
     }
 
-    const normalizedDays = normalizeDays(body.days);
-    const normalizedDateSpecific = normalizeDateSpecific(body.dateSpecific ?? []);
-
+    // Optimize update query - only update fields that changed
     const availabilityDoc = await Availability.findOneAndUpdate(
       {
         company: currentUser.company,
@@ -238,6 +272,7 @@ export async function PUT(request: NextRequest) {
         upsert: true,
         new: true,
         setDefaultsOnInsert: true,
+        select: "inspector days dateSpecific", // Only return needed fields
       }
     );
 
@@ -255,9 +290,33 @@ export async function PUT(request: NextRequest) {
   });
   } catch (error: any) {
     console.error("Availability PUT error:", error);
+    
+    // Determine appropriate status code based on error type
+    let statusCode = 400;
+    let errorMessage = error?.message ?? "Failed to update availability";
+    
+    // Handle specific error types
+    if (error?.name === "ValidationError") {
+      statusCode = 400;
+      errorMessage = `Validation error: ${errorMessage}`;
+    } else if (error?.name === "CastError") {
+      statusCode = 400;
+      errorMessage = "Invalid data format";
+    } else if (error?.code === 11000) {
+      // Duplicate key error
+      statusCode = 409;
+      errorMessage = "Duplicate entry detected";
+    }
+    
     return NextResponse.json(
-      { error: error?.message ?? "Failed to update availability" },
-      { status: 400 }
+      { 
+        error: errorMessage,
+        ...(process.env.NODE_ENV === "development" && { 
+          details: error?.stack,
+          ...(error?.errors && { validationErrors: error.errors }),
+        }),
+      },
+      { status: statusCode }
     );
   }
 }
