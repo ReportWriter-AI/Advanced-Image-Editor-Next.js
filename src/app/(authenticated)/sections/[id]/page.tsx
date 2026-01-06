@@ -20,6 +20,7 @@ interface InspectionSectionApiResponse {
     name: string;
     order_index: number;
     checklists: Array<{
+      _id?: string | { toString(): string }; // Mongoose ObjectId or string
       text: string;
       comment?: string;
       type: "status" | "information";
@@ -67,6 +68,7 @@ export default function EditSectionPage() {
         setInitialValues({
           name: section.name,
           checklists: section.checklists.map((item) => ({
+            _id: item._id?.toString(), // Preserve existing checklist IDs
             text: item.text,
             comment: item.comment || "",
             type: item.type,

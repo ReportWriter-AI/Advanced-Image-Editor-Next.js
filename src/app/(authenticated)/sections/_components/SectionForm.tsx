@@ -31,6 +31,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 const checklistItemSchema = z.object({
+  _id: z.string().optional(), // Preserve existing checklist IDs
   text: z.string().trim().min(1, "Text is required"),
   comment: z.string().trim().optional(),
   type: z.enum(["status", "information"]),
@@ -50,6 +51,7 @@ export type SectionFormValues = z.infer<typeof sectionSchema>;
 export interface SectionFormNormalizedValues {
   name: string;
   checklists: Array<{
+    _id?: string; // Preserve existing checklist IDs
     text: string;
     comment?: string;
     type: "status" | "information";
@@ -280,6 +282,7 @@ export function SectionForm({
     const normalized: SectionFormNormalizedValues = {
       name: values.name.trim(),
       checklists: sortedChecklists.map((item) => ({
+        _id: item._id, // Preserve existing checklist ID if present
         text: item.text.trim(),
         comment: item.comment?.trim() || undefined,
         type: item.type,

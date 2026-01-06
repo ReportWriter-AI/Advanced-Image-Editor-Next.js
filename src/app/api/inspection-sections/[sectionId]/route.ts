@@ -81,19 +81,50 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         return NextResponse.json({ error: 'Checklists must be an array' }, { status: 400 });
       }
 
-      const validatedChecklists = checklists.map((item: any, index: number) => ({
-        text: item.text || '',
-        comment: item.comment || undefined,
-        type: (item.type === 'status' ? 'status' : 'information') as 'status' | 'information',
-        answer_choices: Array.isArray(item.answer_choices) ? item.answer_choices : undefined,
-        default_checked: Boolean(item.default_checked),
-        default_selected_answers: Array.isArray(item.default_selected_answers)
-          ? item.default_selected_answers
-          : undefined,
-        order_index: typeof item.order_index === 'number' ? item.order_index : index,
-      }));
+      // Create a map of existing checklists by _id (as string) for efficient lookup
+      const existingChecklistsMap = new Map<string, any>();
+      section.checklists.forEach((cl: any) => {
+        if (cl._id) {
+          existingChecklistsMap.set(cl._id.toString(), cl);
+        }
+      });
 
-      section.checklists = validatedChecklists;
+      // Build the updated checklists array, preserving IDs where possible
+      const updatedChecklists: any[] = [];
+      const processedIds = new Set<string>();
+
+      checklists.forEach((item: any, index: number) => {
+        const checklistId = item._id ? String(item._id) : null;
+        
+        if (checklistId && existingChecklistsMap.has(checklistId)) {
+          // Update existing checklist in-place to preserve its _id
+          const existingChecklist = existingChecklistsMap.get(checklistId);
+          existingChecklist.text = item.text || '';
+          existingChecklist.comment = item.comment || undefined;
+          existingChecklist.type = (item.type === 'status' ? 'status' : 'information') as 'status' | 'information';
+          existingChecklist.answer_choices = Array.isArray(item.answer_choices) && item.answer_choices.length > 0 ? item.answer_choices : undefined;
+          existingChecklist.default_checked = Boolean(item.default_checked);
+          existingChecklist.default_selected_answers = Array.isArray(item.default_selected_answers) && item.default_selected_answers.length > 0 ? item.default_selected_answers : undefined;
+          existingChecklist.order_index = typeof item.order_index === 'number' ? item.order_index : index;
+          
+          updatedChecklists.push(existingChecklist);
+          processedIds.add(checklistId);
+        } else {
+          // Create new checklist (Mongoose will generate new _id)
+          updatedChecklists.push({
+            text: item.text || '',
+            comment: item.comment || undefined,
+            type: (item.type === 'status' ? 'status' : 'information') as 'status' | 'information',
+            answer_choices: Array.isArray(item.answer_choices) && item.answer_choices.length > 0 ? item.answer_choices : undefined,
+            default_checked: Boolean(item.default_checked),
+            default_selected_answers: Array.isArray(item.default_selected_answers) && item.default_selected_answers.length > 0 ? item.default_selected_answers : undefined,
+            order_index: typeof item.order_index === 'number' ? item.order_index : index,
+          });
+        }
+      });
+
+      // Replace the entire array (Mongoose will preserve _id for existing subdocuments)
+      section.checklists = updatedChecklists;
     }
 
     const updated = await section.save();
