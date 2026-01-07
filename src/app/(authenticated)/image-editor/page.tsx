@@ -895,7 +895,7 @@ function ImageEditorPageContent() {
   
 
   // Color options for all tools (arrow, circle, square)
-  const toolColors = ['#d63636', '#FF8C00', '#0066CC', '#10b981', '#800080']; // red, orange, blue, green, purple
+  const toolColors = ['#d63636', '#FF8C00', '#0066CC', '#4CBB17', '#800080']; // red, orange, blue, green, purple
 
   // Function to handle color selection for all tools
   const handleColorSelection = (color: string) => {
@@ -998,7 +998,7 @@ function ImageEditorPageContent() {
             className={`action-btn arrow-btn ${activeMode === 'arrow' ? 'active' : ''}`}
             onClick={() => handleActionClick('arrow')}
           >
-            <i className="fas fa-pencil-alt"></i>
+            <i className="fas fa-arrow-right"></i>
             <span className="btn-text">{activeMode === 'arrow' ? '' : ''}</span>
           </button>
           

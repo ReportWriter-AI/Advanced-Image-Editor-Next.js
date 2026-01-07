@@ -160,10 +160,11 @@
     width: 100%;
     max-width: 100%;
     border-radius: 8px;
-    overflow: hidden; /* clip any overflow so the image never bleeds outside */
+    overflow: visible; /* Allow magnifying glass to be visible */
     background: #ffffff; /* subtle background behind canvas */
     box-sizing: border-box;
     display: block;
+    position: relative; /* Enable absolute positioning for magnifying glass */
   }
 
   /* Ensure the canvas scales within its container and keeps aspect ratio */
@@ -210,4 +211,26 @@
     flex-direction: column;
     align-items: center;
     gap: 20px;
+  }
+
+  /* Magnifying Glass Styles */
+  .magnifyingGlass {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 80px;
+    height: 80px;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    overflow: hidden;
+    background: #ffffff;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+  }
+
+  .magnifyingGlassCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
   }

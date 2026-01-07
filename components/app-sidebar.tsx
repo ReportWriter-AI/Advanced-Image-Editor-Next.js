@@ -57,11 +57,11 @@ const data = {
 					url: "/inspections",
 					icon: ClipboardList,
 				},
-				{
-					title: "Reports",
-					url: "/reports",
-					icon: FileText,
-				},
+				// {
+				// 	title: "Reports",
+				// 	url: "/reports",
+				// 	icon: FileText,
+				// },
 				{
 					title: "Sample Reports",
 					url: "/sample-report",
