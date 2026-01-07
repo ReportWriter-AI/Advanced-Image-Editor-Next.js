@@ -55,14 +55,6 @@ import { MultiSelect, MultiSelectOption } from '@/components/ui/multi-select';
 import { cn } from '@/lib/utils';
 import CreatableSelect from 'react-select/creatable';
 
-const roleOptions = [
-  'Attorney',
-  'Insurance agent',
-  'Transaction coordinator',
-  'Title company',
-  'Other',
-];
-
 const personSchema = z.object({
   isCompany: z.boolean(),
   firstName: z.string().optional(),
@@ -74,7 +66,7 @@ const personSchema = z.object({
   homePhone: z.string().optional(),
   mobilePhone: z.string().optional(),
   personCompany: z.string().optional(),
-  role: z.enum(['Attorney', 'Insurance agent', 'Transaction coordinator', 'Title company', 'Other']).optional(),
+  role: z.string().optional(),
   categories: z.array(z.string()).optional(),
   internalNotes: z.string().optional(),
   internalAdminNotes: z.string().optional(),
@@ -277,6 +269,7 @@ export default function PeopleManager() {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [allCategoriesForInput, setAllCategoriesForInput] = useState<Category[]>([]);
   const [loadingAllCategories, setLoadingAllCategories] = useState(false);
+  const [roleOptions, setRoleOptions] = useState<string[]>([]);
 
   const form = useForm<PersonFormValues>({
     resolver: zodResolver(personSchema),
@@ -323,6 +316,25 @@ export default function PeopleManager() {
 
   useEffect(() => {
     loadAvailableCategories();
+  }, []);
+
+  // Fetch dropdown data from API
+  useEffect(() => {
+    const fetchDropdownData = async () => {
+      try {
+        const response = await fetch('/api/reusable-dropdowns', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          // Parse comma-separated strings into arrays
+          setRoleOptions(data.role ? data.role.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0) : []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch dropdown data:', error);
+      }
+    };
+    fetchDropdownData();
   }, []);
 
   const loadAllCategories = async () => {
