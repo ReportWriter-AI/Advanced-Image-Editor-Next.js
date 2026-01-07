@@ -828,8 +828,12 @@ export async function updateInspection(inspectionId: string, data: Partial<{
         } else if (mongoose.Types.ObjectId.isValid(value as string)) {
           acc[key] = new mongoose.Types.ObjectId(value as string);
         }
-      } else if (key === 'discountCode' && value && mongoose.Types.ObjectId.isValid(value as string)) {
-        acc[key] = new mongoose.Types.ObjectId(value as string);
+      } else if (key === 'discountCode') {
+        if (value === null || value === undefined) {
+          acc[key] = null; // Explicitly handle null/undefined to unset discount code
+        } else if (mongoose.Types.ObjectId.isValid(value as string)) {
+          acc[key] = new mongoose.Types.ObjectId(value as string);
+        }
       } else if ((key === 'clients' || key === 'agents' || key === 'listingAgent') && Array.isArray(value)) {
         // @ts-ignore
         acc[key] = value.map((id: string) => 

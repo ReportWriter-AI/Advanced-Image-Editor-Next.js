@@ -102,7 +102,7 @@ export default function InspectionEditPage() {
     orderId?: number;
     referralSource?: string;
     discountCode?: any;
-    discountCodeId?: string;
+    discountCodeId?: string | null;
     token?: string;
     customData?: Record<string, any>;
     internalNotes?: string;
@@ -195,6 +195,14 @@ export default function InspectionEditPage() {
   const [detailsAutoSaving, setDetailsAutoSaving] = useState(false);
   const [detailsLastSaved, setDetailsLastSaved] = useState<string | null>(null);
   const detailsAutoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const detailsValuesRef = useRef<{
+    discountCodeId?: string | null;
+    referralSource?: string;
+    customData?: Record<string, any>;
+    internalNotes?: string;
+    closingDate?: any;
+    endOfInspectionPeriod?: any;
+  }>({});
   
   const [uploadingLocationPhoto, setUploadingLocationPhoto] = useState(false);
   const [newLocationPhoto, setNewLocationPhoto] = useState<{ url: string; location: string } | null>(null);
@@ -349,6 +357,15 @@ export default function InspectionEditPage() {
         setInspectionDetails(data);
         // Extract triggers from inspection data
         setTriggers(data.triggers || []);
+        // Initialize detailsValuesRef with current values
+        detailsValuesRef.current = {
+          discountCodeId: data.discountCodeId,
+          referralSource: data.referralSource,
+          customData: data.customData,
+          internalNotes: data.internalNotes,
+          closingDate: data.closingDate,
+          endOfInspectionPeriod: data.endOfInspectionPeriod,
+        };
       } else {
         console.error('Failed to fetch inspection details');
       }
@@ -1469,45 +1486,39 @@ export default function InspectionEditPage() {
     }
   };
 
-  const triggerDetailsAutoSave = useCallback(() => {
-    if (detailsAutoSaveTimerRef.current) {
-      clearTimeout(detailsAutoSaveTimerRef.current);
-    }
-    
-    detailsAutoSaveTimerRef.current = setTimeout(() => {
-      performDetailsAutoSave();
-    }, 2000);
-  }, [inspectionDetails, inspectionId, currentUserId]);
-
-  const performDetailsAutoSave = async () => {
+  const performDetailsAutoSave = useCallback(async () => {
+    const currentValues = detailsValuesRef.current;
+    console.log('performDetailsAutoSave', currentValues.discountCodeId);
     setDetailsAutoSaving(true);
     
     try {
       const updatePayload: any = {};
       
-      if (inspectionDetails.referralSource !== undefined) {
-        updatePayload.referralSource = inspectionDetails.referralSource || null;
+      if (currentValues.referralSource !== undefined) {
+        updatePayload.referralSource = currentValues.referralSource || null;
       }
-      if (inspectionDetails.discountCodeId !== undefined) {
-        updatePayload.discountCode = inspectionDetails.discountCodeId || null;
+      // Include discountCode in payload if it was explicitly set (including null for clearing)
+      // null !== undefined is true, so this will include null values (cleared) and string values (set)
+      if (currentValues.discountCodeId !== undefined) {
+        updatePayload.discountCode = currentValues.discountCodeId || null;
       }
-      if (inspectionDetails.customData !== undefined) {
-        updatePayload.customData = inspectionDetails.customData;
+      if (currentValues.customData !== undefined) {
+        updatePayload.customData = currentValues.customData;
       }
-      if (inspectionDetails.internalNotes !== undefined) {
-        updatePayload.internalNotes = inspectionDetails.internalNotes || null;
+      if (currentValues.internalNotes !== undefined) {
+        updatePayload.internalNotes = currentValues.internalNotes || null;
       }
-      if (inspectionDetails.closingDate !== undefined && inspectionDetails.closingDate !== null) {
+      if (currentValues.closingDate !== undefined && currentValues.closingDate !== null) {
         updatePayload.closingDate = {
-          date: inspectionDetails.closingDate.date || null,
-          lastModifiedBy: currentUserId || inspectionDetails.closingDate.lastModifiedBy?._id || null,
+          date: currentValues.closingDate.date || null,
+          lastModifiedBy: currentUserId || currentValues.closingDate.lastModifiedBy?._id || null,
           lastModifiedAt: new Date(),
         };
       }
-      if (inspectionDetails.endOfInspectionPeriod !== undefined && inspectionDetails.endOfInspectionPeriod !== null) {
+      if (currentValues.endOfInspectionPeriod !== undefined && currentValues.endOfInspectionPeriod !== null) {
         updatePayload.endOfInspectionPeriod = {
-          date: inspectionDetails.endOfInspectionPeriod.date || null,
-          lastModifiedBy: currentUserId || inspectionDetails.endOfInspectionPeriod.lastModifiedBy?._id || null,
+          date: currentValues.endOfInspectionPeriod.date || null,
+          lastModifiedBy: currentUserId || currentValues.endOfInspectionPeriod.lastModifiedBy?._id || null,
           lastModifiedAt: new Date(),
         };
       }
@@ -1532,31 +1543,51 @@ export default function InspectionEditPage() {
     } finally {
       setDetailsAutoSaving(false);
     }
-  };
+  }, [inspectionId, currentUserId]);
+
+  const triggerDetailsAutoSave = useCallback(() => {
+    if (detailsAutoSaveTimerRef.current) {
+      clearTimeout(detailsAutoSaveTimerRef.current);
+    }
+    
+    detailsAutoSaveTimerRef.current = setTimeout(() => {
+      performDetailsAutoSave();
+    }, 2000);
+  }, [performDetailsAutoSave]);
 
   const updateReferralSource = (source: string | undefined) => {
     setInspectionDetails(prev => ({ ...prev, referralSource: source }));
+    detailsValuesRef.current.referralSource = source;
     triggerDetailsAutoSave();
   };
 
-  const updateDiscountCode = (codeId: string | undefined) => {
-    setInspectionDetails(prev => ({ ...prev, discountCodeId: codeId }));
+  const updateDiscountCode = (codeId: string | undefined | null) => {
+    // Set to null if explicitly cleared, undefined if not set, otherwise the string value
+    const valueToSet = codeId === null ? null : (codeId || undefined);
+    setInspectionDetails(prev => ({ ...prev, discountCodeId: valueToSet }));
+    // Store null explicitly when clearing, undefined when not set, string when set
+    detailsValuesRef.current.discountCodeId = codeId === null ? null : codeId;
     triggerDetailsAutoSave();
   };
 
   const updateCustomField = (fieldKey: string, value: any) => {
-    setInspectionDetails(prev => ({
-      ...prev,
-      customData: {
+    setInspectionDetails(prev => {
+      const newCustomData = {
         ...(prev.customData || {}),
         [fieldKey]: value,
-      },
-    }));
+      };
+      detailsValuesRef.current.customData = newCustomData;
+      return {
+        ...prev,
+        customData: newCustomData,
+      };
+    });
     triggerDetailsAutoSave();
   };
 
   const updateInternalNotes = (notes: string) => {
     setInspectionDetails(prev => ({ ...prev, internalNotes: notes }));
+    detailsValuesRef.current.internalNotes = notes;
     triggerDetailsAutoSave();
   };
 
@@ -1587,6 +1618,7 @@ export default function InspectionEditPage() {
       ...prev,
       closingDate: newClosingDate,
     }));
+    detailsValuesRef.current.closingDate = newClosingDate;
 
     setDetailsAutoSaving(true);
     try {
@@ -1647,6 +1679,7 @@ export default function InspectionEditPage() {
       ...prev,
       endOfInspectionPeriod: newEndOfInspectionPeriod,
     }));
+    detailsValuesRef.current.endOfInspectionPeriod = newEndOfInspectionPeriod;
 
     setDetailsAutoSaving(true);
     try {
@@ -5007,7 +5040,7 @@ export default function InspectionEditPage() {
                       label: `${code.code} (${code.type === 'percent' ? `${code.value}%` : `$${code.value}`})`,
                       discountCode: code,
                     })).find(opt => opt.value === inspectionDetails.discountCodeId) || null : null}
-                    onChange={(option: any) => updateDiscountCode(option?.value)}
+                    onChange={(option: any) => updateDiscountCode(option === null ? null : option?.value)}
                     options={discountCodes.map(code => ({
                       value: code._id,
                       label: `${code.code} (${code.type === 'percent' ? `${code.value}%` : `$${code.value}`})`,
@@ -6966,4 +6999,3 @@ export default function InspectionEditPage() {
     </div>
   );
 }
-
