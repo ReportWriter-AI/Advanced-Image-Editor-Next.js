@@ -45,6 +45,11 @@ type DefectTextParts = {
   paragraphs: string[];
 };
 
+// Video detection helper function
+const isVideo = (url: string): boolean => {
+  return /\.(mp4|mov|webm|3gp|3gpp|m4v)(\?.*)?$/i.test(url);
+};
+
 // Local currency formatter for compact view
 const formatCurrency = (amount: number) => {
   try {
@@ -913,32 +918,12 @@ export default function Page() {
     }
   }, [resolvedInspectionId, informationBlocks.length]); // Only re-run when id changes or informationBlocks initially loads
 
-  // Severity mapping functions - defined before handlers that use them
-  const severityToImportance = useCallback((severity?: string) => {
-    if (!severity) return 'Immediate Attention';
-    switch (severity) {
-      case 'major_hazard': return 'Major Hazard';
-      case 'repair_needed': return 'Items for Repair';
-      case 'maintenance_minor': return 'Maintenance Items';
-      default: return 'Immediate Attention';
-    }
-  }, []);
-
-  const severityToCategory = useCallback((severity?: string): 'red' | 'orange' | 'blue' | 'purple' => {
-    if (!severity) return 'red';
-    switch (severity) {
-      case 'major_hazard': return 'red';
-      case 'repair_needed': return 'orange';
-      case 'maintenance_minor': return 'blue';
-      default: return 'red';
-    }
-  }, []);
 
   const handleDownloadPDF = async (reportType: 'full' | 'summary' = 'full') => {
     try {
       // Filter sections based on report type
       const sectionsToExport = reportType === 'summary' 
-        ? reportSections.filter(section => section.severity !== 'maintenance_minor') // Exclude maintenance_minor items for summary
+        ? reportSections.filter(section => nearestCategory(section.color) !== 'blue') // Exclude maintenance_minor items for summary
         : reportSections; // All sections for full report
       
       // Transform reportSections into defects payload compatible with API
@@ -1031,7 +1016,7 @@ export default function Page() {
 
       // Filter sections based on report type
       const sectionsToExport = reportType === 'summary' 
-        ? reportSections.filter(section => section.severity !== 'maintenance_minor') // Exclude maintenance_minor items for summary
+        ? reportSections.filter(section => nearestCategory(section.color) !== 'blue') // Exclude maintenance_minor items for summary
         : reportSections; // All sections for full report
 
       // Build summary table rows and totals - ONLY for sections with actual defects
@@ -1058,7 +1043,7 @@ export default function Page() {
         .map((s) => {
           const defectParts = splitDefectText(s.narrative || s.defect_description || s.defect || "");
           const summaryDefect = s.narrative || s.defectTitle || defectParts.title || (s.defect || "").trim() || (defectParts.paragraphs[0] || "");
-          const cat = severityToCategory(s.severity);
+          const cat = nearestCategory(s.color) || 'red';
           const catClass = {
             red: 'rpt-row-cat-red',
             orange: 'rpt-row-cat-orange',
@@ -1080,7 +1065,7 @@ export default function Page() {
         ? sectionsToExport.map((s) => {
             const defectParts = splitDefectText(s.narrative || s.defect_description || s.defect || "");
             const defectTitle = (s.narrative || s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
-            const cat = severityToCategory(s.severity);
+            const cat = nearestCategory(s.color) || 'red';
             const catClass = {
               red: 'rpt-row-cat-red',
               orange: 'rpt-row-cat-orange',
@@ -1124,10 +1109,10 @@ export default function Page() {
           const selectedRgb = parseColorToRgb(selectedColor);
           const shadowColor = selectedRgb ? `rgba(${selectedRgb.r}, ${selectedRgb.g}, ${selectedRgb.b}, 0.18)` : 'rgba(214, 54, 54, 0.18)';
           const highlightBg = selectedRgb ? `rgba(${selectedRgb.r}, ${selectedRgb.g}, ${selectedRgb.b}, 0.12)` : 'rgba(214, 54, 54, 0.12)';
-          const badgeLabel = escapeHtml(severityToImportance(s.severity));
+          const badgeLabel = escapeHtml(colorToImportance(selectedColor));
           const locationText = escapeHtml(s.location || 'Not specified');
 
-          const category = severityToCategory(s.severity);
+          const category = nearestCategory(selectedColor) || 'red';
           const defectParts = splitDefectText(s.narrative || s.defect_description || s.defect || "");
           const summaryTitle = (s.narrative || s.defectTitle || defectParts.title || (s.defect || "").trim() || '').trim();
           const summaryBody = (defectParts.paragraphs && defectParts.paragraphs.length > 0
@@ -2203,7 +2188,6 @@ export default function Page() {
           thumbnail: defect.thumbnail,
           title: defect.title || '',
           narrative: defect.narrative || '',
-          severity: defect.severity || '',
           trade: defect.trade || '',
           estimatedCosts: {
             materials: "General materials",
@@ -2271,19 +2255,15 @@ export default function Page() {
     return cat === 'red' || cat === 'purple';
   };
 
-  const isHazardSeverity = (severity?: string) => {
-    return severity === 'major_hazard';
-  };
-
   const visibleSections = useMemo(() => {
     let sections = reportSections;
     
     // Filter sections based on mode
     if (filterMode === 'hazard') {
-      sections = reportSections.filter((r) => isHazardSeverity(r.severity));
+      sections = reportSections.filter((r) => isHazardColor(r.color));
     } else if (filterMode === 'summary') {
       // For summary, exclude maintenance_minor (maintenance items) defects
-      sections = reportSections.filter((r) => r.severity !== 'maintenance_minor');
+      sections = reportSections.filter((r) => nearestCategory(r.color) !== 'blue');
     }
     
     // Add sections that have information blocks but no defects
@@ -2751,7 +2731,7 @@ export default function Page() {
                         // Removed defects summary column cell
                         // Defects summary column removed; no need to compute bodyCandidate/defectSummary
 
-                        const cat = severityToCategory(section.severity);
+                        const cat = nearestCategory(section.color) || 'red';
                         let catClass = '';
                         if(cat === 'red') catClass = styles.summaryRowCatRed;
                         else if(cat === 'orange') catClass = styles.summaryRowCatOrange;
@@ -2976,6 +2956,15 @@ export default function Page() {
                                                           height={isMobile ? "300px" : "400px"}
                                                         />
                                                       </div>
+                                                    ) : isVideo(img.url) ? (
+                                                      <video
+                                                        src={getProxiedSrc(img.url)}
+                                                        controls
+                                                        preload="metadata"
+                                                        onClick={() => openLightbox(getProxiedSrc(img.url))}
+                                                        className={styles.informationImage}
+                                                        style={{ cursor: 'pointer' }}
+                                                      />
                                                     ) : (
                                                       <img
                                                         src={getProxiedSrc(img.url)}
@@ -3834,7 +3823,7 @@ export default function Page() {
                             )} */}
                           </span>
                           <span className={styles.importanceBadgeSmall} style={{ background: getSelectedColor(section) }}>
-                            {severityToImportance(section.severity)}
+                            {colorToImportance(section.color)}
                           </span>
                         </div>
                         <div className={styles.defectDivider} />
@@ -3954,33 +3943,47 @@ export default function Page() {
                   onClick={() => { setLightboxOpen(false); setLightboxSrc(null); setZoomScale(1); setTranslate({ x: 0, y: 0 }); }}
                   role="dialog"
                   aria-modal="true"
-                  aria-label="Image preview"
+                  aria-label={isVideo(lightboxSrc) ? "Video preview" : "Image preview"}
                 >
                   <button
                     type="button"
                     className={styles.lightboxClose}
-                    aria-label="Close image"
+                    aria-label="Close"
                     onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); setLightboxSrc(null); setZoomScale(1); setTranslate({ x:0, y:0 }); }}
                   >
                     ×
                   </button>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    ref={imageRef}
-                    src={lightboxSrc}
-                    alt="Zoomed defect"
-                    className={styles.lightboxImage}
-                    onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={toggleZoom}
-                    onMouseDown={startPanHandler}
-                    onLoad={onImageLoad}
-                    style={{
-                      transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${zoomScale})`,
-                      cursor: zoomScale > 1 ? (isPanning ? 'grabbing' : 'grab') : 'zoom-in',
-                      transition: isPanning ? 'none' : 'transform 80ms linear',
-                      willChange: 'transform',
-                    }}
-                  />
+                  {isVideo(lightboxSrc) ? (
+                    <video
+                      src={lightboxSrc}
+                      controls
+                      className={styles.lightboxImage}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        maxWidth: '90vw',
+                        maxHeight: '90vh',
+                        objectFit: 'contain',
+                      }}
+                    />
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      ref={imageRef}
+                      src={lightboxSrc}
+                      alt="Zoomed defect"
+                      className={styles.lightboxImage}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={toggleZoom}
+                      onMouseDown={startPanHandler}
+                      onLoad={onImageLoad}
+                      style={{
+                        transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${zoomScale})`,
+                        cursor: zoomScale > 1 ? (isPanning ? 'grabbing' : 'grab') : 'zoom-in',
+                        transition: isPanning ? 'none' : 'transform 80ms linear',
+                        willChange: 'transform',
+                      }}
+                    />
+                  )}
                 </div>
               )}
             </div>
