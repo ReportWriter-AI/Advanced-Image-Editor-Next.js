@@ -2044,9 +2044,6 @@ const captureImage = () => {
       // Start drawing new shape only if not clicking on an existing shape
       setIsDrawing(true);
       setCurrentLine([{ x: mouseX, y: mouseY }]);
-      // Initialize magnifying glass
-      setMagnifyMousePosition({ x: mouseX, y: mouseY });
-      setShowMagnifyingGlass(true);
       return;
     }
   };
@@ -3115,7 +3112,7 @@ const drawSquare = (
     );
 
     // Draw a crosshair at the center to show the exact cursor position
-    ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
+    ctx.strokeStyle = 'rgba(220, 53, 69, 0.9)';
     ctx.lineWidth = 1;
     ctx.setLineDash([]);
     

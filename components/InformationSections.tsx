@@ -322,9 +322,21 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
 
 
+  // Helper function to check if a block's section still exists
+  const isBlockValid = (block: IInformationBlock): boolean => {
+    if (!block.section_id) return false;
+    const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
+    if (!sectionId) return false;
+    // Check if section exists in the sections array
+    return sections.some(s => s._id === sectionId);
+  };
+
   // Helper function to get all checklist items for a block (including inspection-only)
   const getBlockChecklists = (block: IInformationBlock): any[] => {
-    const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
+    // Safety check: ensure block.section_id exists and is valid
+    if (!block.section_id) return [];
+    const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id?._id;
+    if (!sectionId) return [];
     const existingIds = block.selected_checklist_ids || [];
     
     // Check if there are inspection-only selections for this section
@@ -2172,8 +2184,21 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     }
   };
 
-  const sectionBlocks = (sectionId: string) =>
-    blocks.filter(b => (typeof b.section_id === 'string' ? b.section_id === sectionId : (b.section_id as ISection)._id === sectionId));
+  const sectionBlocks = (sectionId: string) => {
+    // First verify that the section exists
+    const sectionExists = sections.some(s => s._id === sectionId);
+    if (!sectionExists) return [];
+    
+    // Filter blocks for this section and ensure they're valid
+    return blocks.filter(b => {
+      // Check if block is valid (section still exists)
+      if (!isBlockValid(b)) return false;
+      // Check if block belongs to this section
+      return typeof b.section_id === 'string' 
+        ? b.section_id === sectionId 
+        : (b.section_id as ISection)?._id === sectionId;
+    });
+  };
 
   // Helper: Section is complete ONLY when ALL Status fields for that section
   // (template + inspection-only) are either selected in some block OR hidden.
@@ -2395,7 +2420,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                   <div style={{ fontSize: '0.875rem', color: '#374151' }}>
                     <div style={{ marginLeft: '0rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
                       {(() => {
-                        const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id._id;
+                        // Safety check: ensure block.section_id exists before processing
+                        if (!block.section_id) return null;
+                        const sectionId = typeof block.section_id === 'string' ? block.section_id : block.section_id?._id;
+                        if (!sectionId) return null;
+                        // Verify section still exists
+                        const sectionExists = sections.some(s => s._id === sectionId);
+                        if (!sectionExists) return null;
+                        
                         const rawItems = getBlockChecklists(block);
                         // Resolve to full objects so we can reliably read type/text/comment
                         const resolved = rawItems
