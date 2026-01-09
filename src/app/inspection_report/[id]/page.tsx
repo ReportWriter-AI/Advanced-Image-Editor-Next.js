@@ -3920,7 +3920,7 @@ export default function Page() {
                           <td colSpan={2} className={styles.totalLabel}>Total</td>
                           <td className={styles.hiddenOnMobile}></td>
                           <td style={{ textAlign: 'right' }}>
-                            ${defectSections.reduce((total, section) => total + (section.estimatedCosts?.totalEstimatedCost || 0), 0)}
+                            ${defectSections.reduce((total, section) => total + (section.estimatedCosts?.totalEstimatedCost || 0), 0).toFixed(2)}
                           </td>
                         </tr>
                       </tfoot>

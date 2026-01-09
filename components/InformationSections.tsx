@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import FileUpload from './FileUpload';
 import LocationSearch from './LocationSearch';
 import { LOCATION_OPTIONS } from '../constants/locations';
-import { splitCommaSeparated } from '@/lib/utils';
+import { splitCommaSeparated, extractPlainTextFromHtml, truncateText } from '@/lib/utils';
 import { sanitizeHtml } from '@/lib/sanitize-html';
 
 interface ISectionChecklist {
@@ -2431,13 +2431,18 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                       />
                                       <span style={{ fontWeight: 600, color: '#111827', lineHeight: 1.45, whiteSpace: 'normal' }}>{item.text}</span>
                                     </div>
-                                    {item.comment && item.comment.trim() !== '' && (
-                                      <div 
-                                        style={{ marginLeft: '2rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.6 }} 
-                                        title={item.comment.replace(/<[^>]*>/g, '')}
-                                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.comment) }}
-                                      />
-                                    )}
+                                    {item.comment && item.comment.trim() !== '' && (() => {
+                                      const plainText = extractPlainTextFromHtml(item.comment);
+                                      const truncated = truncateText(plainText, 150);
+                                      return (
+                                        <div 
+                                          style={{ marginLeft: '2rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.6 }} 
+                                          title={plainText}
+                                        >
+                                          {truncated}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 ))}
                               </div>
@@ -2473,21 +2478,26 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   </span>
                                   <span style={{ fontWeight: 600, color: '#111827', lineHeight: 1.45, whiteSpace: 'normal', flex: 1, minWidth: 0 }}>{item.text}</span>
                                 </div>
-                                {item.comment && item.comment.trim() !== '' && (
-                                  <div 
-                                    style={{ 
-                                      marginLeft: isMobile ? 0 : '8.125rem',
-                                      color: '#6b7280',
-                                      fontSize: '0.8125rem',
-                                      paddingTop: '0.125rem',
-                                      lineHeight: 1.6,
-                                      whiteSpace: 'normal',
-                                      wordBreak: 'break-word'
-                                    }} 
-                                    title={item.comment.replace(/<[^>]*>/g, '')}
-                                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.comment) }}
-                                  />
-                                )}
+                                {item.comment && item.comment.trim() !== '' && (() => {
+                                  const plainText = extractPlainTextFromHtml(item.comment);
+                                  const truncated = truncateText(plainText, 150);
+                                  return (
+                                    <div 
+                                      style={{ 
+                                        marginLeft: isMobile ? 0 : '8.125rem',
+                                        color: '#6b7280',
+                                        fontSize: '0.8125rem',
+                                        paddingTop: '0.125rem',
+                                        lineHeight: 1.6,
+                                        whiteSpace: 'normal',
+                                        wordBreak: 'break-word'
+                                      }} 
+                                      title={plainText}
+                                    >
+                                      {truncated}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             ))}
                           </>
@@ -2762,12 +2772,18 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   </label>
                                 </div>
                               )} */}
-                              {cl.comment && (
-                                <div 
-                                  style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}
-                                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(cl.comment) }}
-                                />
-                              )}
+                              {cl.comment && (() => {
+                                const plainText = extractPlainTextFromHtml(cl.comment);
+                                const truncated = truncateText(plainText, 150);
+                                return (
+                                  <div 
+                                    style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}
+                                    title={plainText}
+                                  >
+                                    {truncated}
+                                  </div>
+                                );
+                              })()}
                             </div>
 
                             {/* <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}> */}
@@ -3390,12 +3406,18 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                   </label>
                                 </div>
                               )} */}
-                              {cl.comment && (
-                                <div 
-                                  style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}
-                                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(cl.comment) }}
-                                />
-                              )}
+                              {cl.comment && (() => {
+                                const plainText = extractPlainTextFromHtml(cl.comment);
+                                const truncated = truncateText(plainText, 150);
+                                return (
+                                  <div 
+                                    style={{ marginLeft: '0.5rem', marginTop: '0.375rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}
+                                    title={plainText}
+                                  >
+                                    {truncated}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             <div style={{ display: 'flex', gap: '0.375rem', marginLeft: '0.5rem', position: 'relative', flexShrink: 0 }} onClick={(e) => e.preventDefault()}>
                               {/* <button
