@@ -2988,4 +2988,14 @@ body div.submit-section div.submit-controls div.location-button-container button
   pointer-events: auto !important;
 }
 
+/* Scrollbar hide utility for gallery thumbnail strip */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
 
