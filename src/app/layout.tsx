@@ -2,10 +2,11 @@ import type { Metadata } from 'next'
 import './globals.css'
 import ClientLayout from '../components/ClientLayout'
 import { Toaster } from '@/components/ui/sonner'
+import Providers from './provider'
 
 export const metadata: Metadata = {
-  title: 'Image Editor - Edit Your Images Online',
-  description: 'Upload and edit your images with cropping, arrows, and more',
+  title: 'Report Writer AI',
+  description: 'Report writing made easy',
 }
 
 export default function RootLayout({
@@ -26,9 +27,11 @@ export default function RootLayout({
         <link rel="stylesheet" href="/shared-report-styles.css" />
       </head>
       <body>
+        <Providers>
         <ClientLayout>
           {children}
         </ClientLayout>
+        </Providers>
         <Toaster />
       </body>
     </html>

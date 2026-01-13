@@ -57,6 +57,11 @@ const data = {
 					url: "/inspections",
 					icon: ClipboardList,
 				},
+				{
+					title: "Templates",
+					url: "/templates",
+					icon: FileText,
+				},
 				// {
 				// 	title: "Reports",
 				// 	url: "/reports",
