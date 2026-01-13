@@ -13,6 +13,7 @@ import {
   PlusCircle,
   Edit2,
   Trash2,
+  CheckSquare,
 } from "lucide-react";
 import {
   DndContext,
@@ -55,6 +56,7 @@ import {
   TemplateSubsection,
 } from "@/components/api/queries/templateSubsections";
 import { TemplateSubsectionForm } from "./TemplateSubsectionForm";
+import { ChecklistModal } from "./ChecklistModal";
 
 interface SubsectionsModalProps {
   open: boolean;
@@ -75,6 +77,8 @@ export function SubsectionsModal({
   const [editingSubsection, setEditingSubsection] = useState<TemplateSubsection | null>(null);
   const [deletingSubsectionId, setDeletingSubsectionId] = useState<string | null>(null);
   const [subsections, setSubsections] = useState<TemplateSubsection[]>([]);
+  const [checklistModalOpen, setChecklistModalOpen] = useState(false);
+  const [selectedSubsectionForChecklist, setSelectedSubsectionForChecklist] = useState<TemplateSubsection | null>(null);
 
   const { data, isLoading, error } = useTemplateSubsectionsQuery(templateId, sectionId);
   const createSubsectionMutation = useCreateTemplateSubsectionMutation(templateId, sectionId);
@@ -258,6 +262,10 @@ export function SubsectionsModal({
                             reorderBusy={reorderSubsectionsMutation.isPending}
                             onEdit={() => setEditingSubsection(subsection)}
                             onDelete={() => setDeletingSubsectionId(subsection._id || null)}
+                            onViewChecklist={() => {
+                              setSelectedSubsectionForChecklist(subsection);
+                              setChecklistModalOpen(true);
+                            }}
                           />
                         ))}
                       </tbody>
@@ -317,6 +325,17 @@ export function SubsectionsModal({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {selectedSubsectionForChecklist && (
+        <ChecklistModal
+          open={checklistModalOpen}
+          onOpenChange={setChecklistModalOpen}
+          templateId={templateId}
+          sectionId={sectionId}
+          subsectionId={selectedSubsectionForChecklist._id || ""}
+          subsectionName={selectedSubsectionForChecklist.name}
+        />
+      )}
     </>
   );
 }
@@ -327,6 +346,7 @@ interface SortableSubsectionRowProps {
   reorderBusy: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onViewChecklist: () => void;
 }
 
 function SortableSubsectionRow({
@@ -335,6 +355,7 @@ function SortableSubsectionRow({
   reorderBusy,
   onEdit,
   onDelete,
+  onViewChecklist,
 }: SortableSubsectionRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: subsection._id || "",
@@ -392,6 +413,15 @@ function SortableSubsectionRow({
       </td>
       <td className="px-4 py-3 align-top">
         <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onViewChecklist}
+            disabled={reorderBusy}
+            title="Add Checklist"
+          >
+            <CheckSquare className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="icon"

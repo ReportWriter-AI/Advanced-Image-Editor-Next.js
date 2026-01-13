@@ -1,5 +1,17 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export interface ITemplateChecklist {
+  _id?: mongoose.Types.ObjectId;
+  type: 'status' | 'information' | 'defects';
+  name: string;
+  field?: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'signature';
+  location?: string;
+  comment?: string;
+  defaultChecked?: boolean;
+  answerChoices?: string[]; // For multipleAnswers, number, numberRange
+  orderIndex: number;
+}
+
 export interface ITemplateSubsection {
   _id?: mongoose.Types.ObjectId;
   name: string;
@@ -7,6 +19,7 @@ export interface ITemplateSubsection {
   includeInEveryReport: boolean;
   inspectorNotes?: string;
   orderIndex: number;
+  checklists?: ITemplateChecklist[];
 }
 
 export interface ITemplateSection {
@@ -32,6 +45,45 @@ export interface ITemplate extends Document {
   updatedAt: Date;
 }
 
+const TemplateChecklistSchema = new Schema<ITemplateChecklist>(
+  {
+    type: {
+      type: String,
+      enum: ['status', 'information', 'defects'],
+      required: true,
+    },
+    name: {
+      type: String,
+      required: [true, 'Checklist name is required'],
+      trim: true,
+    },
+    field: {
+      type: String,
+      enum: ['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature'],
+    },
+    location: {
+      type: String,
+      trim: true,
+    },
+    comment: {
+      type: String,
+    },
+    defaultChecked: {
+      type: Boolean,
+      default: false,
+    },
+    answerChoices: {
+      type: [String],
+      default: undefined,
+    },
+    orderIndex: {
+      type: Number,
+      required: true,
+    },
+  },
+  { _id: true, timestamps: false }
+);
+
 const TemplateSubsectionSchema = new Schema<ITemplateSubsection>(
   {
     name: {
@@ -53,6 +105,10 @@ const TemplateSubsectionSchema = new Schema<ITemplateSubsection>(
     orderIndex: {
       type: Number,
       required: true,
+    },
+    checklists: {
+      type: [TemplateChecklistSchema],
+      default: [],
     },
   },
   { _id: true, timestamps: false }
