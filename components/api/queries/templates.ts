@@ -24,3 +24,34 @@ export const useTemplatesQuery =  () =>
 			},
 		})
 	}
+
+	export const useReorderTemplatesMutation = () => {
+		const queryClient = useQueryClient()
+		return useMutation({
+			mutationFn: (payload: { templates: Array<{ id: string; order: number }> }) =>
+				axios.patch(apiRoutes.templates.reorder, payload),
+			onSuccess: () => {
+				queryClient.invalidateQueries({ queryKey: [apiRoutes.templates.get] });
+				toast.success('Template order updated');
+			},
+			onError: (error: any) => {
+				toast.error(error.response?.data?.error || 'Failed to reorder templates');
+				return Promise.reject(error);
+			},
+		})
+	}
+
+	export const useDeleteTemplateMutation = () => {
+		const queryClient = useQueryClient()
+		return useMutation({
+			mutationFn: (templateId: string) => axios.delete(`/templates/${templateId}`),
+			onSuccess: (response) => {
+				queryClient.invalidateQueries({ queryKey: [apiRoutes.templates.get] });
+				toast.success(response.data?.message || 'Template deleted');
+			},
+			onError: (error: any) => {
+				toast.error(error.response?.data?.error || 'Failed to delete template');
+				return Promise.reject(error);
+			},
+		})
+	}

@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     }
 
     const templates = await Template.find({ company: currentUser.company })
-      .sort({ createdAt: -1 })
+      .sort({ orderIndex: 1, createdAt: -1 })
       .lean();
 
     return NextResponse.json({ templates });

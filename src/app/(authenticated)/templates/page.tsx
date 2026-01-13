@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,16 +19,35 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   AlertCircle,
+  GripVertical,
   Loader2,
   PlusCircle,
+  Pencil,
+  Trash2,
 } from "lucide-react";
-import { useTemplatesQuery, useCreateTemplateMutation } from "@/components/api/queries/templates";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useTemplatesQuery, useCreateTemplateMutation, useReorderTemplatesMutation, useDeleteTemplateMutation } from "@/components/api/queries/templates";
 
 interface Template {
   _id: string;
   name: string;
   company: string;
   createdBy: string;
+  orderIndex?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,18 +56,122 @@ export default function TemplatesPage() {
   const router = useRouter();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
 
   const { data, isLoading, error } = useTemplatesQuery();
   const createTemplateMutation = useCreateTemplateMutation();
+  const reorderTemplatesMutation = useReorderTemplatesMutation();
+  const deleteTemplateMutation = useDeleteTemplateMutation();
 
-  const templates: Template[] = useMemo(() => {
-    return Array.isArray(data?.data?.templates) ? data.data.templates : [];
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
+
+  useEffect(() => {
+    if (data?.data?.templates) {
+      const normalized: Template[] = Array.isArray(data.data.templates)
+        ? data.data.templates.map((template: Template, index: number) => ({
+            ...template,
+            orderIndex:
+              typeof template.orderIndex === "number" && Number.isFinite(template.orderIndex)
+                ? template.orderIndex
+                : index + 1,
+          }))
+        : [];
+      setTemplates(normalized);
+    }
   }, [data]);
 
+  const orderedTemplates = useMemo(() => {
+    return [...templates].sort((a, b) => {
+      const aOrder = Number.isFinite(a.orderIndex) ? (a.orderIndex as number) : Number.MAX_SAFE_INTEGER;
+      const bOrder = Number.isFinite(b.orderIndex) ? (b.orderIndex as number) : Number.MAX_SAFE_INTEGER;
+
+      if (aOrder === bOrder) {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+
+      return aOrder - bOrder;
+    });
+  }, [templates]);
+
   const noTemplates = useMemo(
-    () => !isLoading && templates.length === 0,
-    [isLoading, templates.length]
+    () => !isLoading && orderedTemplates.length === 0,
+    [isLoading, orderedTemplates.length]
   );
+
+  const commitReorder = useCallback(
+    async (nextTemplates: Template[]) => {
+      try {
+        const payload = nextTemplates.map((template, index) => ({
+          id: template._id,
+          order: index + 1,
+        }));
+
+        await reorderTemplatesMutation.mutateAsync({ templates: payload });
+      } catch (error: any) {
+        console.error("Error reordering templates:", error);
+        // Error is already handled by the mutation's onError callback
+      }
+    },
+    [reorderTemplatesMutation]
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (reorderTemplatesMutation.isPending || isLoading) {
+        return;
+      }
+
+      const { active, over } = event;
+      if (!over || active.id === over.id) {
+        return;
+      }
+
+      const oldIndex = orderedTemplates.findIndex((template) => template._id === active.id);
+      const newIndex = orderedTemplates.findIndex((template) => template._id === over.id);
+
+      if (oldIndex === -1 || newIndex === -1) {
+        return;
+      }
+
+      const reordered = arrayMove(orderedTemplates, oldIndex, newIndex).map((template, index) => ({
+        ...template,
+        orderIndex: index + 1,
+      }));
+
+      setTemplates(reordered);
+      void commitReorder(reordered);
+    },
+    [orderedTemplates, commitReorder, reorderTemplatesMutation.isPending, isLoading]
+  );
+
+  const reorderDisabled = reorderTemplatesMutation.isPending || isLoading || orderedTemplates.length <= 1;
+
+  const openDeleteDialog = (template: Template) => {
+    if (reorderTemplatesMutation.isPending) {
+      return;
+    }
+    setTemplateToDelete(template);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!templateToDelete) return;
+
+    try {
+      await deleteTemplateMutation.mutateAsync(templateToDelete._id);
+      setDeleteDialogOpen(false);
+      setTemplateToDelete(null);
+    } catch (error: any) {
+      console.error("Delete template error:", error);
+      // Error is already handled by the mutation's onError callback
+    }
+  };
 
   const handleCreateTemplate = async () => {
     if (!templateName.trim()) {
@@ -109,36 +232,39 @@ export default function TemplatesPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="min-w-full divide-y divide-muted border-collapse text-sm">
-            <thead className="bg-muted/50 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Template Name</th>
-                <th className="px-4 py-3">Created At</th>
-                <th className="px-4 py-3">Updated At</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-muted">
-              {templates.map((template) => (
-                <tr
-                  key={template._id}
-                  className="hover:bg-muted/30 cursor-pointer"
-                  onClick={() => router.push(`/templates/${template._id}`)}
-                >
-                  <td className="px-4 py-3">
-                    <span className="font-medium text-foreground">{template.name}</span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(template.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(template.updatedAt).toLocaleDateString()}
-                  </td>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="min-w-full divide-y divide-muted border-collapse text-sm">
+              <thead className="bg-muted/50 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="w-12 px-4 py-3 text-center">Order</th>
+                  <th className="px-4 py-3">Template Name</th>
+                  <th className="px-4 py-3">Created At</th>
+                  <th className="px-4 py-3">Updated At</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <SortableContext
+                items={orderedTemplates.map((template) => template._id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <tbody className="divide-y divide-muted">
+                  {orderedTemplates.map((template) => (
+                    <SortableTemplateRow
+                      key={template._id}
+                      template={template}
+                      reorderDisabled={reorderDisabled}
+                      reorderBusy={reorderTemplatesMutation.isPending}
+                      onNavigate={() => router.push(`/templates/${template._id}`)}
+                      onEdit={() => router.push(`/templates/${template._id}`)}
+                      onDelete={() => openDeleteDialog(template)}
+                    />
+                  ))}
+                </tbody>
+              </SortableContext>
+            </table>
+          </div>
+        </DndContext>
       )}
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -191,6 +317,124 @@ export default function TemplatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Template</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <span className="font-semibold">{templateToDelete?.name}</span>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setTemplateToDelete(null);
+              }}
+              disabled={deleteTemplateMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteTemplate} disabled={deleteTemplateMutation.isPending}>
+              {deleteTemplateMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+interface SortableTemplateRowProps {
+  template: Template;
+  reorderDisabled: boolean;
+  reorderBusy: boolean;
+  onNavigate: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function SortableTemplateRow({
+  template,
+  reorderDisabled,
+  reorderBusy,
+  onNavigate,
+  onEdit,
+  onDelete,
+}: SortableTemplateRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: template._id,
+    disabled: reorderDisabled,
+  });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={`hover:bg-muted/30 ${isDragging ? "opacity-60" : ""} ${!reorderDisabled ? "cursor-pointer" : ""}`}
+      onClick={!reorderDisabled ? onNavigate : undefined}
+      data-template-id={template._id}
+    >
+      <td className="w-12 px-4 py-3 align-top">
+        <button
+          type="button"
+          className={`flex h-8 w-8 items-center justify-center rounded border ${
+            reorderDisabled ? "cursor-not-allowed opacity-40" : "cursor-grab hover:bg-muted"
+          }`}
+          aria-label="Drag to reorder"
+          disabled={reorderDisabled}
+          {...attributes}
+          {...(!reorderDisabled ? listeners : {})}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      </td>
+      <td className="px-4 py-3 align-top">
+        <span className="font-medium text-foreground">{template.name}</span>
+      </td>
+      <td className="px-4 py-3 align-top text-muted-foreground">
+        {new Date(template.createdAt).toLocaleDateString()}
+      </td>
+      <td className="px-4 py-3 align-top text-muted-foreground">
+        {new Date(template.updatedAt).toLocaleDateString()}
+      </td>
+      <td className="px-4 py-3 align-top text-right">
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            title="Edit template"
+            disabled={reorderBusy}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            title="Delete template"
+            disabled={reorderBusy}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </td>
+    </tr>
   );
 }
