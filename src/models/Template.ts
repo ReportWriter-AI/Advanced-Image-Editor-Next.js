@@ -1,5 +1,14 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export interface ITemplateSubsection {
+  _id?: mongoose.Types.ObjectId;
+  name: string;
+  informationalOnly: boolean;
+  includeInEveryReport: boolean;
+  inspectorNotes?: string;
+  orderIndex: number;
+}
+
 export interface ITemplateSection {
   _id?: mongoose.Types.ObjectId;
   name: string;
@@ -10,6 +19,7 @@ export interface ITemplateSection {
   inspectionGuidelines?: string;
   inspectorNotes?: string;
   orderIndex: number;
+  subsections: ITemplateSubsection[];
 }
 
 export interface ITemplate extends Document {
@@ -21,6 +31,32 @@ export interface ITemplate extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
+
+const TemplateSubsectionSchema = new Schema<ITemplateSubsection>(
+  {
+    name: {
+      type: String,
+      required: [true, 'Subsection name is required'],
+      trim: true,
+    },
+    informationalOnly: {
+      type: Boolean,
+      default: false,
+    },
+    includeInEveryReport: {
+      type: Boolean,
+      default: true,
+    },
+    inspectorNotes: {
+      type: String,
+    },
+    orderIndex: {
+      type: Number,
+      required: true,
+    },
+  },
+  { _id: true, timestamps: false }
+);
 
 const TemplateSectionSchema = new Schema<ITemplateSection>(
   {
@@ -55,6 +91,10 @@ const TemplateSectionSchema = new Schema<ITemplateSection>(
     orderIndex: {
       type: Number,
       required: true,
+    },
+    subsections: {
+      type: [TemplateSubsectionSchema],
+      default: [],
     },
   },
   { _id: true, timestamps: false }

@@ -14,6 +14,7 @@ import {
   PlusCircle,
   Edit2,
   Trash2,
+  List,
 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import {
@@ -50,6 +51,7 @@ import {
   TemplateSection,
 } from "@/components/api/queries/templateSections";
 import { TemplateSectionForm } from "./_components/TemplateSectionForm";
+import { SubsectionsModal } from "./_components/SubsectionsModal";
 
 export default function TemplatePage() {
   const params = useParams();
@@ -60,6 +62,8 @@ export default function TemplatePage() {
   const [editingSection, setEditingSection] = useState<TemplateSection | null>(null);
   const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null);
   const [sections, setSections] = useState<TemplateSection[]>([]);
+  const [subsectionsModalOpen, setSubsectionsModalOpen] = useState(false);
+  const [selectedSectionForSubsections, setSelectedSectionForSubsections] = useState<TemplateSection | null>(null);
 
   const { data, isLoading, error } = useTemplateSectionsQuery(templateId);
   const createSectionMutation = useCreateTemplateSectionMutation(templateId);
@@ -179,6 +183,11 @@ export default function TemplatePage() {
     return <IconComponent className="h-5 w-5" />;
   };
 
+  const handleOpenSubsections = (section: TemplateSection) => {
+    setSelectedSectionForSubsections(section);
+    setSubsectionsModalOpen(true);
+  };
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -248,6 +257,7 @@ export default function TemplatePage() {
                       reorderBusy={reorderSectionsMutation.isPending}
                       onEdit={() => setEditingSection(section)}
                       onDelete={() => setDeletingSectionId(section._id || null)}
+                      onViewSubsections={() => handleOpenSubsections(section)}
                       renderIcon={renderIcon}
                     />
                   ))}
@@ -305,6 +315,16 @@ export default function TemplatePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {selectedSectionForSubsections && (
+        <SubsectionsModal
+          open={subsectionsModalOpen}
+          onOpenChange={setSubsectionsModalOpen}
+          templateId={templateId}
+          sectionId={selectedSectionForSubsections._id || ""}
+          sectionName={selectedSectionForSubsections.name}
+        />
+      )}
     </div>
   );
 }
@@ -315,6 +335,7 @@ interface SortableSectionRowProps {
   reorderBusy: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onViewSubsections: () => void;
   renderIcon: (iconName?: string) => React.ReactNode;
 }
 
@@ -324,6 +345,7 @@ function SortableSectionRow({
   reorderBusy,
   onEdit,
   onDelete,
+  onViewSubsections,
   renderIcon,
 }: SortableSectionRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -394,6 +416,15 @@ function SortableSectionRow({
       </td>
       <td className="px-4 py-3 align-top">
         <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onViewSubsections}
+            disabled={reorderBusy}
+            title="View subsections"
+          >
+            <List className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="icon"

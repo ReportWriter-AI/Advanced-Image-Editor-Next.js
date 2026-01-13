@@ -15,4 +15,12 @@ export default {
 		delete: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}`,
 		reorder: (templateId: string) => `/templates/${templateId}/sections/reorder`,
 	},
+	// Template Subsections
+	templateSubsections: {
+		get: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections`,
+		create: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections`,
+		update: (templateId: string, sectionId: string, subsectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}`,
+		delete: (templateId: string, sectionId: string, subsectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}`,
+		reorder: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/reorder`,
+	},
 }
