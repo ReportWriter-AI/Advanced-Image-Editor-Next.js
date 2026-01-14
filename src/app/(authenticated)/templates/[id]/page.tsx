@@ -2,6 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { axios } from "@/components/api/axios";
+import apiRoutes from "@/components/api/apiRoutes";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -12,6 +16,7 @@ import {
   AlertCircle,
   Loader2,
   PlusCircle,
+  RotateCcw,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -48,19 +53,26 @@ import { TemplateSectionForm } from "./_components/TemplateSectionForm";
 import { TemplateSubsectionForm } from "./_components/TemplateSubsectionForm";
 import { TemplateSidebar } from "./_components/TemplateSidebar";
 import { ChecklistContent } from "./_components/ChecklistContent";
+import { RestoreSectionModal } from "./_components/RestoreSectionModal";
+import { RestoreSubsectionModal } from "./_components/RestoreSubsectionModal";
 
 export default function TemplatePage() {
   const params = useParams();
   const templateId = params.id as string;
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
 
   const [createSectionDialogOpen, setCreateSectionDialogOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<TemplateSection | null>(null);
   const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null);
+  const [restoreSectionModalOpen, setRestoreSectionModalOpen] = useState(false);
+  const [restoreSubsectionModalOpen, setRestoreSubsectionModalOpen] = useState(false);
+  const [restoreSubsectionModalSectionId, setRestoreSubsectionModalSectionId] = useState<string | null>(null);
   
   const [createSubsectionDialogOpen, setCreateSubsectionDialogOpen] = useState(false);
   const [editingSubsection, setEditingSubsection] = useState<{ section: TemplateSection; subsection: TemplateSubsection } | null>(null);
   const [deletingSubsection, setDeletingSubsection] = useState<{ section: TemplateSection; subsectionId: string } | null>(null);
+  const [isDeletingSubsection, setIsDeletingSubsection] = useState(false);
   
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [selectedSubsectionId, setSelectedSubsectionId] = useState<string | null>(null);
@@ -217,14 +229,28 @@ export default function TemplatePage() {
   const handleDeleteSubsection = async () => {
     if (!deletingSubsection?.subsectionId || !deletingSubsection?.section._id) return;
 
+    const sectionId = deletingSubsection.section._id;
+    const subsectionId = deletingSubsection.subsectionId;
+
+    setIsDeletingSubsection(true);
     try {
-      await deleteSubsectionMutation.mutateAsync(deletingSubsection.subsectionId);
+      await axios.delete(apiRoutes.templateSubsections.delete(templateId, sectionId, subsectionId));
+      
+      // Invalidate queries
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSubsections.get(templateId, sectionId)] });
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSubsections.deleted(templateId, sectionId)] });
+      
+      toast.success('Subsection deleted successfully');
+      
       setDeletingSubsection(null);
-      if (selectedSubsectionId === deletingSubsection.subsectionId) {
+      if (selectedSubsectionId === subsectionId) {
         setSelectedSubsectionId(null);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Delete subsection error:", error);
+      toast.error(error.response?.data?.error || 'Failed to delete subsection');
+    } finally {
+      setIsDeletingSubsection(false);
     }
   };
 
@@ -261,6 +287,11 @@ export default function TemplatePage() {
     setCreateSubsectionDialogOpen(true);
   };
 
+  const handleSectionRestoreClick = (sectionId: string) => {
+    setRestoreSubsectionModalSectionId(sectionId);
+    setRestoreSubsectionModalOpen(true);
+  };
+
   const reorderSectionsDisabled =
     reorderSectionsMutation.isPending || isLoading || !!editingSection || !!deletingSectionId;
 
@@ -282,11 +313,17 @@ export default function TemplatePage() {
               Manage sections, subsections, and checklists for this template.
             </p>
           </div>
-          <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm" className="shrink-0">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Add Section</span>
-            <span className="sm:hidden">Add</span>
-          </Button>
+          <div className="flex gap-2 shrink-0">
+            <Button onClick={() => setRestoreSectionModalOpen(true)} size="sm" variant="outline">
+              <RotateCcw className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Restore</span>
+            </Button>
+            <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Add Section</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -305,6 +342,7 @@ export default function TemplatePage() {
               onSubsectionEdit={handleSubsectionEdit}
               onSubsectionDelete={handleSubsectionDelete}
               onAddSubsection={handleAddSubsection}
+              onSectionRestoreClick={handleSectionRestoreClick}
               reorderSectionsDisabled={reorderSectionsDisabled}
               reorderSubsectionsDisabled={reorderSubsectionsDisabled}
             />
@@ -355,6 +393,7 @@ export default function TemplatePage() {
               onSubsectionEdit={handleSubsectionEdit}
               onSubsectionDelete={handleSubsectionDelete}
               onAddSubsection={handleAddSubsection}
+              onSectionRestoreClick={handleSectionRestoreClick}
               reorderSectionsDisabled={reorderSectionsDisabled}
               reorderSubsectionsDisabled={reorderSubsectionsDisabled}
             />
@@ -493,15 +532,15 @@ export default function TemplatePage() {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel disabled={deleteSubsectionMutation.isPending}>
+                <AlertDialogCancel disabled={isDeletingSubsection}>
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDeleteSubsection}
-                  disabled={deleteSubsectionMutation.isPending}
+                  disabled={isDeletingSubsection}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  {deleteSubsectionMutation.isPending ? (
+                  {isDeletingSubsection ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Deleting...
@@ -514,6 +553,21 @@ export default function TemplatePage() {
             </AlertDialogContent>
           </AlertDialog>
         </>
+      )}
+
+      <RestoreSectionModal 
+        open={restoreSectionModalOpen} 
+        onOpenChange={setRestoreSectionModalOpen}
+        templateId={templateId}
+      />
+
+      {restoreSubsectionModalSectionId && (
+        <RestoreSubsectionModal
+          open={restoreSubsectionModalOpen}
+          onOpenChange={setRestoreSubsectionModalOpen}
+          templateId={templateId}
+          sectionId={restoreSubsectionModalSectionId}
+        />
       )}
     </div>
   );

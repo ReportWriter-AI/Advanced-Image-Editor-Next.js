@@ -45,6 +45,7 @@ import { useTemplatesQuery, useCreateTemplateMutation, useReorderTemplatesMutati
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TemplateSettingsModal } from "./_components/TemplateSettingsModal";
 import { LocationModal } from "./_components/LocationModal";
+import { RestoreModal } from "./_components/RestoreModal";
 
 interface Template {
   _id: string;
@@ -54,6 +55,7 @@ interface Template {
   orderIndex?: number;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
 }
 
 export default function TemplatesPage() {
@@ -66,6 +68,7 @@ export default function TemplatesPage() {
   const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
   const [templateSettingsModalOpen, setTemplateSettingsModalOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
 
   const { data, isLoading, error } = useTemplatesQuery();
   const createTemplateMutation = useCreateTemplateMutation();
@@ -236,6 +239,15 @@ export default function TemplatesPage() {
                 >
                   Location
                 </button>
+                <button
+                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setSettingsPopoverOpen(false);
+                    setRestoreModalOpen(true);
+                  }}
+                >
+                  Restore
+                </button>
               </div>
             </PopoverContent>
           </Popover>
@@ -385,6 +397,7 @@ export default function TemplatesPage() {
 
       <TemplateSettingsModal open={templateSettingsModalOpen} onOpenChange={setTemplateSettingsModalOpen} />
       <LocationModal open={locationModalOpen} onOpenChange={setLocationModalOpen} />
+      <RestoreModal open={restoreModalOpen} onOpenChange={setRestoreModalOpen} />
     </div>
   );
 }

@@ -20,6 +20,7 @@ export interface ITemplateSubsection {
   inspectorNotes?: string;
   orderIndex: number;
   checklists?: ITemplateChecklist[];
+  deletedAt?: Date;
 }
 
 export interface ITemplateSection {
@@ -33,6 +34,7 @@ export interface ITemplateSection {
   inspectorNotes?: string;
   orderIndex: number;
   subsections: ITemplateSubsection[];
+  deletedAt?: Date;
 }
 
 export interface ITemplate extends Document {
@@ -43,6 +45,7 @@ export interface ITemplate extends Document {
   orderIndex: number;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt?: Date;
 }
 
 const TemplateChecklistSchema = new Schema<ITemplateChecklist>(
@@ -110,6 +113,10 @@ const TemplateSubsectionSchema = new Schema<ITemplateSubsection>(
       type: [TemplateChecklistSchema],
       default: [],
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { _id: true, timestamps: false }
 );
@@ -152,6 +159,10 @@ const TemplateSectionSchema = new Schema<ITemplateSection>(
       type: [TemplateSubsectionSchema],
       default: [],
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { _id: true, timestamps: false }
 );
@@ -181,6 +192,10 @@ const TemplateSchema = new Schema<ITemplate>(
       type: Number,
       default: 0,
       index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
     },
   },
   {

@@ -6,6 +6,8 @@ export default {
 		update: '/templates/:id',
 		delete: '/templates/:id',
 		reorder: '/templates/reorder',
+		deleted: '/templates/deleted',
+		restore: '/templates/:id/restore',
 	},
 	// Template Sections
 	templateSections: {
@@ -14,6 +16,8 @@ export default {
 		update: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}`,
 		delete: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}`,
 		reorder: (templateId: string) => `/templates/${templateId}/sections/reorder`,
+		deleted: (templateId: string) => `/templates/${templateId}/sections/deleted`,
+		restore: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}/restore`,
 	},
 	// Template Subsections
 	templateSubsections: {
@@ -22,6 +26,8 @@ export default {
 		update: (templateId: string, sectionId: string, subsectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}`,
 		delete: (templateId: string, sectionId: string, subsectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}`,
 		reorder: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/reorder`,
+		deleted: (templateId: string, sectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/deleted`,
+		restore: (templateId: string, sectionId: string, subsectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/restore`,
 	},
 	// Template Checklists
 	templateChecklists: {

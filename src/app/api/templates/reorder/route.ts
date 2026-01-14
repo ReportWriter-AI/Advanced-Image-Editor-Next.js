@@ -64,6 +64,7 @@ export async function PATCH(request: NextRequest) {
     const existing = await Template.find({
       _id: { $in: ids },
       company: currentUser.company,
+      deletedAt: null,
     })
       .select('_id')
       .lean();

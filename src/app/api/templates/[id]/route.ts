@@ -2,23 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/db';
 import { getCurrentUser } from '../../../../../lib/auth-helpers';
 import Template from '../../../../../src/models/Template';
+import { getAuthorizedTemplate } from '../../../../../lib/template-helpers';
 import mongoose from 'mongoose';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
-}
-
-async function getAuthorizedTemplate(templateId: string, userCompanyId?: mongoose.Types.ObjectId) {
-  if (!mongoose.Types.ObjectId.isValid(templateId)) {
-    return null;
-  }
-
-  const template = await Template.findOne({
-    _id: templateId,
-    company: userCompanyId,
-  });
-
-  return template;
 }
 
 export async function DELETE(request: NextRequest, context: RouteParams) {
@@ -41,7 +29,10 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    await template.deleteOne();
+    await Template.updateOne(
+      { _id: id, company: currentUser.company },
+      { $set: { deletedAt: new Date() } }
+    );
 
     return NextResponse.json({ message: 'Template deleted successfully' });
   } catch (error: any) {

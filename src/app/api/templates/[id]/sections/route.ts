@@ -2,28 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import Template from '@/src/models/Template';
+import { getAuthorizedTemplate } from '@/lib/template-helpers';
 import mongoose from 'mongoose';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
-}
-
-async function getAuthorizedTemplate(templateId: string, userCompanyId?: mongoose.Types.ObjectId) {
-  if (!mongoose.Types.ObjectId.isValid(templateId)) {
-    return null;
-  }
-
-  const template = await Template.findById(templateId).lean();
-
-  if (!template) {
-    return null;
-  }
-
-  if (userCompanyId && template.company.toString() !== userCompanyId.toString()) {
-    return null;
-  }
-
-  return template;
 }
 
 export async function GET(request: NextRequest, context: RouteParams) {
@@ -36,13 +19,16 @@ export async function GET(request: NextRequest, context: RouteParams) {
     }
 
     const { id } = await context.params;
-    const template = await getAuthorizedTemplate(id, currentUser.company);
+    const template = await getAuthorizedTemplate(id, currentUser.company, true);
 
     if (!template) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ sections: template.sections || [] });
+    // Filter out soft-deleted sections
+    const sections = (template.sections || []).filter((section: any) => !section.deletedAt);
+
+    return NextResponse.json({ sections });
   } catch (error: any) {
     console.error('Get template sections error:', error);
     return NextResponse.json(

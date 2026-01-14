@@ -2,28 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import Template from '@/src/models/Template';
+import { getAuthorizedTemplate } from '@/lib/template-helpers';
 import mongoose from 'mongoose';
 
 interface RouteParams {
   params: Promise<{ id: string; sectionId: string }>;
-}
-
-async function getAuthorizedTemplate(templateId: string, userCompanyId?: mongoose.Types.ObjectId) {
-  if (!mongoose.Types.ObjectId.isValid(templateId)) {
-    return null;
-  }
-
-  const template = await Template.findById(templateId).lean();
-
-  if (!template) {
-    return null;
-  }
-
-  if (userCompanyId && template.company.toString() !== userCompanyId.toString()) {
-    return null;
-  }
-
-  return template;
 }
 
 export async function GET(request: NextRequest, context: RouteParams) {
@@ -41,7 +24,7 @@ export async function GET(request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Invalid template or section ID' }, { status: 400 });
     }
 
-    const template = await getAuthorizedTemplate(id, currentUser.company);
+    const template = await getAuthorizedTemplate(id, currentUser.company, true);
 
     if (!template) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
@@ -56,7 +39,10 @@ export async function GET(request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Section not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ subsections: section.subsections || [] });
+    // Filter out soft-deleted subsections
+    const subsections = (section.subsections || []).filter((subsection: any) => !subsection.deletedAt);
+
+    return NextResponse.json({ subsections });
   } catch (error: any) {
     console.error('Get template subsections error:', error);
     return NextResponse.json(

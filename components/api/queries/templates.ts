@@ -47,10 +47,33 @@ export const useTemplatesQuery =  () =>
 			mutationFn: (templateId: string) => axios.delete(`/templates/${templateId}`),
 			onSuccess: (response) => {
 				queryClient.invalidateQueries({ queryKey: [apiRoutes.templates.get] });
+				queryClient.invalidateQueries({ queryKey: [apiRoutes.templates.deleted] });
 				toast.success(response.data?.message || 'Template deleted');
 			},
 			onError: (error: any) => {
 				toast.error(error.response?.data?.error || 'Failed to delete template');
+				return Promise.reject(error);
+			},
+		})
+	}
+
+	export const useDeletedTemplatesQuery = () => 
+		useQuery({
+			queryKey: [apiRoutes.templates.deleted],
+			queryFn: () => axios.get(apiRoutes.templates.deleted),
+		})
+
+	export const useRestoreTemplateMutation = () => {
+		const queryClient = useQueryClient()
+		return useMutation({
+			mutationFn: (templateId: string) => axios.patch(`/templates/${templateId}/restore`),
+			onSuccess: (response) => {
+				queryClient.invalidateQueries({ queryKey: [apiRoutes.templates.get] });
+				queryClient.invalidateQueries({ queryKey: [apiRoutes.templates.deleted] });
+				toast.success(response.data?.message || 'Template restored successfully');
+			},
+			onError: (error: any) => {
+				toast.error(error.response?.data?.error || 'Failed to restore template');
 				return Promise.reject(error);
 			},
 		})

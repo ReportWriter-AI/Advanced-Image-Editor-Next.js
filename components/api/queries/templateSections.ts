@@ -13,6 +13,7 @@ export interface TemplateSection {
   inspectionGuidelines?: string;
   inspectorNotes?: string;
   orderIndex: number;
+  deletedAt?: string;
 }
 
 export const useTemplateSectionsQuery = (templateId: string) => 
@@ -61,10 +62,35 @@ export const useDeleteTemplateSectionMutation = (templateId: string) => {
       axios.delete(apiRoutes.templateSections.delete(templateId, sectionId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSections.get(templateId)] });
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSections.deleted(templateId)] });
       toast.success('Section deleted successfully');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to delete section');
+      return Promise.reject(error);
+    },
+  })
+}
+
+export const useDeletedTemplateSectionsQuery = (templateId: string) => 
+  useQuery({
+    queryKey: [apiRoutes.templateSections.deleted(templateId)],
+    queryFn: () => axios.get(apiRoutes.templateSections.deleted(templateId)),
+    enabled: !!templateId,
+  })
+
+export const useRestoreTemplateSectionMutation = (templateId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (sectionId: string) => 
+      axios.patch(apiRoutes.templateSections.restore(templateId, sectionId)),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSections.get(templateId)] });
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSections.deleted(templateId)] });
+      toast.success(response.data?.message || 'Section restored successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to restore section');
       return Promise.reject(error);
     },
   })

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ChevronRight, ChevronDown, GripVertical, Loader2, PlusCircle, Edit2, Trash2 } from "lucide-react";
+import { ChevronRight, ChevronDown, GripVertical, Loader2, PlusCircle, Edit2, Trash2, RotateCcw } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import {
   DndContext,
@@ -48,6 +48,7 @@ interface TemplateSidebarProps {
   onSubsectionEdit: (section: TemplateSection, subsection: TemplateSubsection) => void;
   onSubsectionDelete: (section: TemplateSection, subsectionId: string) => void;
   onAddSubsection: (section: TemplateSection) => void;
+  onSectionRestoreClick: (sectionId: string) => void;
   reorderSectionsDisabled: boolean;
   reorderSubsectionsDisabled: (sectionId: string) => boolean;
 }
@@ -63,6 +64,7 @@ export function TemplateSidebar({
   onSubsectionEdit,
   onSubsectionDelete,
   onAddSubsection,
+  onSectionRestoreClick,
   reorderSectionsDisabled,
   reorderSubsectionsDisabled,
 }: TemplateSidebarProps) {
@@ -235,6 +237,7 @@ export function TemplateSidebar({
                     onSubsectionEdit={(subsection) => onSubsectionEdit(section, subsection)}
                     onSubsectionDelete={(subsectionId) => onSubsectionDelete(section, subsectionId)}
                     onAddSubsection={() => onAddSubsection(section)}
+                    onSectionRestoreClick={() => onSectionRestoreClick(section._id || "")}
                     onSubsectionsLoaded={(subsections) => handleSubsectionsLoaded(section._id || "", subsections)}
                     reorderDisabled={reorderSectionsDisabled}
                     reorderSubsectionsDisabled={reorderSubsectionsDisabled(section._id || "")}
@@ -265,6 +268,7 @@ interface SectionItemProps {
   onSubsectionEdit: (subsection: TemplateSubsection) => void;
   onSubsectionDelete: (subsectionId: string) => void;
   onAddSubsection: () => void;
+  onSectionRestoreClick: () => void;
   onSubsectionsLoaded: (subsections: TemplateSubsection[]) => void;
   reorderDisabled: boolean;
   reorderSubsectionsDisabled: boolean;
@@ -286,6 +290,7 @@ function SectionItem({
   onSubsectionEdit,
   onSubsectionDelete,
   onAddSubsection,
+  onSectionRestoreClick,
   onSubsectionsLoaded,
   reorderDisabled,
   reorderSubsectionsDisabled,
@@ -451,6 +456,10 @@ function SectionItem({
           <ContextMenuItem onClick={onAddSubsection}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Add Subsection
+          </ContextMenuItem>
+          <ContextMenuItem onClick={onSectionRestoreClick}>
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Restore Subsections
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={onDelete} className="text-destructive">

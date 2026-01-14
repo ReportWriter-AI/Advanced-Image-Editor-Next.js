@@ -10,6 +10,7 @@ export interface TemplateSubsection {
   includeInEveryReport: boolean;
   inspectorNotes?: string;
   orderIndex: number;
+  deletedAt?: string;
 }
 
 export const useTemplateSubsectionsQuery = (templateId: string, sectionId: string) => 
@@ -58,10 +59,35 @@ export const useDeleteTemplateSubsectionMutation = (templateId: string, sectionI
       axios.delete(apiRoutes.templateSubsections.delete(templateId, sectionId, subsectionId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSubsections.get(templateId, sectionId)] });
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSubsections.deleted(templateId, sectionId)] });
       toast.success('Subsection deleted successfully');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to delete subsection');
+      return Promise.reject(error);
+    },
+  })
+}
+
+export const useDeletedTemplateSubsectionsQuery = (templateId: string, sectionId: string) => 
+  useQuery({
+    queryKey: [apiRoutes.templateSubsections.deleted(templateId, sectionId)],
+    queryFn: () => axios.get(apiRoutes.templateSubsections.deleted(templateId, sectionId)),
+    enabled: !!templateId && !!sectionId,
+  })
+
+export const useRestoreTemplateSubsectionMutation = (templateId: string, sectionId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (subsectionId: string) => 
+      axios.patch(apiRoutes.templateSubsections.restore(templateId, sectionId, subsectionId)),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSubsections.get(templateId, sectionId)] });
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.templateSubsections.deleted(templateId, sectionId)] });
+      toast.success(response.data?.message || 'Subsection restored successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to restore subsection');
       return Promise.reject(error);
     },
   })

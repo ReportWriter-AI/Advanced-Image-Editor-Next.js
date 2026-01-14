@@ -2,28 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import Template from '@/src/models/Template';
+import { getAuthorizedTemplate } from '@/lib/template-helpers';
 import mongoose from 'mongoose';
 
 interface RouteParams {
   params: Promise<{ id: string; sectionId: string; subsectionId: string }>;
-}
-
-async function getAuthorizedTemplate(templateId: string, userCompanyId?: mongoose.Types.ObjectId) {
-  if (!mongoose.Types.ObjectId.isValid(templateId)) {
-    return null;
-  }
-
-  const template = await Template.findById(templateId);
-
-  if (!template) {
-    return null;
-  }
-
-  if (userCompanyId && template.company.toString() !== userCompanyId.toString()) {
-    return null;
-  }
-
-  return template;
 }
 
 export async function PUT(request: NextRequest, context: RouteParams) {
@@ -164,23 +147,29 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
 
     // Check if subsection exists
     const subsectionExists = section.subsections?.some(
-      (s: any) => s._id && s._id.toString() === subsectionId
+      (s: any) => s._id && s._id.toString() === subsectionId && !s.deletedAt
     );
 
     if (!subsectionExists) {
       return NextResponse.json({ error: 'Subsection not found' }, { status: 404 });
     }
 
-    // Remove the subsection from the array using positional operator
+    // Soft delete: set deletedAt field using arrayFilters
     await Template.updateOne(
       {
         _id: id,
         'sections._id': new mongoose.Types.ObjectId(sectionId),
       },
       {
-        $pull: {
-          'sections.$.subsections': { _id: new mongoose.Types.ObjectId(subsectionId) },
+        $set: {
+          'sections.$[section].subsections.$[subsection].deletedAt': new Date(),
         },
+      },
+      {
+        arrayFilters: [
+          { 'section._id': new mongoose.Types.ObjectId(sectionId) },
+          { 'subsection._id': new mongoose.Types.ObjectId(subsectionId) },
+        ],
       }
     );
 
