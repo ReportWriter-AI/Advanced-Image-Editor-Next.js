@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
+// import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -321,12 +322,19 @@ export function ChecklistItemForm({
                 name="comment"
                 render={({ field, fieldState }) => (
                   <div>
-                    <TinyMCERichTextEditor
+                    {/* <TinyMCERichTextEditor
                       value={field.value || ""}
                       onChange={field.onChange}
                       height={300}
                       plugins={['textcolor', 'link', 'image', 'media']}
                       toolbar="bold italic underline | forecolor backcolor | link image media"
+                    /> */}
+                    <Textarea
+                      id="comment"
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      rows={8}
+                      disabled={isSubmitting}
                     />
                     {fieldState.error && (
                       <p className="mt-1 text-sm text-red-600">
@@ -405,12 +413,19 @@ export function ChecklistItemForm({
                 name="comment"
                 render={({ field, fieldState }) => (
                   <div>
-                    <TinyMCERichTextEditor
+                    {/* <TinyMCERichTextEditor
                       value={field.value || ""}
                       onChange={field.onChange}
                       height={300}
                       plugins={['textcolor', 'link', 'image', 'media']}
                       toolbar="bold italic underline | forecolor backcolor | link image media"
+                    /> */}
+                    <Textarea
+                      id="comment"
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      rows={8}
+                      disabled={isSubmitting}
                     />
                     {fieldState.error && (
                       <p className="mt-1 text-sm text-red-600">

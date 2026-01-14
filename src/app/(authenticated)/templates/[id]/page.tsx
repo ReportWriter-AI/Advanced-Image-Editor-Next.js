@@ -1,37 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useRef, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Card,
   CardContent,
 } from "@/components/ui/card";
 import {
   AlertCircle,
-  GripVertical,
   Loader2,
   PlusCircle,
-  Edit2,
-  Trash2,
-  List,
 } from "lucide-react";
-import * as LucideIcons from "lucide-react";
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +24,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
+import {
   useTemplateSectionsQuery,
   useCreateTemplateSectionMutation,
   useUpdateTemplateSectionMutation,
@@ -50,20 +36,37 @@ import {
   useReorderTemplateSectionsMutation,
   TemplateSection,
 } from "@/components/api/queries/templateSections";
+import {
+  useTemplateSubsectionsQuery,
+  useCreateTemplateSubsectionMutation,
+  useUpdateTemplateSubsectionMutation,
+  useDeleteTemplateSubsectionMutation,
+  useReorderTemplateSubsectionsMutation,
+  TemplateSubsection,
+} from "@/components/api/queries/templateSubsections";
 import { TemplateSectionForm } from "./_components/TemplateSectionForm";
-import { SubsectionsModal } from "./_components/SubsectionsModal";
+import { TemplateSubsectionForm } from "./_components/TemplateSubsectionForm";
+import { TemplateSidebar } from "./_components/TemplateSidebar";
+import { ChecklistContent } from "./_components/ChecklistContent";
 
 export default function TemplatePage() {
   const params = useParams();
-  const router = useRouter();
   const templateId = params.id as string;
+  const isMobile = useIsMobile();
 
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createSectionDialogOpen, setCreateSectionDialogOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<TemplateSection | null>(null);
   const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null);
-  const [sections, setSections] = useState<TemplateSection[]>([]);
-  const [subsectionsModalOpen, setSubsectionsModalOpen] = useState(false);
-  const [selectedSectionForSubsections, setSelectedSectionForSubsections] = useState<TemplateSection | null>(null);
+  
+  const [createSubsectionDialogOpen, setCreateSubsectionDialogOpen] = useState(false);
+  const [editingSubsection, setEditingSubsection] = useState<{ section: TemplateSection; subsection: TemplateSubsection } | null>(null);
+  const [deletingSubsection, setDeletingSubsection] = useState<{ section: TemplateSection; subsectionId: string } | null>(null);
+  
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedSubsectionId, setSelectedSubsectionId] = useState<string | null>(null);
+  const [selectedSectionForSubsection, setSelectedSectionForSubsection] = useState<TemplateSection | null>(null);
+
+  const initialSelectionMadeRef = useRef(false);
 
   const { data, isLoading, error } = useTemplateSectionsQuery(templateId);
   const createSectionMutation = useCreateTemplateSectionMutation(templateId);
@@ -71,78 +74,80 @@ export default function TemplatePage() {
   const deleteSectionMutation = useDeleteTemplateSectionMutation(templateId);
   const reorderSectionsMutation = useReorderTemplateSectionsMutation(templateId);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    })
+  // Create subsection mutations - we'll update sectionId before using them
+  // Use a stable sectionId from state or empty string
+  const subsectionMutationSectionId = selectedSectionForSubsection?._id || editingSubsection?.section._id || deletingSubsection?.section._id || "";
+  const createSubsectionMutation = useCreateTemplateSubsectionMutation(templateId, subsectionMutationSectionId);
+  const updateSubsectionMutation = useUpdateTemplateSubsectionMutation(templateId, subsectionMutationSectionId);
+  const deleteSubsectionMutation = useDeleteTemplateSubsectionMutation(templateId, subsectionMutationSectionId);
+
+  // Get subsection data for selected section to find subsection name
+  const { data: subsectionsData, isLoading: subsectionsLoading } = useTemplateSubsectionsQuery(
+    templateId,
+    selectedSectionId || ""
   );
 
+  const selectedSubsectionName = (() => {
+    if (!selectedSubsectionId || !subsectionsData?.data?.subsections) return undefined;
+    const subsection = Array.isArray(subsectionsData.data.subsections)
+      ? subsectionsData.data.subsections.find((s: TemplateSubsection) => s._id === selectedSubsectionId)
+      : null;
+    return subsection?.name;
+  })();
+
+  // Auto-select first subsection of first section on initial load
   useEffect(() => {
-    if (data?.data?.sections) {
-      const sectionsArray = Array.isArray(data.data.sections) ? data.data.sections : [];
-      setSections(sectionsArray);
+    if (initialSelectionMadeRef.current) return;
+    
+    // Wait for sections to load
+    if (isLoading || !data?.data?.sections) return;
+    
+    const sectionsArray = Array.isArray(data.data.sections) ? data.data.sections : [];
+    if (sectionsArray.length === 0) {
+      initialSelectionMadeRef.current = true;
+      return;
     }
-  }, [data]);
 
-  const sortedSections = useMemo(() => {
-    return [...sections].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-  }, [sections]);
+    // Sort sections by orderIndex
+    const sortedSections = [...sectionsArray].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+    const firstSection = sortedSections[0];
+    
+    if (!firstSection?._id) {
+      initialSelectionMadeRef.current = true;
+      return;
+    }
 
-  const commitReorder = useCallback(
-    async (nextSections: TemplateSection[]) => {
-      try {
-        const payload = nextSections
-          .filter((section) => section._id)
-          .map((section, index) => ({
-            id: section._id!,
-            order: index + 1,
-          }));
+    // Select the first section
+    setSelectedSectionId(firstSection._id);
+    initialSelectionMadeRef.current = true;
+  }, [data, isLoading]);
 
-        await reorderSectionsMutation.mutateAsync({ sections: payload });
-      } catch (error: any) {
-        console.error("Error reordering sections:", error);
-        // Error is already handled by the mutation's onError callback
+  // Auto-select first subsection when subsections load for the selected section
+  useEffect(() => {
+    if (!initialSelectionMadeRef.current || !selectedSectionId) return;
+    if (selectedSubsectionId) return; // Already have a subsection selected
+    
+    // Wait for subsections to load
+    if (subsectionsLoading || !subsectionsData?.data?.subsections) return;
+
+    const subsectionsArray = Array.isArray(subsectionsData.data.subsections) 
+      ? subsectionsData.data.subsections 
+      : [];
+    
+    if (subsectionsArray.length > 0) {
+      // Sort subsections by orderIndex
+      const sortedSubsections = [...subsectionsArray].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      const firstSubsection = sortedSubsections[0];
+      if (firstSubsection?._id) {
+        setSelectedSubsectionId(firstSubsection._id);
       }
-    },
-    [reorderSectionsMutation]
-  );
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      if (reorderSectionsMutation.isPending || isLoading || editingSection || deletingSectionId) {
-        return;
-      }
-
-      const { active, over } = event;
-      if (!over || active.id === over.id) {
-        return;
-      }
-
-      const oldIndex = sortedSections.findIndex((section) => section._id === active.id);
-      const newIndex = sortedSections.findIndex((section) => section._id === over.id);
-
-      if (oldIndex === -1 || newIndex === -1) {
-        return;
-      }
-
-      const reordered = arrayMove(sortedSections, oldIndex, newIndex).map((section, index) => ({
-        ...section,
-        orderIndex: index + 1,
-      }));
-
-      setSections(reordered);
-      void commitReorder(reordered);
-    },
-    [sortedSections, commitReorder, reorderSectionsMutation.isPending, isLoading, editingSection, deletingSectionId]
-  );
-
-  const reorderDisabled =
-    reorderSectionsMutation.isPending || isLoading || !!editingSection || !!deletingSectionId || sortedSections.length <= 1;
+    }
+  }, [selectedSectionId, subsectionsData, subsectionsLoading, selectedSubsectionId]);
 
   const handleCreateSection = async (values: any) => {
     try {
       await createSectionMutation.mutateAsync(values);
-      setCreateDialogOpen(false);
+      setCreateSectionDialogOpen(false);
     } catch (error) {
       console.error("Create section error:", error);
     }
@@ -171,106 +176,231 @@ export default function TemplatePage() {
     try {
       await deleteSectionMutation.mutateAsync(deletingSectionId);
       setDeletingSectionId(null);
+      if (selectedSectionId === deletingSectionId) {
+        setSelectedSectionId(null);
+        setSelectedSubsectionId(null);
+      }
     } catch (error) {
       console.error("Delete section error:", error);
     }
   };
 
-  const renderIcon = (iconName?: string) => {
-    const iconToUse = iconName || 'Home';
-    const IconComponent = (LucideIcons as any)[iconToUse];
-    if (!IconComponent) return null;
-    return <IconComponent className="h-5 w-5" />;
+  const handleCreateSubsection = async (values: any) => {
+    if (!selectedSectionForSubsection?._id) return;
+
+    try {
+      await createSubsectionMutation.mutateAsync(values);
+      setCreateSubsectionDialogOpen(false);
+      setSelectedSectionForSubsection(null);
+    } catch (error) {
+      console.error("Create subsection error:", error);
+    }
   };
 
-  const handleOpenSubsections = (section: TemplateSection) => {
-    setSelectedSectionForSubsections(section);
-    setSubsectionsModalOpen(true);
+  const handleUpdateSubsection = async (values: any) => {
+    if (!editingSubsection?.subsection._id || !editingSubsection?.section._id) return;
+
+    try {
+      await updateSubsectionMutation.mutateAsync({
+        subsectionId: editingSubsection.subsection._id,
+        subsectionData: {
+          ...values,
+          orderIndex: editingSubsection.subsection.orderIndex,
+        },
+      });
+      setEditingSubsection(null);
+    } catch (error) {
+      console.error("Update subsection error:", error);
+    }
+  };
+
+  const handleDeleteSubsection = async () => {
+    if (!deletingSubsection?.subsectionId || !deletingSubsection?.section._id) return;
+
+    try {
+      await deleteSubsectionMutation.mutateAsync(deletingSubsection.subsectionId);
+      setDeletingSubsection(null);
+      if (selectedSubsectionId === deletingSubsection.subsectionId) {
+        setSelectedSubsectionId(null);
+      }
+    } catch (error) {
+      console.error("Delete subsection error:", error);
+    }
+  };
+
+  const handleSectionSelect = (sectionId: string | null) => {
+    setSelectedSectionId(sectionId);
+    setSelectedSubsectionId(null);
+  };
+
+  const handleSubsectionSelect = (sectionId: string, subsectionId: string) => {
+    setSelectedSectionId(sectionId);
+    setSelectedSubsectionId(subsectionId);
+  };
+
+  const handleSectionEdit = (section: TemplateSection) => {
+    setEditingSection(section);
+  };
+
+  const handleSectionDelete = (sectionId: string) => {
+    setDeletingSectionId(sectionId);
+  };
+
+  const handleSubsectionEdit = (section: TemplateSection, subsection: TemplateSubsection) => {
+    setEditingSubsection({ section, subsection });
+    setSelectedSectionForSubsection(section);
+  };
+
+  const handleSubsectionDelete = (section: TemplateSection, subsectionId: string) => {
+    setDeletingSubsection({ section, subsectionId });
+    setSelectedSectionForSubsection(section);
+  };
+
+  const handleAddSubsection = (section: TemplateSection) => {
+    setSelectedSectionForSubsection(section);
+    setCreateSubsectionDialogOpen(true);
+  };
+
+  const reorderSectionsDisabled =
+    reorderSectionsMutation.isPending || isLoading || !!editingSection || !!deletingSectionId;
+
+  const reorderSubsectionsDisabled = (sectionId: string) => {
+    return (
+      !!editingSubsection ||
+      !!deletingSubsection ||
+      selectedSectionId !== sectionId
+    );
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Template Sections</h1>
-          <p className="text-muted-foreground">
-            Manage sections for this template.
-          </p>
+    <div className="flex flex-col min-h-[calc(100vh-5rem)] w-full -m-4">
+      <div className="flex h-16 items-center border-b px-4 md:px-6 shrink-0 bg-background">
+        <div className="flex flex-1 items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold truncate">Manage Template</h1>
+            <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">
+              Manage sections, subsections, and checklists for this template.
+            </p>
+          </div>
+          <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm" className="shrink-0">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">Add Section</span>
+            <span className="sm:hidden">Add</span>
+          </Button>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Add Section
-        </Button>
       </div>
 
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="flex items-start gap-3 p-4">
-            <AlertCircle className="h-5 w-5 text-red-600" />
-            <p className="text-sm text-muted-foreground">
-              {error instanceof Error ? error.message : "Failed to load sections"}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {isLoading ? (
-        <Card>
-          <CardContent className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Loading sections...
-          </CardContent>
-        </Card>
-      ) : sortedSections.length === 0 ? (
-        <Card>
-          <CardContent className="space-y-4 p-10 text-center text-muted-foreground">
-            <p>No sections found yet.</p>
-            <Button onClick={() => setCreateDialogOpen(true)} variant="outline">
-              Create your first section
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="min-w-full divide-y divide-muted border-collapse text-sm">
-              <thead className="bg-muted/50 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="w-12 px-4 py-3 text-center">Order</th>
-                  <th className="px-4 py-3">Icon</th>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Flags</th>
-                  <th className="px-4 py-3">Order</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <SortableContext
-                items={sortedSections.map((section) => section._id || "")}
-                strategy={verticalListSortingStrategy}
-              >
-                <tbody className="divide-y divide-muted">
-                  {sortedSections.map((section) => (
-                    <SortableSectionRow
-                      key={section._id}
-                      section={section}
-                      reorderDisabled={reorderDisabled}
-                      reorderBusy={reorderSectionsMutation.isPending}
-                      onEdit={() => setEditingSection(section)}
-                      onDelete={() => setDeletingSectionId(section._id || null)}
-                      onViewSubsections={() => handleOpenSubsections(section)}
-                      renderIcon={renderIcon}
-                    />
-                  ))}
-                </tbody>
-              </SortableContext>
-            </table>
+      {isMobile ? (
+        // Mobile: Vertical layout - sidebar on top, checklist below
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="border-b bg-sidebar text-sidebar-foreground overflow-y-auto max-h-[40vh] shrink-0">
+            <TemplateSidebar
+              templateId={templateId}
+              selectedSectionId={selectedSectionId}
+              selectedSubsectionId={selectedSubsectionId}
+              onSectionSelect={handleSectionSelect}
+              onSubsectionSelect={handleSubsectionSelect}
+              onSectionEdit={handleSectionEdit}
+              onSectionDelete={handleSectionDelete}
+              onSubsectionEdit={handleSubsectionEdit}
+              onSubsectionDelete={handleSubsectionDelete}
+              onAddSubsection={handleAddSubsection}
+              reorderSectionsDisabled={reorderSectionsDisabled}
+              reorderSubsectionsDisabled={reorderSubsectionsDisabled}
+            />
           </div>
-        </DndContext>
+          <div className="flex flex-col flex-1 min-h-0 bg-background overflow-y-auto">
+            {error && (
+              <div className="p-4 md:p-6">
+                <Card className="border-red-200 bg-red-50">
+                  <CardContent className="flex items-start gap-3 p-4">
+                    <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+                    <p className="text-sm text-muted-foreground">
+                      {error instanceof Error ? error.message : "Failed to load sections"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {isLoading ? (
+              <div className="flex min-h-[400px] items-center justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Loading sections...</span>
+                </div>
+              </div>
+            ) : (
+              <ChecklistContent
+                templateId={templateId}
+                sectionId={selectedSectionId || ""}
+                subsectionId={selectedSubsectionId}
+                subsectionName={selectedSubsectionName}
+              />
+            )}
+          </div>
+        </div>
+      ) : (
+        // Desktop: Horizontal resizable layout
+        <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0">
+          <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
+            <TemplateSidebar
+              templateId={templateId}
+              selectedSectionId={selectedSectionId}
+              selectedSubsectionId={selectedSubsectionId}
+              onSectionSelect={handleSectionSelect}
+              onSubsectionSelect={handleSubsectionSelect}
+              onSectionEdit={handleSectionEdit}
+              onSectionDelete={handleSectionDelete}
+              onSubsectionEdit={handleSubsectionEdit}
+              onSubsectionDelete={handleSubsectionDelete}
+              onAddSubsection={handleAddSubsection}
+              reorderSectionsDisabled={reorderSectionsDisabled}
+              reorderSubsectionsDisabled={reorderSubsectionsDisabled}
+            />
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={80} minSize={60} maxSize={85}>
+            <div className="flex flex-col min-w-0 bg-background">
+              <div>
+                {error && (
+                  <div className="p-6">
+                    <Card className="border-red-200 bg-red-50">
+                      <CardContent className="flex items-start gap-3 p-4">
+                        <AlertCircle className="h-5 w-5 text-red-600" />
+                        <p className="text-sm text-muted-foreground">
+                          {error instanceof Error ? error.message : "Failed to load sections"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {isLoading ? (
+                  <div className="flex min-h-[400px] items-center justify-center">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Loading sections...</span>
+                    </div>
+                  </div>
+                ) : (
+                  <ChecklistContent
+                    templateId={templateId}
+                    sectionId={selectedSectionId || ""}
+                    subsectionId={selectedSubsectionId}
+                    subsectionName={selectedSubsectionName}
+                  />
+                )}
+              </div>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       )}
 
+      {/* Section Forms */}
       <TemplateSectionForm
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
+        open={createSectionDialogOpen}
+        onOpenChange={setCreateSectionDialogOpen}
         onSubmit={handleCreateSection}
         isSubmitting={createSectionMutation.isPending}
       />
@@ -316,135 +446,75 @@ export default function TemplatePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {selectedSectionForSubsections && (
-        <SubsectionsModal
-          open={subsectionsModalOpen}
-          onOpenChange={setSubsectionsModalOpen}
-          templateId={templateId}
-          sectionId={selectedSectionForSubsections._id || ""}
-          sectionName={selectedSectionForSubsections.name}
-        />
+      {/* Subsection Forms */}
+      {selectedSectionForSubsection && (
+        <>
+          <TemplateSubsectionForm
+            open={createSubsectionDialogOpen}
+            onOpenChange={(open) => {
+              setCreateSubsectionDialogOpen(open);
+              if (!open) {
+                setSelectedSectionForSubsection(null);
+              }
+            }}
+            onSubmit={handleCreateSubsection}
+            isSubmitting={createSubsectionMutation.isPending}
+          />
+
+          {editingSubsection && (
+            <TemplateSubsectionForm
+              open={!!editingSubsection}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setEditingSubsection(null);
+                  setSelectedSectionForSubsection(null);
+                }
+              }}
+              onSubmit={handleUpdateSubsection}
+              initialValues={editingSubsection.subsection}
+              isSubmitting={updateSubsectionMutation.isPending}
+            />
+          )}
+
+          <AlertDialog
+            open={!!deletingSubsection}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDeletingSubsection(null);
+                setSelectedSectionForSubsection(null);
+              }
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Subsection</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete this subsection? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleteSubsectionMutation.isPending}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteSubsection}
+                  disabled={deleteSubsectionMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleteSubsectionMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    "Delete"
+                  )}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
       )}
     </div>
-  );
-}
-
-interface SortableSectionRowProps {
-  section: TemplateSection;
-  reorderDisabled: boolean;
-  reorderBusy: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-  onViewSubsections: () => void;
-  renderIcon: (iconName?: string) => React.ReactNode;
-}
-
-function SortableSectionRow({
-  section,
-  reorderDisabled,
-  reorderBusy,
-  onEdit,
-  onDelete,
-  onViewSubsections,
-  renderIcon,
-}: SortableSectionRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: section._id || "",
-    disabled: reorderDisabled,
-  });
-
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <tr
-      ref={setNodeRef}
-      style={style}
-      className={`hover:bg-muted/30 ${isDragging ? "opacity-60" : ""}`}
-      data-section-id={section._id}
-    >
-      <td className="w-12 px-4 py-3 align-top">
-        <button
-          type="button"
-          className={`flex h-8 w-8 items-center justify-center rounded border ${
-            reorderDisabled ? "cursor-not-allowed opacity-40" : "cursor-grab hover:bg-muted"
-          }`}
-          aria-label="Drag to reorder"
-          disabled={reorderDisabled}
-          {...attributes}
-          {...(!reorderDisabled ? listeners : {})}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-      </td>
-      <td className="px-4 py-3 align-top">
-        {renderIcon(section.sectionIcon) || (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </td>
-      <td className="px-4 py-3 align-top">
-        <span className="font-medium text-foreground">{section.name}</span>
-      </td>
-      <td className="px-4 py-3 align-top">
-        <div className="flex flex-wrap gap-2">
-          {section.excludeFromSummaryView && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
-              Excluded from Summary
-            </span>
-          )}
-          {section.includeInEveryReport && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
-              In Every Report
-            </span>
-          )}
-          {section.startSectionOnNewPage && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
-              New Page (PDF)
-            </span>
-          )}
-          {!section.excludeFromSummaryView &&
-            !section.includeInEveryReport &&
-            !section.startSectionOnNewPage && (
-              <span className="text-muted-foreground text-xs">—</span>
-            )}
-        </div>
-      </td>
-      <td className="px-4 py-3 align-top text-muted-foreground">
-        {section.orderIndex ?? 0}
-      </td>
-      <td className="px-4 py-3 align-top">
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onViewSubsections}
-            disabled={reorderBusy}
-            title="View subsections"
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onEdit}
-            disabled={reorderBusy}
-            title="Edit section"
-          >
-            <Edit2 className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onDelete}
-            disabled={reorderBusy}
-            title="Delete section"
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
-      </td>
-    </tr>
   );
 }
