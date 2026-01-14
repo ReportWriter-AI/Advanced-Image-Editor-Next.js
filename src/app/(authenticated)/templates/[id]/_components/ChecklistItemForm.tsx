@@ -4,14 +4,13 @@ import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, X } from "lucide-react";
-import CreatableSelect from "react-select/creatable";
+import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
+import { CreatableTagInput } from "@/components/ui/creatable-tag-input";
 // import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -67,7 +66,6 @@ export function ChecklistItemForm({
   isSubmitting = false,
 }: ChecklistItemFormProps) {
   const [answerChoices, setAnswerChoices] = useState<string[]>([]);
-  const [selectKey, setSelectKey] = useState(0);
 
   const statusForm = useForm<StatusChecklistFormValues>({
     resolver: zodResolver(statusChecklistSchema),
@@ -98,7 +96,6 @@ export function ChecklistItemForm({
     if (type === 'status' && selectedField && !needsAnswerChoices) {
       setAnswerChoices([]);
       statusForm.setValue("answerChoices", []);
-      setSelectKey(prev => prev + 1);
     }
   }, [selectedField, needsAnswerChoices, type, statusForm]);
 
@@ -115,7 +112,6 @@ export function ChecklistItemForm({
             answerChoices: initialValues.answerChoices || [],
           });
           setAnswerChoices(initialValues.answerChoices || []);
-          setSelectKey(0);
         } else {
           informationForm.reset({
             name: initialValues.name || "",
@@ -134,7 +130,6 @@ export function ChecklistItemForm({
             answerChoices: [],
           });
           setAnswerChoices([]);
-          setSelectKey(0);
         } else {
           informationForm.reset({
             name: "",
@@ -166,8 +161,6 @@ export function ChecklistItemForm({
     { value: 'signature', label: 'Signature' },
     { value: 'text', label: 'Text' },
   ];
-
-  const answerChoicesOptions = answerChoices.map(choice => ({ value: choice, label: choice }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -234,71 +227,26 @@ export function ChecklistItemForm({
             </div>
 
             {needsAnswerChoices && (
-              <div className="space-y-2">
-                <Label>
-                  {selectedField === 'multipleAnswers' && 'Answer Choices'}
-                  {selectedField === 'number' && 'Unit Types'}
-                  {selectedField === 'numberRange' && 'Unit Types'}
-                </Label>
-                <CreatableSelect
-                  key={selectKey}
-                  value={null}
-                  onChange={(newValue) => {
-                    if (newValue && !answerChoices.includes(newValue.value)) {
-                      const trimmedValue = newValue.value.trim();
-                      if (trimmedValue) {
-                        const newChoices = [...answerChoices, trimmedValue];
-                        setAnswerChoices(newChoices);
-                        setSelectKey(prev => prev + 1); // Force select to reset
-                      }
-                    }
-                  }}
-                  onCreateOption={(inputValue) => {
-                    const trimmedValue = inputValue.trim();
-                    if (trimmedValue && !answerChoices.includes(trimmedValue)) {
-                      const newChoices = [...answerChoices, trimmedValue];
-                      setAnswerChoices(newChoices);
-                      setSelectKey(prev => prev + 1); // Force select to reset
-                    }
-                  }}
-                  options={answerChoicesOptions}
-                  placeholder={`Add ${selectedField === 'multipleAnswers' ? 'answer choice' : 'unit type'}...`}
-                  className="react-select-container"
-                  classNamePrefix="react-select"
-                  isDisabled={isSubmitting}
-                  isClearable={false}
-                />
-                {answerChoices.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {answerChoices.map((choice, index) => (
-                      <Badge
-                        key={index}
-                        variant="secondary"
-                        className="flex items-center gap-1.5 px-3 py-1"
-                      >
-                        <span>{choice}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newChoices = answerChoices.filter((_, i) => i !== index);
-                            setAnswerChoices(newChoices);
-                          }}
-                          disabled={isSubmitting}
-                          className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
-                          aria-label={`Remove ${choice}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                <p className="text-sm text-muted-foreground">
-                  {selectedField === 'multipleAnswers' && 'Add multiple answer options for this checklist item.'}
-                  {selectedField === 'number' && 'Add unit types (e.g., inches, feet, meters) for this checklist item.'}
-                  {selectedField === 'numberRange' && 'Add unit types (e.g., inches, feet, meters) for this checklist item.'}
-                </p>
-              </div>
+              <CreatableTagInput
+                value={answerChoices}
+                onChange={setAnswerChoices}
+                label={
+                  selectedField === 'multipleAnswers' 
+                    ? 'Answer Choices'
+                    : selectedField === 'number' || selectedField === 'numberRange'
+                    ? 'Unit Types'
+                    : undefined
+                }
+                helperText={
+                  selectedField === 'multipleAnswers'
+                    ? 'Add multiple answer options for this checklist item.'
+                    : selectedField === 'number' || selectedField === 'numberRange'
+                    ? 'Add unit types (e.g., inches, feet, meters) for this checklist item.'
+                    : undefined
+                }
+                placeholder={`Add ${selectedField === 'multipleAnswers' ? 'answer choice' : 'unit type'}...`}
+                disabled={isSubmitting}
+              />
             )}
 
             <div className="space-y-2">

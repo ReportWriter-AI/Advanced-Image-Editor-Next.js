@@ -8,7 +8,6 @@ import { sendVerificationEmail } from '../../../../../lib/email';
 import { ensureDefaultModifiersForCompany } from '../../../../../lib/modifier-service';
 import { ensureDefaultInspectionSectionsForCompany } from '../../../../../lib/inspection-section-service';
 import { SERVICE_CATEGORIES } from '../../../../../constants/serviceCategories';
-import { defaultLocation, defaultSection, defaultSubsection } from '@/constants/upload-image';
 
 export async function POST(request: NextRequest) {
   try {
@@ -133,9 +132,7 @@ export async function POST(request: NextRequest) {
       foundation: 'Crawlspace, Slab, Grade',
       role: 'Buyer, Seller, Attorney',
       referralSources: 'Real Estate Agent, Previous Client, Friend/Family Member, Lender, Google Search, Social Media, Our Website, Google Ad',
-      location: defaultLocation,
-      section: defaultSection,
-      subsection: defaultSubsection,
+      location: [],
       serviceCategory: SERVICE_CATEGORIES.join(", "),
     });
 

@@ -94,16 +94,45 @@ function ImageEditorPageContent() {
         });
         if (response.ok) {
           const data = await response.json();
-          // Parse comma-separated strings into arrays
-          setLocation(data.location ? data.location.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0) : []);
-          setSection(data.section ? data.section.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0) : []);
-          setSubsection(data.subsection || {});
+          // Extract location values from array of objects, with backward compatibility
+          if (Array.isArray(data.location)) {
+            setLocation(data.location.map((item: { id: string; value: string }) => item.value));
+          } else if (typeof data.location === 'string') {
+            // Backward compatibility: handle string format
+            setLocation(data.location.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0));
+          } else {
+            setLocation([]);
+          }
         }
       } catch (error) {
         console.error('Failed to fetch dropdown data:', error);
       }
     };
     fetchDropdownData();
+  }, []);
+
+  // Use dummy data for section and subsection
+  useEffect(() => {
+    // Dummy section data
+    setSection(['AC / Cooling', 'Built-In Appliances', 'Electrical', 'Exterior', 'Fireplace / Chimney', 'Foundation & Structure', 'Furnace / Heater', 'Grounds', 'Insulation & Ventilation', 'Interior', 'Plumbing', 'Roof', 'Swimming Pool & Spa', 'Verified Functionality']);
+    
+    // Dummy subsection data
+    setSubsection({
+      'Grounds': ['Vegetation, Grading, & Drainage', 'Sidewalks, Porches, Driveways'],
+      'Foundation & Structure': ['Foundation', 'Crawlspace', 'Floor Structure', 'Wall Structure', 'Ceiling Structure'],
+      'Roof': ['Coverings', 'Flashing & Seals', 'Roof Penetrations', 'Roof Structure & Attic', 'Gutters'],
+      'Exterior': ['Exterior Doors', 'Exterior Windows', 'Siding, Flashing, & Trim', 'Brick/Stone Veneer', 'Vinyl Siding', 'Soffit & Fascia', 'Wall Penetrations', 'Doorbell', 'Exterior Support Columns', 'Steps, Stairways, & Railings'],
+      'Fireplace / Chimney': ['Fireplace', 'Chimney', 'Flue'],
+      'Interior': ['Doors', 'Windows', 'Floors', 'Walls', 'Ceilings', 'Countertops & Cabinets', 'Trim', 'Steps, Staircase, & Railings'],
+      'Insulation & Ventilation': ['Attic Access', 'Insulation', 'Vapor Barrier', 'Ventilation & Exhaust'],
+      'AC / Cooling': ['Air Conditioning', 'Thermostats', 'Distribution System'],
+      'Furnace / Heater': ['Forced Air Furnace'],
+      'Electrical': ['Sub Panel', 'Service Panel', 'Branch Wiring & Breakers', 'Exterior Lighting', 'Fixtures, Fans, Switches, & Receptacles', 'GFCI & AFCI', '240 Volt Receptacle', 'Smoke / Carbon Monoxide Alarms', 'Service Entrance'],
+      'Plumbing': ['Water Heater', 'Drain, Waste, & Vents', 'Water Supply', 'Water Spigot', 'Gas Supply', 'Vents & Flues', 'Fixtures,Sinks, Tubs, & Toilets'],
+      'Built-In Appliances': ['Refrigerator', 'Dishwasher', 'Garbage Disposal', 'Microwave', 'Range Hood', 'Range, Oven & Cooktop'],
+      'Swimming Pool & Spa': ['Equipment', 'Electrical', 'Safety Devices', 'Coping & Decking', 'Vessel Surface', 'Drains', 'Control Valves', 'Filter', 'Pool Plumbing', 'Pumps', 'Spa Controls & Equipment', 'Heating', 'Diving Board & Slide'],
+      'Verified Functionality': ['AC Temperature Differential', 'Furnace Output Temperature', 'Oven Operation Temperature', 'Water Heater Output Temperature']
+    });
   }, []);
 
   // Filter arrays
@@ -1193,52 +1222,6 @@ function ImageEditorPageContent() {
         <div className="submit-section">
           <div className="submit-controls">
 
-          {/* Location Button with Dropdown - Hide in defect-main annotate mode */}
-          {!isDefectMainMode && (
-          <div className="location-button-container">
-            <button
-              className="location-btn location2-btn bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] text-white px-6 py-[18px] rounded-xl text-base font-semibold cursor-pointer transition-all duration-300 shadow-[0_4px_20px_rgba(75,108,183,0.3)] flex items-center justify-between font-['Inter',sans-serif] tracking-[0.3px] border border-white/10 w-[300px] h-[60px] whitespace-nowrap overflow-hidden text-ellipsis hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(75,108,183,0.4)] hover:bg-gradient-to-br hover:from-[rgb(106,17,203)] hover:to-[rgb(75,108,183)] active:-translate-y-px active:shadow-[0_4px_20px_rgba(75,108,183,0.3)]"
-              onClick={() => setShowLocationDropdown2(!showLocationDropdown2)}
-            >
-              <div className="btn-content">
-                <i className="fas fa-map-marker-alt"></i>
-                <span>{selectedLocation2 || 'Location'}</span>
-              </div>
-              <i className={`fas fa-chevron-down ${showLocationDropdown2 ? 'rotate' : ''}`}></i>
-            </button>
-            
-            {showLocationDropdown2 && (
-              <div className="location-dropdown location2-dropdown" ref={locationDropdownRef2}>
-                <div className="location-search-container">
-                  <input
-                    type="text"
-                    placeholder="Search locations..."
-                    value={locationSearch2}
-                    onChange={(e) => setLocationSearch2(e.target.value)}
-                    className="location-search-input"
-                  />
-                </div>
-                 <div className="location-options">
-                   {filteredLocations.map(locationItem => (
-                     <div
-                       key={locationItem}
-                       className={`location-option ${selectedLocation2 === locationItem ? 'selected' : ''}`}
-                       onClick={() => {
-                         setSelectedLocation2(locationItem);
-                         setShowLocationDropdown2(false);
-                         setLocationSearch2('');
-                       }}
-                     >
-                       <i className="fas fa-map-marker-alt"></i>
-                       <span>{locationItem}</span>
-                     </div>
-                   ))}
-                 </div>
-              </div>
-            )}
-          </div>
-          )}
-
           {/* Section and Subsection - Hide in additional location mode and defect-main annotate mode */}
           {!isAdditionalLocationMode && !isDefectMainMode && (
             <>
@@ -1335,6 +1318,53 @@ function ImageEditorPageContent() {
           </div>
           </>
           )}
+
+          {/* Location Button with Dropdown - Hide in defect-main annotate mode */}
+          {!isDefectMainMode && (
+          <div className="location-button-container">
+            <button
+              className="location-btn location2-btn bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] text-white px-6 py-[18px] rounded-xl text-base font-semibold cursor-pointer transition-all duration-300 shadow-[0_4px_20px_rgba(75,108,183,0.3)] flex items-center justify-between font-['Inter',sans-serif] tracking-[0.3px] border border-white/10 w-[300px] h-[60px] whitespace-nowrap overflow-hidden text-ellipsis hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(75,108,183,0.4)] hover:bg-gradient-to-br hover:from-[rgb(106,17,203)] hover:to-[rgb(75,108,183)] active:-translate-y-px active:shadow-[0_4px_20px_rgba(75,108,183,0.3)]"
+              onClick={() => setShowLocationDropdown2(!showLocationDropdown2)}
+            >
+              <div className="btn-content">
+                <i className="fas fa-map-marker-alt"></i>
+                <span>{selectedLocation2 || 'Location'}</span>
+              </div>
+              <i className={`fas fa-chevron-down ${showLocationDropdown2 ? 'rotate' : ''}`}></i>
+            </button>
+            
+            {showLocationDropdown2 && (
+              <div className="location-dropdown location2-dropdown" ref={locationDropdownRef2}>
+                <div className="location-search-container">
+                  <input
+                    type="text"
+                    placeholder="Search locations..."
+                    value={locationSearch2}
+                    onChange={(e) => setLocationSearch2(e.target.value)}
+                    className="location-search-input"
+                  />
+                </div>
+                 <div className="location-options">
+                   {filteredLocations.map(locationItem => (
+                     <div
+                       key={locationItem}
+                       className={`location-option ${selectedLocation2 === locationItem ? 'selected' : ''}`}
+                       onClick={() => {
+                         setSelectedLocation2(locationItem);
+                         setShowLocationDropdown2(false);
+                         setLocationSearch2('');
+                       }}
+                     >
+                       <i className="fas fa-map-marker-alt"></i>
+                       <span>{locationItem}</span>
+                     </div>
+                   ))}
+                 </div>
+              </div>
+            )}
+          </div>
+          )}
+
 
           {/* Submit Button - Change text based on mode */}
           <button className="submit-btn" onClick={handleSubmit} disabled={isSubmitting}>

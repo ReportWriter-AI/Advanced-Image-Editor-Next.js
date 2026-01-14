@@ -9,7 +9,6 @@ import ModifierField from '@/src/models/ModifierField';
 import { ensureDefaultInspectionSectionsForCompany } from '@/lib/inspection-section-service';
 import { ensureDefaultModifiersForCompany } from '@/lib/modifier-service';
 import { SERVICE_CATEGORIES } from '@/constants/serviceCategories';
-import { defaultLocation, defaultSection, defaultSubsection } from '@/constants/upload-image';
 
 interface RouteParams {
   params: Promise<{
@@ -76,9 +75,7 @@ export async function POST(request: NextRequest, context: RouteParams) {
       foundation: 'Crawlspace, Slab, Grade',
       role: 'Buyer, Seller, Attorney',
       referralSources: 'Real Estate Agent, Previous Client, Friend/Family Member, Lender, Google Search, Social Media, Our Website, Google Ad',
-      location: defaultLocation,
-      section: defaultSection,
-      subsection: defaultSubsection,
+      location: [],
       serviceCategory: SERVICE_CATEGORIES.join(", "),
     });
 

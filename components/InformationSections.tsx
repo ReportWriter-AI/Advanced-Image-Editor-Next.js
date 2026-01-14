@@ -208,7 +208,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
       const res = await fetch('/api/reusable-dropdowns', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        const locationValues = splitCommaSeparated(data.location || '');
+        // Extract location values from array of objects, with backward compatibility
+        let locationValues: string[] = [];
+        if (Array.isArray(data.location)) {
+          locationValues = data.location.map((item: { id: string; value: string }) => item.value);
+        } else if (typeof data.location === 'string') {
+          // Backward compatibility: handle string format
+          locationValues = splitCommaSeparated(data.location || '');
+        }
         if (locationValues.length > 0) {
           setLocationOptions(locationValues);
         }

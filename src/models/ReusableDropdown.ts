@@ -4,9 +4,7 @@ export interface IReusableDropdown extends Document {
   foundation: string;
   role: string;
   referralSources: string;
-  location: string;
-  section: string;
-  subsection: { [key: string]: string[] };
+  location: Array<{ id: string; value: string }>;
   serviceCategory: string;
   company: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
@@ -33,18 +31,18 @@ const ReusableDropdownSchema = new Schema<IReusableDropdown>(
       trim: true,
     },
     location: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    section: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    subsection: {
-      type: Schema.Types.Mixed,
-      default: {},
+      type: [{
+        id: {
+          type: String,
+          required: true,
+        },
+        value: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+      }],
+      default: [],
     },
     serviceCategory: {
       type: String,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import dbConnect from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import ReusableDropdown from '@/src/models/ReusableDropdown';
@@ -21,20 +22,33 @@ export async function GET(request: NextRequest) {
         foundation: '',
         role: '',
         referralSources: '',
-        location: '',
-        section: '',
-        subsection: {},
+        location: [],
         serviceCategory: '',
       });
+    }
+
+    // Handle backward compatibility: convert string location to array of objects
+    let locationArray: Array<{ id: string; value: string }> = [];
+    if (dropdown.location) {
+      // Type assertion for backward compatibility - database may have old string format
+      const locationData = dropdown.location as string | Array<{ id: string; value: string }>;
+      if (typeof locationData === 'string') {
+        // Convert comma-separated string to array of objects with IDs
+        const locationValues = locationData.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0);
+        locationArray = locationValues.map((value: string) => ({
+          id: crypto.randomUUID(),
+          value,
+        }));
+      } else if (Array.isArray(locationData)) {
+        locationArray = locationData;
+      }
     }
 
     return NextResponse.json({
       foundation: dropdown.foundation || '',
       role: dropdown.role || '',
       referralSources: dropdown.referralSources || '',
-      location: dropdown.location || '',
-      section: dropdown.section || '',
-      subsection: dropdown.subsection || {},
+      location: locationArray,
       serviceCategory: dropdown.serviceCategory || '',
     });
   } catch (error: any) {
@@ -56,7 +70,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { foundation, role, referralSources, location, section, subsection, serviceCategory } = body;
+    const { foundation, role, referralSources, location, serviceCategory } = body;
 
     // Validate that all fields are strings
     if (foundation !== undefined && typeof foundation !== 'string') {
@@ -68,14 +82,19 @@ export async function PUT(request: NextRequest) {
     if (referralSources !== undefined && typeof referralSources !== 'string') {
       return NextResponse.json({ error: 'ReferralSources must be a string' }, { status: 400 });
     }
-    if (location !== undefined && typeof location !== 'string') {
-      return NextResponse.json({ error: 'Location must be a string' }, { status: 400 });
-    }
-    if (section !== undefined && typeof section !== 'string') {
-      return NextResponse.json({ error: 'Section must be a string' }, { status: 400 });
-    }
-    if (subsection !== undefined && (typeof subsection !== 'object' || Array.isArray(subsection) || subsection === null)) {
-      return NextResponse.json({ error: 'Subsection must be an object' }, { status: 400 });
+    if (location !== undefined) {
+      if (!Array.isArray(location)) {
+        return NextResponse.json({ error: 'Location must be an array' }, { status: 400 });
+      }
+      // Validate that each location item has id and value
+      for (const item of location) {
+        if (typeof item !== 'object' || item === null || !item.id || !item.value) {
+          return NextResponse.json({ error: 'Each location item must have id and value properties' }, { status: 400 });
+        }
+        if (typeof item.id !== 'string' || typeof item.value !== 'string') {
+          return NextResponse.json({ error: 'Location id and value must be strings' }, { status: 400 });
+        }
+      }
     }
     if (serviceCategory !== undefined && typeof serviceCategory !== 'string') {
       return NextResponse.json({ error: 'ServiceCategory must be a string' }, { status: 400 });
@@ -119,25 +138,20 @@ export async function PUT(request: NextRequest) {
     if (location !== undefined) {
       updateData.location = location;
     } else if (existing) {
-      updateData.location = existing.location;
+      // Handle backward compatibility: convert string to array of objects if needed
+      // Type assertion for backward compatibility - database may have old string format
+      const existingLocation = existing.location as string | Array<{ id: string; value: string }> | undefined;
+      if (typeof existingLocation === 'string' && existingLocation) {
+        const locationValues = existingLocation.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0);
+        updateData.location = locationValues.map((value: string) => ({
+          id: crypto.randomUUID(),
+          value,
+        }));
+      } else {
+        updateData.location = (existingLocation as Array<{ id: string; value: string }>) || [];
+      }
     } else {
-      updateData.location = '';
-    }
-
-    if (section !== undefined) {
-      updateData.section = section;
-    } else if (existing) {
-      updateData.section = existing.section;
-    } else {
-      updateData.section = '';
-    }
-
-    if (subsection !== undefined) {
-      updateData.subsection = subsection;
-    } else if (existing) {
-      updateData.subsection = existing.subsection;
-    } else {
-      updateData.subsection = {};
+      updateData.location = [];
     }
 
     if (serviceCategory !== undefined) {
@@ -170,13 +184,27 @@ export async function PUT(request: NextRequest) {
       throw new Error('Failed to update reusable dropdowns');
     }
 
+    // Handle backward compatibility for location in response
+    let locationArray: Array<{ id: string; value: string }> = [];
+    if (dropdown.location) {
+      // Type assertion for backward compatibility - database may have old string format
+      const locationData = dropdown.location as string | Array<{ id: string; value: string }>;
+      if (typeof locationData === 'string') {
+        const locationValues = locationData.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0);
+        locationArray = locationValues.map((value: string) => ({
+          id: crypto.randomUUID(),
+          value,
+        }));
+      } else if (Array.isArray(locationData)) {
+        locationArray = locationData;
+      }
+    }
+
     return NextResponse.json({
       foundation: dropdown.foundation || '',
       role: dropdown.role || '',
       referralSources: dropdown.referralSources || '',
-      location: dropdown.location || '',
-      section: dropdown.section || '',
-      subsection: dropdown.subsection || {},
+      location: locationArray,
       serviceCategory: dropdown.serviceCategory || '',
     });
   } catch (error: any) {

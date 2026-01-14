@@ -423,7 +423,14 @@ export default function InspectionEditPage() {
             label: value,
           }))
         );
-        const locationValues = splitCommaSeparated(data.location || '');
+        // Extract location values from array of objects, with backward compatibility
+        let locationValues: string[] = [];
+        if (Array.isArray(data.location)) {
+          locationValues = data.location.map((item: { id: string; value: string }) => item.value);
+        } else if (typeof data.location === 'string') {
+          // Backward compatibility: handle string format
+          locationValues = splitCommaSeparated(data.location || '');
+        }
         setLocationOptions(locationValues);
       }
 

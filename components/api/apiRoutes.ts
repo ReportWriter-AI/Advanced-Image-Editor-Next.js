@@ -31,4 +31,9 @@ export default {
 		delete: (templateId: string, sectionId: string, subsectionId: string, checklistId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists/${checklistId}`,
 		reorder: (templateId: string, sectionId: string, subsectionId: string) => `/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists/reorder`,
 	},
+	// Reusable Dropdowns
+	reusableDropdowns: {
+		get: '/reusable-dropdowns',
+		update: '/reusable-dropdowns',
+	},
 }

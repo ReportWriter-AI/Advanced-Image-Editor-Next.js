@@ -23,6 +23,7 @@ import {
   Loader2,
   PlusCircle,
   Pencil,
+  Settings,
   Trash2,
 } from "lucide-react";
 import {
@@ -41,6 +42,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useTemplatesQuery, useCreateTemplateMutation, useReorderTemplatesMutation, useDeleteTemplateMutation } from "@/components/api/queries/templates";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { TemplateSettingsModal } from "./_components/TemplateSettingsModal";
+import { LocationModal } from "./_components/LocationModal";
 
 interface Template {
   _id: string;
@@ -59,6 +63,9 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
+  const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
+  const [templateSettingsModalOpen, setTemplateSettingsModalOpen] = useState(false);
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
 
   const { data, isLoading, error } = useTemplatesQuery();
   const createTemplateMutation = useCreateTemplateMutation();
@@ -198,10 +205,41 @@ export default function TemplatesPage() {
             Manage your inspection templates.
           </p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Create Template
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Create Template
+          </Button>
+          <Popover open={settingsPopoverOpen} onOpenChange={setSettingsPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-48 p-1" align="end">
+              <div className="flex flex-col">
+                <button
+                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setSettingsPopoverOpen(false);
+                    setTemplateSettingsModalOpen(true);
+                  }}
+                >
+                  Template Settings
+                </button>
+                <button
+                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    setSettingsPopoverOpen(false);
+                    setLocationModalOpen(true);
+                  }}
+                >
+                  Location
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {error && (
@@ -344,6 +382,9 @@ export default function TemplatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemplateSettingsModal open={templateSettingsModalOpen} onOpenChange={setTemplateSettingsModalOpen} />
+      <LocationModal open={locationModalOpen} onOpenChange={setLocationModalOpen} />
     </div>
   );
 }

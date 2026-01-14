@@ -4,8 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { Loader2, AlertCircle } from "lucide-react"
 
@@ -18,9 +16,6 @@ interface DropdownData {
   foundation: string
   role: string
   referralSources: string
-  location: string
-  section: string
-  subsection: { [key: string]: string[] }
   serviceCategory: string
 }
 
@@ -28,21 +23,13 @@ export default function ReusableDropdownsPage() {
   const [foundation, setFoundation] = useState<string>("")
   const [role, setRole] = useState<string>("")
   const [referralSources, setReferralSources] = useState<string>("")
-  const [location, setLocation] = useState<string>("")
-  const [section, setSection] = useState<string>("")
-  const [subsection, setSubsection] = useState<{ [key: string]: string[] }>({})
   const [serviceCategory, setServiceCategory] = useState<string>("")
-  const [selectedSectionForSubsection, setSelectedSectionForSubsection] = useState<string>("")
-  const [subsectionInput, setSubsectionInput] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({
     foundation: { status: "idle" },
     role: { status: "idle" },
     referralSources: { status: "idle" },
-    location: { status: "idle" },
-    section: { status: "idle" },
-    subsection: { status: "idle" },
     serviceCategory: { status: "idle" },
   })
   const initializedRef = useRef(false)
@@ -50,9 +37,6 @@ export default function ReusableDropdownsPage() {
     foundation: "",
     role: "",
     referralSources: "",
-    location: "",
-    section: "",
-    subsection: {},
     serviceCategory: "",
   })
   const saveTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
@@ -76,18 +60,12 @@ export default function ReusableDropdownsPage() {
       setFoundation(data.foundation || "")
       setRole(data.role || "")
       setReferralSources(data.referralSources || "")
-      setLocation(data.location || "")
-      setSection(data.section || "")
-      setSubsection(data.subsection || {})
       setServiceCategory(data.serviceCategory || "")
 
       lastSavedRef.current = {
         foundation: data.foundation || "",
         role: data.role || "",
         referralSources: data.referralSources || "",
-        location: data.location || "",
-        section: data.section || "",
-        subsection: data.subsection || {},
         serviceCategory: data.serviceCategory || "",
       }
 
@@ -105,12 +83,12 @@ export default function ReusableDropdownsPage() {
   }, [fetchDropdowns])
 
   const handleAutoSave = useCallback(
-    async (field: keyof DropdownData, value: string | { [key: string]: string[] }) => {
+    async (field: keyof DropdownData, value: string) => {
       if (!initializedRef.current) return
 
       // Check if value has changed
       const currentValue = lastSavedRef.current[field]
-      if (currentValue === value || (typeof value === 'object' && typeof currentValue === 'object' && JSON.stringify(currentValue) === JSON.stringify(value))) {
+      if (currentValue === value) {
         return
       }
 
@@ -141,7 +119,7 @@ export default function ReusableDropdownsPage() {
         // Update last saved values
         lastSavedRef.current = {
           ...lastSavedRef.current,
-          [field]: result[field] || (field === 'subsection' ? {} : ""),
+          [field]: result[field] || "",
         }
 
         setSaveStates((prev) => ({
@@ -163,22 +141,16 @@ export default function ReusableDropdownsPage() {
   )
 
   const handleFieldChange = useCallback(
-    (field: keyof DropdownData, value: string | { [key: string]: string[] }) => {
+    (field: keyof DropdownData, value: string) => {
       // Update local state
       if (field === "foundation") {
-        setFoundation(value as string)
+        setFoundation(value)
       } else if (field === "role") {
-        setRole(value as string)
+        setRole(value)
       } else if (field === "referralSources") {
-        setReferralSources(value as string)
-      } else if (field === "location") {
-        setLocation(value as string)
-      } else if (field === "section") {
-        setSection(value as string)
-      } else if (field === "subsection") {
-        setSubsection(value as { [key: string]: string[] })
+        setReferralSources(value)
       } else if (field === "serviceCategory") {
-        setServiceCategory(value as string)
+        setServiceCategory(value)
       }
 
       // Clear existing timer for this field
@@ -192,50 +164,6 @@ export default function ReusableDropdownsPage() {
       }, 5000)
     },
     [handleAutoSave]
-  )
-
-  // Handle subsection section selection change
-  useEffect(() => {
-    if (selectedSectionForSubsection) {
-      const subsectionsForSection = subsection[selectedSectionForSubsection] || []
-      setSubsectionInput(subsectionsForSection.join(", "))
-    } else {
-      setSubsectionInput("")
-    }
-  }, [selectedSectionForSubsection, subsection])
-
-  // Handle subsection input change (comma-separated)
-  const handleSubsectionInputChange = useCallback(
-    (value: string) => {
-      setSubsectionInput(value)
-      
-      if (!selectedSectionForSubsection) return
-
-      // Parse comma-separated values
-      const subsectionsArray = value
-        .split(",")
-        .map(item => item.trim())
-        .filter(item => item.length > 0)
-
-      // Update subsection object
-      const updatedSubsection = {
-        ...subsection,
-        [selectedSectionForSubsection]: subsectionsArray,
-      }
-
-      setSubsection(updatedSubsection)
-
-      // Clear existing timer
-      if (saveTimersRef.current.subsection) {
-        clearTimeout(saveTimersRef.current.subsection)
-      }
-
-      // Set new timer for auto-save (5 seconds)
-      saveTimersRef.current.subsection = setTimeout(() => {
-        handleAutoSave("subsection", updatedSubsection)
-      }, 5000)
-    },
-    [selectedSectionForSubsection, subsection, handleAutoSave]
   )
 
   // Cleanup timers on unmount
@@ -273,7 +201,7 @@ export default function ReusableDropdownsPage() {
           <div>
             <h1 className="text-4xl font-bold tracking-tight">Drop-Downs</h1>
             <p className="mt-2 text-lg text-muted-foreground">
-              Manage dropdown options for foundation, role, referral sources, location, section, and subsection.
+              Manage dropdown options for foundation, role, referral sources, and service category.
             </p>
           </div>
         </div>
@@ -363,89 +291,6 @@ export default function ReusableDropdownsPage() {
               />
               {saveStates.serviceCategory.status === "error" && saveStates.serviceCategory.message && (
                 <p className="text-sm text-destructive">{saveStates.serviceCategory.message}</p>
-              )}
-            </div>
-
-            {/* Location Field */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="location">Location</Label>
-                {getStatusIcon(saveStates.location)}
-              </div>
-              <Input
-                id="location"
-                value={location}
-                onChange={(e) => handleFieldChange("location", e.target.value)}
-                placeholder="Enter location options..."
-              />
-              {saveStates.location.status === "error" && saveStates.location.message && (
-                <p className="text-sm text-destructive">{saveStates.location.message}</p>
-              )}
-            </div>
-
-            {/* Section Field */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="section">Section</Label>
-                {getStatusIcon(saveStates.section)}
-              </div>
-              <Input
-                id="section"
-                value={section}
-                onChange={(e) => handleFieldChange("section", e.target.value)}
-                placeholder="Enter section options..."
-              />
-              {saveStates.section.status === "error" && saveStates.section.message && (
-                <p className="text-sm text-destructive">{saveStates.section.message}</p>
-              )}
-            </div>
-
-            {/* Subsection Field */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="subsection">Subsection</Label>
-                {getStatusIcon(saveStates.subsection)}
-              </div>
-              <div className="space-y-3">
-                <Select
-                  value={selectedSectionForSubsection}
-                  onValueChange={setSelectedSectionForSubsection}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a section to edit subsections..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60 overflow-y-auto">
-                    {section
-                      .split(",")
-                      .map((sec) => sec.trim())
-                      .filter((sec) => sec.length > 0)
-                      .map((sec) => (
-                        <SelectItem key={sec} value={sec}>
-                          {sec}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                {selectedSectionForSubsection && (
-                  <div className="space-y-2">
-                    <Label htmlFor="subsectionInput">
-                      Subsections for "{selectedSectionForSubsection}" (comma-separated)
-                    </Label>
-                    <Textarea
-                      id="subsectionInput"
-                      value={subsectionInput}
-                      onChange={(e) => handleSubsectionInputChange(e.target.value)}
-                      placeholder="Enter subsections separated by commas..."
-                      rows={4}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Enter subsections separated by commas. Changes auto-save after 5 seconds.
-                    </p>
-                  </div>
-                )}
-              </div>
-              {saveStates.subsection.status === "error" && saveStates.subsection.message && (
-                <p className="text-sm text-destructive">{saveStates.subsection.message}</p>
               )}
             </div>
           </CardContent>
