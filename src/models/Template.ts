@@ -4,7 +4,7 @@ export interface ITemplateChecklist {
   _id?: mongoose.Types.ObjectId;
   type: 'status' | 'information' | 'defects';
   name: string;
-  field?: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'signature';
+  field?: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'signature' | 'text';
   location?: string;
   comment?: string;
   defaultChecked?: boolean;
@@ -59,7 +59,7 @@ const TemplateChecklistSchema = new Schema<ITemplateChecklist>(
     },
     field: {
       type: String,
-      enum: ['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature'],
+      enum: ['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text'],
     },
     location: {
       type: String,

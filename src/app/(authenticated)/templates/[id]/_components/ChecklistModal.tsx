@@ -154,6 +154,7 @@ export function ChecklistModal({
       number: 'Number',
       numberRange: 'Number Range',
       signature: 'Signature',
+      text: 'Text',
     };
     return field ? fieldMap[field] || field : '—';
   };

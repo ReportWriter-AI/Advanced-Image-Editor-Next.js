@@ -33,7 +33,7 @@ import { TemplateChecklist } from "@/components/api/queries/templateChecklists";
 
 const statusChecklistSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature']),
+  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text']),
   location: z.string().optional(),
   comment: z.string().optional(),
   defaultChecked: z.boolean(),
@@ -164,6 +164,7 @@ export function ChecklistItemForm({
     { value: 'number', label: 'Number' },
     { value: 'numberRange', label: 'Number Range' },
     { value: 'signature', label: 'Signature' },
+    { value: 'text', label: 'Text' },
   ];
 
   const answerChoicesOptions = answerChoices.map(choice => ({ value: choice, label: choice }));
