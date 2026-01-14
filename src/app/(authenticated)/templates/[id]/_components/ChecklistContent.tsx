@@ -79,12 +79,6 @@ export function ChecklistContent({
       .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   }, [checklists]);
 
-  const defectsChecklists = useMemo(() => {
-    return [...checklists]
-      .filter(c => c.type === 'defects')
-      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-  }, [checklists]);
-
   const handleCreateStatusChecklist = async (values: any) => {
     try {
       await createChecklistMutation.mutateAsync({
@@ -289,31 +283,6 @@ export function ChecklistContent({
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Defects Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Defects</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {defectsChecklists.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No defects checklists yet.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {defectsChecklists.map((checklist) => (
-                      <div
-                        key={checklist._id}
-                        className="flex items-start justify-between rounded-lg border p-4 hover:bg-muted/30"
-                      >
-                        <div className="flex-1 space-y-1">
-                          <div className="font-medium">{checklist.name}</div>
                         </div>
                       </div>
                     ))}
