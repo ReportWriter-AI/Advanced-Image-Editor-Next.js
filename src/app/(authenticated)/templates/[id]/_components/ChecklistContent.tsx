@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useEffect, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,6 +14,7 @@ import {
   PlusCircle,
   Edit2,
   Trash2,
+  GripVertical,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -26,19 +27,116 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   useTemplateChecklistsQuery,
   useCreateTemplateChecklistMutation,
   useUpdateTemplateChecklistMutation,
   useDeleteTemplateChecklistMutation,
+  useReorderTemplateChecklistsMutation,
   TemplateChecklist,
 } from "@/components/api/queries/templateChecklists";
 import { ChecklistItemForm } from "./ChecklistItemForm";
+import { cn } from "@/lib/utils";
 
 interface ChecklistContentProps {
   templateId: string;
   sectionId: string;
   subsectionId: string | null;
   subsectionName?: string;
+}
+
+interface SortableChecklistItemProps {
+  checklist: TemplateChecklist;
+  onEdit: () => void;
+  onDelete: () => void;
+  disabled: boolean;
+  reorderDisabled: boolean;
+}
+
+function SortableChecklistItem({
+  checklist,
+  onEdit,
+  onDelete,
+  disabled,
+  reorderDisabled,
+}: SortableChecklistItemProps) {
+  const {
+    attributes: sortableAttributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: checklist._id || "",
+    disabled: reorderDisabled,
+  });
+
+  const { role, tabIndex, ...attributes } = sortableAttributes;
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
+      <div className="flex items-start justify-between rounded-lg border p-4 hover:bg-muted/30">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div
+            {...attributes}
+            role="button"
+            tabIndex={reorderDisabled ? -1 : 0}
+            aria-disabled={reorderDisabled}
+            className={cn(
+              "drag-handle flex items-center justify-center p-1 rounded hover:bg-muted cursor-grab active:cursor-grabbing",
+              reorderDisabled && "cursor-not-allowed opacity-40"
+            )}
+            {...(!reorderDisabled ? listeners : {})}
+          >
+            <GripVertical className="h-4 w-4" />
+          </div>
+          <div className="flex-1 space-y-1">
+            <div className="font-medium">{checklist.name}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onEdit}
+            disabled={disabled}
+            title="Edit checklist"
+          >
+            <Edit2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onDelete}
+            disabled={disabled}
+            title="Delete checklist"
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function ChecklistContent({
@@ -51,6 +149,8 @@ export function ChecklistContent({
   const [createInformationFormOpen, setCreateInformationFormOpen] = useState(false);
   const [editingChecklist, setEditingChecklist] = useState<TemplateChecklist | null>(null);
   const [deletingChecklistId, setDeletingChecklistId] = useState<string | null>(null);
+  const [statusChecklistsLocal, setStatusChecklistsLocal] = useState<TemplateChecklist[]>([]);
+  const [informationChecklistsLocal, setInformationChecklistsLocal] = useState<TemplateChecklist[]>([]);
 
   const { data, isLoading, error } = useTemplateChecklistsQuery(
     templateId,
@@ -61,23 +161,36 @@ export function ChecklistContent({
   const createChecklistMutation = useCreateTemplateChecklistMutation(templateId, sectionId, subsectionId || "");
   const updateChecklistMutation = useUpdateTemplateChecklistMutation(templateId, sectionId, subsectionId || "");
   const deleteChecklistMutation = useDeleteTemplateChecklistMutation(templateId, sectionId, subsectionId || "");
+  const reorderChecklistsMutation = useReorderTemplateChecklistsMutation(templateId, sectionId, subsectionId || "");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
 
   const checklists = useMemo(() => {
     if (!data?.data?.checklists) return [];
     return Array.isArray(data.data.checklists) ? data.data.checklists : [];
   }, [data]);
 
-  const statusChecklists = useMemo(() => {
-    return [...checklists]
-      .filter(c => c.type === 'status')
-      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-  }, [checklists]);
+  // Sync local state with query data
+  useEffect(() => {
+    if (data?.data?.checklists) {
+      const checklistsArray = Array.isArray(data.data.checklists) ? data.data.checklists : [];
+      const status = [...checklistsArray]
+        .filter(c => c.type === 'status')
+        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      const information = [...checklistsArray]
+        .filter(c => c.type === 'information')
+        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      setStatusChecklistsLocal(status);
+      setInformationChecklistsLocal(information);
+    }
+  }, [data]);
 
-  const informationChecklists = useMemo(() => {
-    return [...checklists]
-      .filter(c => c.type === 'information')
-      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-  }, [checklists]);
+  const statusChecklists = statusChecklistsLocal;
+  const informationChecklists = informationChecklistsLocal;
 
   const handleCreateStatusChecklist = async (values: any) => {
     try {
@@ -131,17 +244,148 @@ export function ChecklistContent({
     }
   };
 
-  const getFieldLabel = (field?: string) => {
-    const fieldMap: Record<string, string> = {
-      checkbox: 'Checkbox',
-      multipleAnswers: 'Multiple Answers',
-      date: 'Date',
-      number: 'Number',
-      numberRange: 'Number Range',
-      signature: 'Signature',
-    };
-    return field ? fieldMap[field] || field : '—';
-  };
+  const isReorderDisabled = 
+    createChecklistMutation.isPending ||
+    updateChecklistMutation.isPending ||
+    deleteChecklistMutation.isPending ||
+    reorderChecklistsMutation.isPending ||
+    !!editingChecklist ||
+    !!deletingChecklistId;
+
+  const commitStatusReorder = useCallback(
+    async (nextStatusChecklists: TemplateChecklist[]) => {
+      try {
+        // Get all checklists and update only status ones
+        // Status checklists come first, then information checklists
+        const statusIds = new Set(nextStatusChecklists.map(c => c._id).filter(Boolean));
+        
+        // Create payload: status checklists first, then information checklists
+        const payload: Array<{ id: string; order: number }> = [];
+        
+        // Add status checklists with new order
+        nextStatusChecklists.forEach((checklist, index) => {
+          if (checklist._id) {
+            payload.push({
+              id: checklist._id,
+              order: index + 1,
+            });
+          }
+        });
+        
+        // Add information checklists with their existing relative order, offset by status count
+        const sortedInformation = [...informationChecklistsLocal].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        sortedInformation.forEach((checklist, index) => {
+          if (checklist._id) {
+            payload.push({
+              id: checklist._id,
+              order: nextStatusChecklists.length + index + 1,
+            });
+          }
+        });
+
+        await reorderChecklistsMutation.mutateAsync({ checklists: payload });
+      } catch (error: any) {
+        console.error("Error reordering status checklists:", error);
+      }
+    },
+    [statusChecklistsLocal, informationChecklistsLocal, reorderChecklistsMutation]
+  );
+
+  const commitInformationReorder = useCallback(
+    async (nextInformationChecklists: TemplateChecklist[]) => {
+      try {
+        // Get all checklists and update only information ones
+        // Status checklists come first, then information checklists
+        const sortedStatus = [...statusChecklistsLocal].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        
+        // Create payload: status checklists first, then information checklists
+        const payload: Array<{ id: string; order: number }> = [];
+        
+        // Add status checklists with their existing relative order
+        sortedStatus.forEach((checklist, index) => {
+          if (checklist._id) {
+            payload.push({
+              id: checklist._id,
+              order: index + 1,
+            });
+          }
+        });
+        
+        // Add information checklists with new order, offset by status count
+        nextInformationChecklists.forEach((checklist, index) => {
+          if (checklist._id) {
+            payload.push({
+              id: checklist._id,
+              order: sortedStatus.length + index + 1,
+            });
+          }
+        });
+
+        await reorderChecklistsMutation.mutateAsync({ checklists: payload });
+      } catch (error: any) {
+        console.error("Error reordering information checklists:", error);
+      }
+    },
+    [statusChecklistsLocal, informationChecklistsLocal, reorderChecklistsMutation]
+  );
+
+  const handleStatusDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (isReorderDisabled || isLoading) {
+        return;
+      }
+
+      const { active, over } = event;
+      if (!over || active.id === over.id) {
+        return;
+      }
+
+      const oldIndex = statusChecklists.findIndex((checklist) => checklist._id === active.id);
+      const newIndex = statusChecklists.findIndex((checklist) => checklist._id === over.id);
+
+      if (oldIndex === -1 || newIndex === -1) {
+        return;
+      }
+
+      const reordered = arrayMove(statusChecklists, oldIndex, newIndex).map((checklist, index) => ({
+        ...checklist,
+        orderIndex: index + 1,
+      }));
+
+      setStatusChecklistsLocal(reordered);
+      void commitStatusReorder(reordered);
+    },
+    [statusChecklists, commitStatusReorder, isReorderDisabled, isLoading]
+  );
+
+  const handleInformationDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (isReorderDisabled || isLoading) {
+        return;
+      }
+
+      const { active, over } = event;
+      if (!over || active.id === over.id) {
+        return;
+      }
+
+      const oldIndex = informationChecklists.findIndex((checklist) => checklist._id === active.id);
+      const newIndex = informationChecklists.findIndex((checklist) => checklist._id === over.id);
+
+      if (oldIndex === -1 || newIndex === -1) {
+        return;
+      }
+
+      const reordered = arrayMove(informationChecklists, oldIndex, newIndex).map((checklist, index) => ({
+        ...checklist,
+        orderIndex: index + 1,
+      }));
+
+      setInformationChecklistsLocal(reordered);
+      void commitInformationReorder(reordered);
+    },
+    [informationChecklists, commitInformationReorder, isReorderDisabled, isLoading]
+  );
 
   if (!subsectionId) {
     return (
@@ -197,47 +441,25 @@ export function ChecklistContent({
                 {statusChecklists.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No status checklists yet.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {statusChecklists.map((checklist) => (
-                      <div
-                        key={checklist._id}
-                        className="flex items-start justify-between rounded-lg border p-4 hover:bg-muted/30"
-                      >
-                        <div className="flex-1 space-y-1">
-                          <div className="font-medium">{checklist.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            Field: {getFieldLabel(checklist.field)}
-                            {checklist.location && ` • Location: ${checklist.location}`}
-                          </div>
-                          {checklist.answerChoices && checklist.answerChoices.length > 0 && (
-                            <div className="text-sm text-muted-foreground">
-                              Options: {checklist.answerChoices.join(', ')}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setEditingChecklist(checklist)}
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleStatusDragEnd}>
+                    <SortableContext
+                      items={statusChecklists.map((checklist) => checklist._id || "")}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {statusChecklists.map((checklist) => (
+                          <SortableChecklistItem
+                            key={checklist._id}
+                            checklist={checklist}
+                            onEdit={() => setEditingChecklist(checklist)}
+                            onDelete={() => setDeletingChecklistId(checklist._id || null)}
                             disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
-                            title="Edit checklist"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setDeletingChecklistId(checklist._id || null)}
-                            disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
-                            title="Delete checklist"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
+                            reorderDisabled={isReorderDisabled}
+                          />
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </CardContent>
             </Card>
@@ -255,38 +477,25 @@ export function ChecklistContent({
                 {informationChecklists.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No information checklists yet.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {informationChecklists.map((checklist) => (
-                      <div
-                        key={checklist._id}
-                        className="flex items-start justify-between rounded-lg border p-4 hover:bg-muted/30"
-                      >
-                        <div className="flex-1 space-y-1">
-                          <div className="font-medium">{checklist.name}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setEditingChecklist(checklist)}
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleInformationDragEnd}>
+                    <SortableContext
+                      items={informationChecklists.map((checklist) => checklist._id || "")}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {informationChecklists.map((checklist) => (
+                          <SortableChecklistItem
+                            key={checklist._id}
+                            checklist={checklist}
+                            onEdit={() => setEditingChecklist(checklist)}
+                            onDelete={() => setDeletingChecklistId(checklist._id || null)}
                             disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
-                            title="Edit checklist"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setDeletingChecklistId(checklist._id || null)}
-                            disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
-                            title="Delete checklist"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
+                            reorderDisabled={isReorderDisabled}
+                          />
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </CardContent>
             </Card>
