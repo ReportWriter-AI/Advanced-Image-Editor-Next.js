@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CreatableTagInput } from "@/components/ui/creatable-tag-input";
+import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
 // import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -29,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TemplateChecklist } from "@/components/api/queries/templateChecklists";
+import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDropdowns";
 
 const statusChecklistSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -66,6 +68,16 @@ export function ChecklistItemForm({
   isSubmitting = false,
 }: ChecklistItemFormProps) {
   const [answerChoices, setAnswerChoices] = useState<string[]>([]);
+  const { data: dropdownsData } = useReusableDropdownsQuery();
+
+  // Convert API format (Array<{id, value}>) to options format (Array<{value, label}>)
+  const locationOptions = useMemo(() => {
+    if (!dropdownsData?.data?.location) return [];
+    return dropdownsData.data.location.map((item: { id: string; value: string }) => ({
+      value: item.value,
+      label: item.value,
+    }));
+  }, [dropdownsData]);
 
   const statusForm = useForm<StatusChecklistFormValues>({
     resolver: zodResolver(statusChecklistSchema),
@@ -250,18 +262,28 @@ export function ChecklistItemForm({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
-              <Input
-                id="location"
-                placeholder="Enter location"
-                {...statusForm.register("location")}
-                disabled={isSubmitting}
+              <Controller
+                control={statusForm.control}
+                name="location"
+                render={({ field, fieldState }) => (
+                  <div>
+                    <CreatableConcatenatedInput
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      label="Location"
+                      placeholder="Search location..."
+                      inputPlaceholder="Enter location"
+                      options={locationOptions}
+                      disabled={isSubmitting}
+                    />
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldState.error.message}
+                      </p>
+                    )}
+                  </div>
+                )}
               />
-              {statusForm.formState.errors.location && (
-                <p className="text-sm text-red-600">
-                  {statusForm.formState.errors.location.message}
-                </p>
-              )}
             </div>
 
             <div className="space-y-2">
