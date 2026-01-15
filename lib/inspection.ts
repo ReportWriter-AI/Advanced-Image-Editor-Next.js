@@ -5,6 +5,8 @@ import mongoose from "mongoose";
 import Client from "@/src/models/Client";
 import Agent from "@/src/models/Agent";
 import Service from "@/src/models/Service";
+import Template from "@/src/models/Template";
+import InspectionTemplate from "@/src/models/InspectionTemplate";
 import { IUser } from "@/src/models/User";
 import { IDiscountCode } from "@/src/models/DiscountCode";
 
@@ -1015,4 +1017,89 @@ export async function initializePricingFromServices(
   }
 
   return pricingItems;
+}
+
+/**
+ * Copy templates from services to InspectionTemplate for a specific inspection
+ * Extracts unique templateIds from services, fetches templates, and creates deep copies
+ * Returns array of created InspectionTemplate IDs
+ */
+export async function copyTemplatesForInspection(
+  inspectionId: string,
+  services: Array<{
+    serviceId: string;
+    addOns?: Array<{
+      name: string;
+      addFee?: number;
+      addHours?: number;
+    }>;
+  }>
+): Promise<mongoose.Types.ObjectId[]> {
+  if (!mongoose.Types.ObjectId.isValid(inspectionId)) {
+    throw new Error('Invalid inspection ID format');
+  }
+
+  await dbConnect();
+
+  // Extract unique templateIds from all services
+  const serviceIds = services.map(s => new mongoose.Types.ObjectId(s.serviceId));
+  const serviceDocs = await Service.find({ _id: { $in: serviceIds } })
+    .select('templateIds')
+    .lean();
+
+  // Collect all unique templateIds
+  const uniqueTemplateIds = new Set<string>();
+  for (const serviceDoc of serviceDocs) {
+    const templateIds = (serviceDoc as any).templateIds || [];
+    for (const templateId of templateIds) {
+      if (templateId && mongoose.Types.ObjectId.isValid(templateId)) {
+        uniqueTemplateIds.add(templateId.toString());
+      }
+    }
+  }
+
+  if (uniqueTemplateIds.size === 0) {
+    return [];
+  }
+
+  // Fetch all templates
+  const templateIdsArray = Array.from(uniqueTemplateIds).map(id => new mongoose.Types.ObjectId(id));
+  const templates = await Template.find({ _id: { $in: templateIdsArray } }).lean();
+
+  // Create InspectionTemplate copies
+  const createdTemplateIds: mongoose.Types.ObjectId[] = [];
+
+  for (const template of templates) {
+    try {
+      // Deep copy template data, excluding _id, company, createdBy, timestamps
+      const templateData: any = {
+        name: template.name,
+        sections: JSON.parse(JSON.stringify(template.sections || [])), // Deep copy sections
+        orderIndex: template.orderIndex || 0,
+        reportDescription: template.reportDescription,
+        deletedAt: template.deletedAt || null,
+      };
+
+      // Create new InspectionTemplate
+      const inspectionTemplate = await InspectionTemplate.create(templateData);
+      createdTemplateIds.push(inspectionTemplate._id as mongoose.Types.ObjectId);
+    } catch (error) {
+      console.error(`Failed to copy template ${template._id} for inspection ${inspectionId}:`, error);
+      // Continue with other templates even if one fails
+    }
+  }
+
+  // Update inspection with inspectionTemplateIds
+  if (createdTemplateIds.length > 0) {
+    await Inspection.findByIdAndUpdate(
+      new mongoose.Types.ObjectId(inspectionId),
+      {
+        $set: {
+          inspectionTemplateIds: createdTemplateIds,
+        },
+      }
+    );
+  }
+
+  return createdTemplateIds;
 }

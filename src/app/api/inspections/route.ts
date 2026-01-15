@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createInspection, getAllInspections } from "@/lib/inspection";
+import { createInspection, getAllInspections, copyTemplatesForInspection } from "@/lib/inspection";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import dbConnect from "@/lib/db";
 import Event from "@/src/models/Event";
@@ -80,6 +80,16 @@ export async function POST(req: NextRequest) {
         currentUser.company as mongoose.Types.ObjectId,
         services
       );
+      
+      // Copy templates from services to InspectionTemplate
+      if (services && services.length > 0) {
+        try {
+          await copyTemplatesForInspection(inspection._id.toString(), services);
+        } catch (error) {
+          console.error('Failed to copy templates for inspection:', error);
+          // Don't fail inspection creation if template copying fails
+        }
+      }
       
       // Attach active automation actions to the inspection
       // IMPORTANT: This must happen BEFORE processing triggers

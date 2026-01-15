@@ -164,6 +164,7 @@ export interface IInspection extends Document {
   }>;
   deletedAt?: Date;
   isReportPublished?: boolean;
+  inspectionTemplateIds?: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -718,6 +719,11 @@ const InspectionSchema = new Schema<IInspection>(
     isReportPublished: {
       type: Boolean,
       default: false,
+    },
+    inspectionTemplateIds: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: 'InspectionTemplate',
+      default: [],
     },
   },
   {

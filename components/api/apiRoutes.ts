@@ -60,4 +60,39 @@ export default {
 	agreements: {
 		get: '/agreements',
 	},
+	// Inspection Templates
+	inspectionTemplates: {
+		get: (inspectionId: string) => `/inspections/${inspectionId}/templates`,
+		getById: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}`,
+		update: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}`,
+		delete: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}`,
+	},
+	// Inspection Template Sections
+	inspectionTemplateSections: {
+		get: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections`,
+		create: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections`,
+		update: (inspectionId: string, templateId: string, sectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}`,
+		delete: (inspectionId: string, templateId: string, sectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}`,
+		reorder: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/reorder`,
+		deleted: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/deleted`,
+		restore: (inspectionId: string, templateId: string, sectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/restore`,
+	},
+	// Inspection Template Subsections
+	inspectionTemplateSubsections: {
+		get: (inspectionId: string, templateId: string, sectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections`,
+		create: (inspectionId: string, templateId: string, sectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections`,
+		update: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}`,
+		delete: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}`,
+		reorder: (inspectionId: string, templateId: string, sectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/reorder`,
+		deleted: (inspectionId: string, templateId: string, sectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/deleted`,
+		restore: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/restore`,
+	},
+	// Inspection Template Checklists
+	inspectionTemplateChecklists: {
+		get: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists`,
+		create: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists`,
+		update: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string, checklistId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists/${checklistId}`,
+		delete: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string, checklistId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists/${checklistId}`,
+		reorder: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists/reorder`,
+	},
 }

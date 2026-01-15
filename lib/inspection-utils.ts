@@ -36,22 +36,73 @@ export async function processInspectionPostCreation(
   const inspectionObjectId = new mongoose.Types.ObjectId(inspectionId);
   const companyObjectId = new mongoose.Types.ObjectId(companyId);
 
-  // 1. Generate Order ID using OrderIdCounter
-  try {
-    const counter = await OrderIdCounter.findOneAndUpdate(
-      { company: companyObjectId },
-      { $inc: { lastOrderId: 1 } },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+  // 1. Generate Order ID using OrderIdCounter with retry logic for duplicate key errors
+  let orderIdAttempts = 0;
+  const maxOrderIdAttempts = 5;
+  let orderIdGenerated = false;
+
+  while (orderIdAttempts < maxOrderIdAttempts && !orderIdGenerated) {
+    try {
+      // Increment counter and get new orderId
+      const counter = await OrderIdCounter.findOneAndUpdate(
+        { company: companyObjectId },
+        { $inc: { lastOrderId: 1 } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      const newOrderId = counter.lastOrderId;
+
+      // Check if this orderId already exists in the database
+      const existingInspection = await Inspection.findOne({ orderId: newOrderId });
+      if (existingInspection) {
+        orderIdAttempts++;
+        console.warn(
+          `OrderId ${newOrderId} already exists. Retrying with next orderId (attempt ${orderIdAttempts}/${maxOrderIdAttempts})`
+        );
+        continue; // Retry with next orderId
+      }
+
+      // Update inspection with orderId
+      try {
+        await Inspection.findByIdAndUpdate(inspectionObjectId, {
+          orderId: newOrderId,
+        });
+        result.orderId = newOrderId;
+        orderIdGenerated = true;
+      } catch (updateError: any) {
+        // Check if it's a duplicate key error
+        if (updateError.code === 11000) {
+          orderIdAttempts++;
+          console.warn(
+            `Duplicate key error for orderId ${newOrderId}. Retrying with next orderId (attempt ${orderIdAttempts}/${maxOrderIdAttempts})`
+          );
+          // Continue loop to retry with next orderId
+          continue;
+        } else {
+          // Different error, throw it
+          throw updateError;
+        }
+      }
+    } catch (error: any) {
+      // Check if it's a duplicate key error from the counter update
+      if (error.code === 11000) {
+        orderIdAttempts++;
+        console.warn(
+          `Duplicate key error during orderId generation. Retrying (attempt ${orderIdAttempts}/${maxOrderIdAttempts})`
+        );
+        continue;
+      } else {
+        // Different error, log and break
+        console.error('Error generating Order ID:', error);
+        break;
+      }
+    }
+  }
+
+  if (!orderIdGenerated) {
+    console.error(
+      `Failed to generate unique orderId after ${maxOrderIdAttempts} attempts. Continuing without orderId.`
     );
-    result.orderId = counter.lastOrderId; // This will be 1001 for first inspection (1000 + 1)
-    
-    // Update inspection with orderId
-    await Inspection.findByIdAndUpdate(inspectionObjectId, {
-      orderId: result.orderId,
-    });
-  } catch (error) {
-    console.error('Error generating Order ID:', error);
-    // Continue without orderId if generation fails
+    // Continue without orderId if generation fails - it's non-critical
   }
 
   // 2. Generate unique token for client view access
