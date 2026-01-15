@@ -184,7 +184,7 @@ export function ChecklistItemForm({
     { value: 'date', label: 'Date' },
     { value: 'number', label: 'Number' },
     { value: 'numberRange', label: 'Number Range' },
-    { value: 'signature', label: 'Signature' },
+    // { value: 'signature', label: 'Signature' },
     { value: 'text', label: 'Text' },
   ];
 
