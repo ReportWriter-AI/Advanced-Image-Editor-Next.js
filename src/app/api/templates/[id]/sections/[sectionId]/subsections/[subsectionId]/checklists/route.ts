@@ -125,7 +125,7 @@ export async function POST(request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Field is required for status checklist items' }, { status: 400 });
     }
 
-    if (type === 'status' && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature'].includes(field)) {
+    if (type === 'status' && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text'].includes(field)) {
       return NextResponse.json({ error: 'Invalid field type' }, { status: 400 });
     }
 

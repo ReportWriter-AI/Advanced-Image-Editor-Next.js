@@ -73,7 +73,7 @@ export async function PUT(request: NextRequest, context: RouteParams) {
     }
 
     // Validate field for status type
-    if (existingChecklist.type === 'status' && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature'].includes(field)) {
+    if (existingChecklist.type === 'status' && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text'].includes(field)) {
       return NextResponse.json({ error: 'Invalid field type' }, { status: 400 });
     }
 
