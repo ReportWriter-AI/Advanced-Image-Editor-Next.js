@@ -154,14 +154,28 @@ export function ChecklistItemForm({
   }, [open, initialValues, type, statusForm, informationForm]);
 
   const handleStatusSubmit = async (values: StatusChecklistFormValues) => {
-    await onSubmit({
-      ...values,
-      answerChoices: needsAnswerChoices ? answerChoices : undefined,
-    });
+    // In edit mode, only send the name field
+    if (initialValues) {
+      await onSubmit({
+        name: values.name,
+      });
+    } else {
+      await onSubmit({
+        ...values,
+        answerChoices: needsAnswerChoices ? answerChoices : undefined,
+      });
+    }
   };
 
   const handleInformationSubmit = async (values: InformationChecklistFormValues) => {
-    await onSubmit(values);
+    // In edit mode, only send the name field
+    if (initialValues) {
+      await onSubmit({
+        name: values.name,
+      });
+    } else {
+      await onSubmit(values);
+    }
   };
 
   const fieldOptions = [
@@ -205,139 +219,143 @@ export function ChecklistItemForm({
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="field">Field *</Label>
-              <Controller
-                control={statusForm.control}
-                name="field"
-                render={({ field, fieldState }) => (
-                  <div>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={isSubmitting}
-                    >
-                      <SelectTrigger id="field" className={fieldState.error ? "border-red-600" : ""}>
-                        <SelectValue placeholder="Select field type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {fieldOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {fieldState.error && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {fieldState.error.message}
-                      </p>
+            {!initialValues && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="field">Field *</Label>
+                  <Controller
+                    control={statusForm.control}
+                    name="field"
+                    render={({ field, fieldState }) => (
+                      <div>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          disabled={isSubmitting}
+                        >
+                          <SelectTrigger id="field" className={fieldState.error ? "border-red-600" : ""}>
+                            <SelectValue placeholder="Select field type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {fieldOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {fieldState.error && (
+                          <p className="mt-1 text-sm text-red-600">
+                            {fieldState.error.message}
+                          </p>
+                        )}
+                      </div>
                     )}
-                  </div>
-                )}
-              />
-            </div>
+                  />
+                </div>
 
-            {needsAnswerChoices && (
-              <CreatableTagInput
-                value={answerChoices}
-                onChange={setAnswerChoices}
-                label={
-                  selectedField === 'multipleAnswers' 
-                    ? 'Answer Choices'
-                    : selectedField === 'number' || selectedField === 'numberRange'
-                    ? 'Unit Types'
-                    : undefined
-                }
-                helperText={
-                  selectedField === 'multipleAnswers'
-                    ? 'Add multiple answer options for this checklist item.'
-                    : selectedField === 'number' || selectedField === 'numberRange'
-                    ? 'Add unit types (e.g., inches, feet, meters) for this checklist item.'
-                    : undefined
-                }
-                placeholder={`Add ${selectedField === 'multipleAnswers' ? 'answer choice' : 'unit type'}...`}
-                disabled={isSubmitting}
-              />
-            )}
-
-            <div className="space-y-2">
-              <Controller
-                control={statusForm.control}
-                name="location"
-                render={({ field, fieldState }) => (
-                  <div>
-                    <CreatableConcatenatedInput
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                      label="Location"
-                      placeholder="Search location..."
-                      inputPlaceholder="Enter location"
-                      options={locationOptions}
-                      disabled={isSubmitting}
-                    />
-                    {fieldState.error && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {fieldState.error.message}
-                      </p>
-                    )}
-                  </div>
-                )}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="comment">Comment</Label>
-              <Controller
-                control={statusForm.control}
-                name="comment"
-                render={({ field, fieldState }) => (
-                  <div>
-                    {/* <TinyMCERichTextEditor
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                      height={300}
-                      plugins={['textcolor', 'link', 'image', 'media']}
-                      toolbar="bold italic underline | forecolor backcolor | link image media"
-                    /> */}
-                    <Textarea
-                      id="comment"
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                      rows={8}
-                      disabled={isSubmitting}
-                    />
-                    {fieldState.error && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {fieldState.error.message}
-                      </p>
-                    )}
-                  </div>
-                )}
-              />
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="defaultChecked" className="text-base">
-                  Default Checked
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Automatically check this item by default
-                </p>
-              </div>
-              <Controller
-                control={statusForm.control}
-                name="defaultChecked"
-                render={({ field }) => (
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
+                {needsAnswerChoices && (
+                  <CreatableTagInput
+                    value={answerChoices}
+                    onChange={setAnswerChoices}
+                    label={
+                      selectedField === 'multipleAnswers' 
+                        ? 'Answer Choices'
+                        : selectedField === 'number' || selectedField === 'numberRange'
+                        ? 'Unit Types'
+                        : undefined
+                    }
+                    helperText={
+                      selectedField === 'multipleAnswers'
+                        ? 'Add multiple answer options for this checklist item.'
+                        : selectedField === 'number' || selectedField === 'numberRange'
+                        ? 'Add unit types (e.g., inches, feet, meters) for this checklist item.'
+                        : undefined
+                    }
+                    placeholder={`Add ${selectedField === 'multipleAnswers' ? 'answer choice' : 'unit type'}...`}
                     disabled={isSubmitting}
                   />
                 )}
-              />
-            </div>
+
+                <div className="space-y-2">
+                  <Controller
+                    control={statusForm.control}
+                    name="location"
+                    render={({ field, fieldState }) => (
+                      <div>
+                        <CreatableConcatenatedInput
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          label="Location"
+                          placeholder="Search location..."
+                          inputPlaceholder="Enter location"
+                          options={locationOptions}
+                          disabled={isSubmitting}
+                        />
+                        {fieldState.error && (
+                          <p className="mt-1 text-sm text-red-600">
+                            {fieldState.error.message}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="comment">Comment</Label>
+                  <Controller
+                    control={statusForm.control}
+                    name="comment"
+                    render={({ field, fieldState }) => (
+                      <div>
+                        {/* <TinyMCERichTextEditor
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          height={300}
+                          plugins={['textcolor', 'link', 'image', 'media']}
+                          toolbar="bold italic underline | forecolor backcolor | link image media"
+                        /> */}
+                        <Textarea
+                          id="comment"
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          rows={8}
+                          disabled={isSubmitting}
+                        />
+                        {fieldState.error && (
+                          <p className="mt-1 text-sm text-red-600">
+                            {fieldState.error.message}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="defaultChecked" className="text-base">
+                      Default Checked
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically check this item by default
+                    </p>
+                  </div>
+                  <Controller
+                    control={statusForm.control}
+                    name="defaultChecked"
+                    render={({ field }) => (
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={isSubmitting}
+                      />
+                    )}
+                  />
+                </div>
+              </>
+            )}
 
             <DialogFooter>
               <Button
@@ -377,58 +395,62 @@ export function ChecklistItemForm({
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="comment">Comment</Label>
-              <Controller
-                control={informationForm.control}
-                name="comment"
-                render={({ field, fieldState }) => (
-                  <div>
-                    {/* <TinyMCERichTextEditor
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                      height={300}
-                      plugins={['textcolor', 'link', 'image', 'media']}
-                      toolbar="bold italic underline | forecolor backcolor | link image media"
-                    /> */}
-                    <Textarea
-                      id="comment"
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                      rows={8}
-                      disabled={isSubmitting}
-                    />
-                    {fieldState.error && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {fieldState.error.message}
-                      </p>
+            {!initialValues && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="comment">Comment</Label>
+                  <Controller
+                    control={informationForm.control}
+                    name="comment"
+                    render={({ field, fieldState }) => (
+                      <div>
+                        {/* <TinyMCERichTextEditor
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          height={300}
+                          plugins={['textcolor', 'link', 'image', 'media']}
+                          toolbar="bold italic underline | forecolor backcolor | link image media"
+                        /> */}
+                        <Textarea
+                          id="comment"
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          rows={8}
+                          disabled={isSubmitting}
+                        />
+                        {fieldState.error && (
+                          <p className="mt-1 text-sm text-red-600">
+                            {fieldState.error.message}
+                          </p>
+                        )}
+                      </div>
                     )}
-                  </div>
-                )}
-              />
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="defaultChecked" className="text-base">
-                  Default Checked
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Automatically check this item by default
-                </p>
-              </div>
-              <Controller
-                control={informationForm.control}
-                name="defaultChecked"
-                render={({ field }) => (
-                  <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                    disabled={isSubmitting}
                   />
-                )}
-              />
-            </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="defaultChecked" className="text-base">
+                      Default Checked
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically check this item by default
+                    </p>
+                  </div>
+                  <Controller
+                    control={informationForm.control}
+                    name="defaultChecked"
+                    render={({ field }) => (
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={isSubmitting}
+                      />
+                    )}
+                  />
+                </div>
+              </>
+            )}
 
             <DialogFooter>
               <Button
