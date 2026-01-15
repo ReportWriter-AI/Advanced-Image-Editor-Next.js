@@ -4786,6 +4786,65 @@ export default function InspectionEditPage() {
                     </Button>
                   </div>
                 )}
+
+                {/* Inspection Templates Section */}
+                <div className="p-4 border rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg">Reports</h3>
+                  </div>
+                  {loadingTemplates ? (
+                    <div className="flex items-center justify-center py-8">
+                      <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
+                    </div>
+                  ) : inspectionTemplates.length > 0 ? (
+                    <div className="space-y-3">
+                      {inspectionTemplates.map((template: any) => (
+                        <div key={template._id} className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-base mb-1 truncate">{template.name}</p>
+                              {template.reportDescription && (
+                                <p className="text-sm text-muted-foreground line-clamp-2">{template.reportDescription}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 ml-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  // View button - no functionality for now
+                                }}
+                                className="gap-2"
+                                disabled
+                              >
+                                <Eye className="h-4 w-4" />
+                                View
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  router.push(`/reports/edit/${inspectionId}/${template._id}`);
+                                }}
+                                className="gap-2"
+                              >
+                                <i className="fas fa-edit"></i>
+                                Edit
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                        <i className="fas fa-file-alt text-2xl text-muted-foreground"></i>
+                      </div>
+                      <p className="text-sm text-muted-foreground">No inspection templates found</p>
+                    </div>
+                  )}
+                </div>
+
               {/* Address Section */}
               <div className="p-4 border rounded-lg bg-muted/50">
                 <h3 className="font-semibold text-lg mb-4">Address</h3>
@@ -6279,64 +6338,6 @@ export default function InspectionEditPage() {
                           </Accordion>
                         </div>
                       )}
-
-              {/* Inspection Templates Section */}
-              <div className="p-4 border rounded-lg bg-muted/50">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-lg">Inspection Templates</h3>
-                </div>
-                {loadingTemplates ? (
-                  <div className="flex items-center justify-center py-8">
-                    <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
-                  </div>
-                ) : inspectionTemplates.length > 0 ? (
-                  <div className="space-y-3">
-                    {inspectionTemplates.map((template: any) => (
-                      <div key={template._id} className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-base mb-1 truncate">{template.name}</p>
-                            {template.reportDescription && (
-                              <p className="text-sm text-muted-foreground line-clamp-2">{template.reportDescription}</p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 ml-4">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                // View button - no functionality for now
-                              }}
-                              className="gap-2"
-                              disabled
-                            >
-                              <Eye className="h-4 w-4" />
-                              View
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                router.push(`/reports/edit/${inspectionId}/${template._id}`);
-                              }}
-                              className="gap-2"
-                            >
-                              <i className="fas fa-edit"></i>
-                              Edit
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
-                      <i className="fas fa-file-alt text-2xl text-muted-foreground"></i>
-                    </div>
-                    <p className="text-sm text-muted-foreground">No inspection templates found</p>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
           </>
