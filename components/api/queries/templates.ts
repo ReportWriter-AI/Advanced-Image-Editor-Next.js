@@ -78,3 +78,27 @@ export const useTemplatesQuery =  () =>
 			},
 		})
 	}
+
+	export const useTemplateQuery = (templateId: string) => 
+		useQuery({
+			queryKey: ['template', templateId],
+			queryFn: () => axios.get(`/templates/${templateId}`),
+			enabled: !!templateId,
+		})
+
+	export const useUpdateTemplateMutation = (templateId: string) => {
+		const queryClient = useQueryClient()
+		return useMutation({
+			mutationFn: (data: { reportDescription?: string }) => 
+				axios.put(`/templates/${templateId}`, data),
+			onSuccess: (response) => {
+				queryClient.invalidateQueries({ queryKey: ['template', templateId] });
+				queryClient.invalidateQueries({ queryKey: [apiRoutes.templates.get] });
+				toast.success(response.data?.message || 'Template updated successfully');
+			},
+			onError: (error: any) => {
+				toast.error(error.response?.data?.error || 'Failed to update template');
+				return Promise.reject(error);
+			},
+		})
+	}

@@ -43,6 +43,7 @@ export interface ITemplate extends Document {
   createdBy: mongoose.Types.ObjectId;
   sections: ITemplateSection[];
   orderIndex: number;
+  reportDescription?: string;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
@@ -192,6 +193,10 @@ const TemplateSchema = new Schema<ITemplate>(
       type: Number,
       default: 0,
       index: true,
+    },
+    reportDescription: {
+      type: String,
+      trim: true,
     },
     deletedAt: {
       type: Date,

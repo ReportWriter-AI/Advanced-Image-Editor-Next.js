@@ -67,6 +67,7 @@ export default function TemplatesPage() {
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
   const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
   const [templateSettingsModalOpen, setTemplateSettingsModalOpen] = useState(false);
+  const [selectedTemplateIdForSettings, setSelectedTemplateIdForSettings] = useState<string | null>(null);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
 
@@ -225,15 +226,6 @@ export default function TemplatesPage() {
                   className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
                     setSettingsPopoverOpen(false);
-                    setTemplateSettingsModalOpen(true);
-                  }}
-                >
-                  Template Settings
-                </button>
-                <button
-                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => {
-                    setSettingsPopoverOpen(false);
                     setLocationModalOpen(true);
                   }}
                 >
@@ -308,6 +300,10 @@ export default function TemplatesPage() {
                       onNavigate={() => router.push(`/templates/${template._id}`)}
                       onEdit={() => router.push(`/templates/${template._id}`)}
                       onDelete={() => openDeleteDialog(template)}
+                      onSettings={() => {
+                        setSelectedTemplateIdForSettings(template._id);
+                        setTemplateSettingsModalOpen(true);
+                      }}
                     />
                   ))}
                 </tbody>
@@ -395,7 +391,18 @@ export default function TemplatesPage() {
         </DialogContent>
       </Dialog>
 
-      <TemplateSettingsModal open={templateSettingsModalOpen} onOpenChange={setTemplateSettingsModalOpen} />
+      {selectedTemplateIdForSettings && (
+        <TemplateSettingsModal 
+          open={templateSettingsModalOpen} 
+          onOpenChange={(open) => {
+            setTemplateSettingsModalOpen(open);
+            if (!open) {
+              setSelectedTemplateIdForSettings(null);
+            }
+          }} 
+          templateId={selectedTemplateIdForSettings}
+        />
+      )}
       <LocationModal open={locationModalOpen} onOpenChange={setLocationModalOpen} />
       <RestoreModal open={restoreModalOpen} onOpenChange={setRestoreModalOpen} />
     </div>
@@ -409,6 +416,7 @@ interface SortableTemplateRowProps {
   onNavigate: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onSettings: () => void;
 }
 
 function SortableTemplateRow({
@@ -418,6 +426,7 @@ function SortableTemplateRow({
   onNavigate,
   onEdit,
   onDelete,
+  onSettings,
 }: SortableTemplateRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: template._id,
@@ -463,6 +472,18 @@ function SortableTemplateRow({
       </td>
       <td className="px-4 py-3 align-top text-right">
         <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSettings();
+            }}
+            title="Template settings"
+            disabled={reorderBusy}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="icon"

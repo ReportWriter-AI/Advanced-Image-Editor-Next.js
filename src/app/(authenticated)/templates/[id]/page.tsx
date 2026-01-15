@@ -17,6 +17,7 @@ import {
   Loader2,
   PlusCircle,
   RotateCcw,
+  Settings,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -55,6 +56,8 @@ import { TemplateSidebar } from "./_components/TemplateSidebar";
 import { ChecklistContent } from "./_components/ChecklistContent";
 import { RestoreSectionModal } from "./_components/RestoreSectionModal";
 import { RestoreSubsectionModal } from "./_components/RestoreSubsectionModal";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { TemplateSettingsModal } from "../_components/TemplateSettingsModal";
 
 export default function TemplatePage() {
   const params = useParams();
@@ -68,6 +71,8 @@ export default function TemplatePage() {
   const [restoreSectionModalOpen, setRestoreSectionModalOpen] = useState(false);
   const [restoreSubsectionModalOpen, setRestoreSubsectionModalOpen] = useState(false);
   const [restoreSubsectionModalSectionId, setRestoreSubsectionModalSectionId] = useState<string | null>(null);
+  const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
+  const [templateSettingsModalOpen, setTemplateSettingsModalOpen] = useState(false);
   
   const [createSubsectionDialogOpen, setCreateSubsectionDialogOpen] = useState(false);
   const [editingSubsection, setEditingSubsection] = useState<{ section: TemplateSection; subsection: TemplateSubsection } | null>(null);
@@ -314,15 +319,40 @@ export default function TemplatePage() {
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
-            <Button onClick={() => setRestoreSectionModalOpen(true)} size="sm" variant="outline">
-              <RotateCcw className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Restore</span>
-            </Button>
             <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm">
               <PlusCircle className="mr-2 h-4 w-4" />
               <span className="hidden sm:inline">Add Section</span>
               <span className="sm:hidden">Add</span>
             </Button>
+            <Popover open={settingsPopoverOpen} onOpenChange={setSettingsPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-1" align="end">
+                <div className="flex flex-col">
+                  <button
+                    className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => {
+                      setSettingsPopoverOpen(false);
+                      setTemplateSettingsModalOpen(true);
+                    }}
+                  >
+                     Settings
+                  </button>
+                  <button
+                    className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => {
+                      setSettingsPopoverOpen(false);
+                      setRestoreSectionModalOpen(true);
+                    }}
+                  >
+                    Restore
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </div>
@@ -569,6 +599,12 @@ export default function TemplatePage() {
           sectionId={restoreSubsectionModalSectionId}
         />
       )}
+
+      <TemplateSettingsModal 
+        open={templateSettingsModalOpen} 
+        onOpenChange={setTemplateSettingsModalOpen} 
+        templateId={templateId}
+      />
     </div>
   );
 }
