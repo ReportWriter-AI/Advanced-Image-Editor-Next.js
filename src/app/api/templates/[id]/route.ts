@@ -65,9 +65,12 @@ export async function PUT(request: NextRequest, context: RouteParams) {
     }
 
     const body = await request.json();
-    const { reportDescription } = body;
+    const { name, reportDescription } = body;
 
     const updateData: Record<string, any> = {};
+    if (name !== undefined) {
+      updateData.name = typeof name === 'string' ? name.trim() : undefined;
+    }
     if (reportDescription !== undefined) {
       updateData.reportDescription = typeof reportDescription === 'string' ? reportDescription.trim() : undefined;
     }

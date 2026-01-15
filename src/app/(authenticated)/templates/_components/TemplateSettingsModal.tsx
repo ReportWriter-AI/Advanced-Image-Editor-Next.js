@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useTemplateQuery, useUpdateTemplateMutation } from "@/components/api/queries/templates";
 
@@ -22,6 +23,7 @@ interface TemplateSettingsModalProps {
 }
 
 export function TemplateSettingsModal({ open, onOpenChange, templateId }: TemplateSettingsModalProps) {
+  const [name, setName] = useState("");
   const [reportDescription, setReportDescription] = useState("");
   
   const { data, isLoading, error } = useTemplateQuery(templateId);
@@ -29,21 +31,27 @@ export function TemplateSettingsModal({ open, onOpenChange, templateId }: Templa
 
   // Update local state when template data loads
   useEffect(() => {
-    if (data?.data?.template?.reportDescription !== undefined) {
-      setReportDescription(data.data.template.reportDescription || "");
+    if (data?.data?.template) {
+      if (data.data.template.name !== undefined) {
+        setName(data.data.template.name || "");
+      }
+      if (data.data.template.reportDescription !== undefined) {
+        setReportDescription(data.data.template.reportDescription || "");
+      }
     }
   }, [data]);
 
   // Reset form when modal closes
   useEffect(() => {
     if (!open) {
+      setName("");
       setReportDescription("");
     }
   }, [open]);
 
   const handleSave = async () => {
     try {
-      await updateMutation.mutateAsync({ reportDescription });
+      await updateMutation.mutateAsync({ name, reportDescription });
       onOpenChange(false);
     } catch (error) {
       // Error is handled by the mutation hook (toast)
@@ -52,10 +60,12 @@ export function TemplateSettingsModal({ open, onOpenChange, templateId }: Templa
   };
 
   const handleCancel = () => {
-    // Reset to original value
-    if (data?.data?.template?.reportDescription !== undefined) {
+    // Reset to original values
+    if (data?.data?.template) {
+      setName(data.data.template.name || "");
       setReportDescription(data.data.template.reportDescription || "");
     } else {
+      setName("");
       setReportDescription("");
     }
     onOpenChange(false);
@@ -85,6 +95,16 @@ export function TemplateSettingsModal({ open, onOpenChange, templateId }: Templa
           </div>
         ) : (
           <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Template Name</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter template name..."
+                disabled={isSubmitting}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="reportDescription">Report Description</Label>
               <Textarea

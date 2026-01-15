@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useInspectionTemplateQuery, useUpdateInspectionTemplateMutation } from "@/components/api/queries/inspectionTemplates";
 
@@ -28,6 +29,7 @@ export function InspectionTemplateSettingsModal({
   inspectionId, 
   inspectionTemplateId 
 }: InspectionTemplateSettingsModalProps) {
+  const [name, setName] = useState("");
   const [reportDescription, setReportDescription] = useState("");
   
   const { data, isLoading, error } = useInspectionTemplateQuery(inspectionId, inspectionTemplateId);
@@ -35,14 +37,20 @@ export function InspectionTemplateSettingsModal({
 
   // Update local state when template data loads
   useEffect(() => {
-    if (data?.data?.template?.reportDescription !== undefined) {
-      setReportDescription(data.data.template.reportDescription || "");
+    if (data?.data?.template) {
+      if (data.data.template.name !== undefined) {
+        setName(data.data.template.name || "");
+      }
+      if (data.data.template.reportDescription !== undefined) {
+        setReportDescription(data.data.template.reportDescription || "");
+      }
     }
   }, [data]);
 
   // Reset form when modal closes
   useEffect(() => {
     if (!open) {
+      setName("");
       setReportDescription("");
     }
   }, [open]);
@@ -52,7 +60,7 @@ export function InspectionTemplateSettingsModal({
       await updateMutation.mutateAsync({ 
         inspectionId, 
         templateId: inspectionTemplateId, 
-        templateData: { reportDescription } 
+        templateData: { name, reportDescription } 
       });
       onOpenChange(false);
     } catch (error) {
@@ -62,10 +70,12 @@ export function InspectionTemplateSettingsModal({
   };
 
   const handleCancel = () => {
-    // Reset to original value
-    if (data?.data?.template?.reportDescription !== undefined) {
+    // Reset to original values
+    if (data?.data?.template) {
+      setName(data.data.template.name || "");
       setReportDescription(data.data.template.reportDescription || "");
     } else {
+      setName("");
       setReportDescription("");
     }
     onOpenChange(false);
@@ -95,6 +105,16 @@ export function InspectionTemplateSettingsModal({
           </div>
         ) : (
           <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Template Name</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter template name..."
+                disabled={isSubmitting}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="reportDescription">Report Description</Label>
               <Textarea

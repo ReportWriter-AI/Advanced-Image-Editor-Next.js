@@ -89,7 +89,7 @@ export const useTemplatesQuery =  () =>
 	export const useUpdateTemplateMutation = (templateId: string) => {
 		const queryClient = useQueryClient()
 		return useMutation({
-			mutationFn: (data: { reportDescription?: string }) => 
+			mutationFn: (data: { name?: string; reportDescription?: string }) => 
 				axios.put(`/templates/${templateId}`, data),
 			onSuccess: (response) => {
 				queryClient.invalidateQueries({ queryKey: ['template', templateId] });
