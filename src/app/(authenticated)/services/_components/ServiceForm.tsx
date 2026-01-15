@@ -5,6 +5,10 @@ import { useForm, Controller, useFieldArray } from "react-hook-form";
 import type { UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useModifiersQuery } from "@/components/api/queries/modifiers";
+import { useAgreementsQuery } from "@/components/api/queries/agreements";
+import { useTemplatesQuery } from "@/components/api/queries/templates";
+import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDropdowns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,6 +93,7 @@ const baseServiceFieldsSchema = z.object({
   defaultInspectionEvents: z.string().optional(),
   organizationServiceId: z.string().optional(),
   agreementIds: z.array(z.string()).default([]),
+  templateIds: z.array(z.string()).default([]),
   modifiers: z.array(modifierSchema).default([]),
 });
 
@@ -138,6 +143,7 @@ export interface ServiceFormNormalizedValues {
   defaultInspectionEvents: string[];
   organizationServiceId?: string;
   agreementIds: string[];
+  templateIds: string[];
   modifiers: ServiceFormNormalizedModifier[];
   addOns: Array<{
     name: string;
@@ -169,6 +175,7 @@ const DEFAULT_VALUES: ServiceFormValues = {
   defaultInspectionEvents: "",
   organizationServiceId: "",
   agreementIds: [],
+  templateIds: [],
   modifiers: [],
   addOns: [],
   taxes: [],
@@ -220,6 +227,11 @@ interface ModifierFieldMeta {
 }
 
 interface AgreementOption {
+  id: string;
+  name: string;
+}
+
+interface TemplateOption {
   id: string;
   name: string;
 }
@@ -315,6 +327,7 @@ const createDefaultAddOn = (orderIndex = 0): AddOnFormValues => ({
   defaultInspectionEvents: "",
   organizationServiceId: "",
   agreementIds: [],
+  templateIds: [],
   modifiers: [],
   allowUpsell: false,
   orderIndex,
@@ -355,106 +368,69 @@ export function ServiceForm({
     []
   );
 
-  const [modifierOptions, setModifierOptions] = useState<ModifierOptionWithMeta[]>(defaultModifierOptions);
-  const [modifierOptionsLoading, setModifierOptionsLoading] = useState(true);
-  const [modifierOptionsError, setModifierOptionsError] = useState<string | null>(null);
-  const [agreements, setAgreements] = useState<AgreementOption[]>([]);
-  const [agreementsLoading, setAgreementsLoading] = useState(true);
-  const [agreementsError, setAgreementsError] = useState<string | null>(null);
-  const [serviceCategories, setServiceCategories] = useState<string[]>([]);
-  const [serviceCategoriesLoading, setServiceCategoriesLoading] = useState(true);
+  const { data: modifiersResponse, isLoading: modifierOptionsLoading, error: modifiersError } = useModifiersQuery();
+  const { data: agreementsResponse, isLoading: agreementsLoading, error: agreementsQueryError } = useAgreementsQuery();
+  const { data: templatesResponse, isLoading: templatesLoading, error: templatesQueryError } = useTemplatesQuery();
+  const { data: reusableDropdownsResponse, isLoading: serviceCategoriesLoading } = useReusableDropdownsQuery();
 
-  useEffect(() => {
-    const fetchModifierOptions = async () => {
-      try {
-        setModifierOptionsLoading(true);
-        setModifierOptionsError(null);
-        const response = await fetch("/api/modifiers", { credentials: "include" });
-        const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error || "Failed to load modifiers");
-        }
+  const modifierOptions = useMemo<ModifierOptionWithMeta[]>(() => {
+    if (!modifiersResponse?.data?.modifiers) return defaultModifierOptions;
+    const options: ModifierOptionWithMeta[] = Array.isArray(modifiersResponse.data.modifiers)
+      ? modifiersResponse.data.modifiers.map((modifier: any) => ({
+          key: modifier.key,
+          label: modifier.label,
+          supportsType: Boolean(modifier.supportsType),
+          hasEqualsField: Boolean(modifier.hasEqualsField),
+          requiresRange: Boolean(modifier.requiresRange),
+          group: modifier.group === "custom" ? "custom" : undefined,
+        }))
+      : [];
+    return options.length > 0 ? options : defaultModifierOptions;
+  }, [modifiersResponse, defaultModifierOptions]);
 
-        const options: ModifierOptionWithMeta[] = Array.isArray(result.modifiers)
-          ? result.modifiers.map((modifier: any) => ({
-              key: modifier.key,
-              label: modifier.label,
-              supportsType: Boolean(modifier.supportsType),
-              hasEqualsField: Boolean(modifier.hasEqualsField),
-              requiresRange: Boolean(modifier.requiresRange),
-              group: modifier.group === "custom" ? "custom" : undefined,
-            }))
-          : [];
+  const modifierOptionsError = useMemo(() => {
+    if (!modifiersError) return null;
+    return (modifiersError as any)?.response?.data?.error || (modifiersError as any)?.message || "Failed to load modifiers";
+  }, [modifiersError]);
 
-        setModifierOptions(options.length > 0 ? options : defaultModifierOptions);
-      } catch (error: any) {
-        console.error("Modifier options error:", error);
-        setModifierOptionsError(error.message || "Failed to load modifiers");
-        setModifierOptions(defaultModifierOptions);
-      } finally {
-        setModifierOptionsLoading(false);
-      }
-    };
+  const agreements = useMemo<AgreementOption[]>(() => {
+    if (!agreementsResponse?.data?.agreements) return [];
+    return Array.isArray(agreementsResponse.data.agreements)
+      ? agreementsResponse.data.agreements.map((agreement: any) => ({
+          id: agreement._id,
+          name: agreement.name,
+        }))
+      : [];
+  }, [agreementsResponse]);
 
-    fetchModifierOptions();
-  }, [defaultModifierOptions]);
+  const agreementsError = useMemo(() => {
+    if (!agreementsQueryError) return null;
+    return (agreementsQueryError as any)?.response?.data?.error || (agreementsQueryError as any)?.message || "Failed to load agreements";
+  }, [agreementsQueryError]);
 
-  useEffect(() => {
-    const fetchAgreements = async () => {
-      try {
-        setAgreementsLoading(true);
-        setAgreementsError(null);
-        const response = await fetch("/api/agreements", { credentials: "include" });
-        const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error || "Failed to load agreements");
-        }
-        const options: AgreementOption[] = Array.isArray(result.agreements)
-          ? result.agreements.map((agreement: any) => ({
-              id: agreement._id,
-              name: agreement.name,
-            }))
-          : [];
-        setAgreements(options);
-      } catch (error: any) {
-        console.error("Agreement options error:", error);
-        setAgreementsError(error.message || "Failed to load agreements");
-        setAgreements([]);
-      } finally {
-        setAgreementsLoading(false);
-      }
-    };
+  const templates = useMemo<TemplateOption[]>(() => {
+    if (!templatesResponse?.data?.templates) return [];
+    return Array.isArray(templatesResponse.data.templates)
+      ? templatesResponse.data.templates.map((template: any) => ({
+          id: template._id,
+          name: template.name,
+        }))
+      : [];
+  }, [templatesResponse]);
 
-    fetchAgreements();
-  }, []);
+  const templatesError = useMemo(() => {
+    if (!templatesQueryError) return null;
+    return (templatesQueryError as any)?.response?.data?.error || (templatesQueryError as any)?.message || "Failed to load templates";
+  }, [templatesQueryError]);
 
-  useEffect(() => {
-    const fetchServiceCategories = async () => {
-      try {
-        setServiceCategoriesLoading(true);
-        const response = await fetch("/api/reusable-dropdowns", { credentials: "include" });
-        const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error || "Failed to load service categories");
-        }
-
-        const categoriesString = result.serviceCategory || "";
-        const categoriesArray = categoriesString
-          .split(",")
-          .map((c: string) => c.trim())
-          .filter((c: string) => c.length > 0);
-        
-        setServiceCategories(categoriesArray);
-      } catch (error: any) {
-        console.error("Service categories error:", error);
-        setServiceCategories([]);
-      } finally {
-        setServiceCategoriesLoading(false);
-      }
-    };
-
-    fetchServiceCategories();
-  }, []);
+  const serviceCategories = useMemo<string[]>(() => {
+    if (!reusableDropdownsResponse?.data?.serviceCategory) return [];
+    const categoriesString = reusableDropdownsResponse.data.serviceCategory || "";
+    return categoriesString
+      .split(",")
+      .map((c: string) => c.trim())
+      .filter((c: string) => c.length > 0);
+  }, [reusableDropdownsResponse]);
 
   const { fields: modifierFields, append, remove, update, replace } = useFieldArray({
     control: form.control,
@@ -722,6 +698,7 @@ export function ServiceForm({
       defaultInspectionEvents: normalizeDefaultEvents(values.defaultInspectionEvents),
       organizationServiceId: values.organizationServiceId?.trim() || undefined,
       agreementIds: values.agreementIds ?? [],
+      templateIds: values.templateIds ?? [],
       modifiers: normalizeModifiers(values.modifiers),
       addOns:
         values.addOns?.map((addOn, index) => {
@@ -1043,6 +1020,37 @@ export function ServiceForm({
         <p className="text-xs text-muted-foreground">
           Clients will be asked to sign every agreement selected here when booking this service.
         </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="templateIds" className="flex items-center gap-1">
+          Templates
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-4 w-4 cursor-pointer text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent>Select templates to associate with this service.</TooltipContent>
+          </Tooltip>
+        </Label>
+        <Controller
+          name="templateIds"
+          control={form.control}
+          render={({ field }) => (
+            <MultiSelect
+              value={field.value ?? []}
+              onChange={field.onChange}
+              options={templates.map((template) => ({
+                value: template.id,
+                label: template.name,
+              }))}
+              placeholder={
+                templatesLoading ? "Loading templates..." : "Select templates (optional)"
+              }
+              disabled={templatesLoading || isSubmitting}
+            />
+          )}
+        />
+        {templatesError && <p className="text-sm text-red-600">{templatesError}</p>}
       </div>
 
         <div className="space-y-2">

@@ -42,4 +42,22 @@ export default {
 		get: '/reusable-dropdowns',
 		update: '/reusable-dropdowns',
 	},
+	// Services
+	services: {
+		get: '/services',
+		create: '/services',
+		getById: (serviceId: string) => `/services/${serviceId}`,
+		update: (serviceId: string) => `/services/${serviceId}`,
+		delete: (serviceId: string) => `/services/${serviceId}`,
+		reorder: '/services/reorder',
+		duplicate: (serviceId: string) => `/services/${serviceId}/duplicate`,
+	},
+	// Modifiers
+	modifiers: {
+		get: '/modifiers',
+	},
+	// Agreements
+	agreements: {
+		get: '/agreements',
+	},
 }

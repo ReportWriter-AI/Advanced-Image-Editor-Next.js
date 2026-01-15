@@ -83,6 +83,7 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       defaultInspectionEvents,
       organizationServiceId,
       agreementIds,
+      templateIds,
       modifiers,
     } = body;
 
@@ -178,6 +179,17 @@ export async function PUT(request: NextRequest, context: RouteParams) {
         service.agreementIds = [];
       }
       service.markModified('agreementIds');
+    }
+
+    if (templateIds !== undefined) {
+      if (Array.isArray(templateIds)) {
+        service.templateIds = templateIds
+          .filter((id: any) => mongoose.Types.ObjectId.isValid(id))
+          .map((id: any) => new mongoose.Types.ObjectId(id));
+      } else {
+        service.templateIds = [];
+      }
+      service.markModified('templateIds');
     }
 
     if (modifiers !== undefined) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -47,22 +47,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { toast } from "sonner";
-
-interface Service {
-  _id: string;
-  name: string;
-  serviceCategory: string;
-  description?: string;
-  hiddenFromScheduler: boolean;
-  baseCost: number;
-  baseDurationHours: number;
-  defaultInspectionEvents: string[];
-  organizationServiceId?: string;
-  orderIndex?: number;
-  createdAt: string;
-  updatedAt: string;
-}
+import {
+  useServicesQuery,
+  useDeleteServiceMutation,
+  useReorderServicesMutation,
+  useDuplicateServiceMutation,
+  type Service,
+} from "@/components/api/queries/services";
 
 type MessageState = {
   type: "success" | "error";
@@ -71,14 +62,28 @@ type MessageState = {
 
 export default function ServicesPage() {
   const router = useRouter();
-  const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: servicesResponse, isLoading: loading } = useServicesQuery();
+  const deleteServiceMutation = useDeleteServiceMutation();
+  const reorderServicesMutation = useReorderServicesMutation();
+  const duplicateServiceMutation = useDuplicateServiceMutation();
+  
   const [message, setMessage] = useState<MessageState>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [reorderBusy, setReorderBusy] = useState(false);
+  const [optimisticServices, setOptimisticServices] = useState<Service[] | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+
+  const services = useMemo(() => {
+    if (optimisticServices) return optimisticServices;
+    if (!servicesResponse?.data?.services) return [];
+    return (servicesResponse.data.services as Service[]).map((service: Service, index: number) => ({
+      ...service,
+      orderIndex:
+        typeof service.orderIndex === "number" && Number.isFinite(service.orderIndex)
+          ? service.orderIndex
+          : index + 1,
+    }));
+  }, [servicesResponse, optimisticServices]);
 
   const orderedServices = useMemo(() => {
     return [...services].sort((a, b) => {
@@ -104,40 +109,8 @@ export default function ServicesPage() {
     })
   );
 
-  const fetchServices = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/services", { credentials: "include" });
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.error || "Failed to fetch services");
-      }
-
-      const data = await response.json();
-      const normalized: Service[] = Array.isArray(data.services)
-        ? data.services.map((service: Service, index: number) => ({
-            ...service,
-            orderIndex:
-              typeof service.orderIndex === "number" && Number.isFinite(service.orderIndex)
-                ? service.orderIndex
-                : index + 1,
-          }))
-        : [];
-      setServices(normalized);
-    } catch (error: any) {
-      console.error("Error fetching services:", error);
-      setMessage({ type: "error", text: error.message || "Failed to load services" });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchServices();
-  }, [fetchServices]);
-
   const openDeleteDialog = (service: Service) => {
-    if (reorderBusy) {
+    if (reorderServicesMutation.isPending || duplicateServiceMutation.isPending) {
       return;
     }
     setServiceToDelete(service);
@@ -148,68 +121,36 @@ export default function ServicesPage() {
     if (!serviceToDelete) return;
 
     try {
-      setIsDeleting(true);
-      const response = await fetch(`/api/services/${serviceToDelete._id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to delete service");
-      }
-
-      setMessage({ type: "success", text: result.message || "Service deleted" });
+      await deleteServiceMutation.mutateAsync(serviceToDelete._id);
       setDeleteDialogOpen(false);
       setServiceToDelete(null);
-      fetchServices();
-    } catch (error: any) {
-      setMessage({ type: "error", text: error.message || "Failed to delete service" });
-    } finally {
-      setIsDeleting(false);
+    } catch (error) {
+      // Error is handled by the mutation
     }
   };
 
   const commitReorder = useCallback(
     async (nextServices: Service[]) => {
-      setReorderBusy(true);
       try {
+        setOptimisticServices(nextServices);
         const payload = nextServices.map((service, index) => ({
           id: service._id,
           order: index + 1,
         }));
 
-        const response = await fetch("/api/services/reorder", {
-          method: "PATCH",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ services: payload }),
-        });
-
-        if (!response.ok) {
-          const json = await response.json().catch(() => ({}));
-          throw new Error((json as { error?: string }).error || "Failed to reorder services");
-        }
-
-        toast.success("Service order updated");
+        await reorderServicesMutation.mutateAsync({ services: payload });
+        setOptimisticServices(null);
       } catch (error: any) {
         console.error("Error reordering services:", error);
-        setMessage({ type: "error", text: error.message || "Failed to reorder services" });
-        await fetchServices();
-        toast.error(error.message || "Failed to reorder services");
-      } finally {
-        setReorderBusy(false);
+        setOptimisticServices(null);
       }
     },
-    [fetchServices]
+    [reorderServicesMutation]
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (reorderBusy || loading) {
+      if (reorderServicesMutation.isPending || duplicateServiceMutation.isPending || loading) {
         return;
       }
 
@@ -230,43 +171,31 @@ export default function ServicesPage() {
         orderIndex: index + 1,
       }));
 
-      setServices(reordered);
       void commitReorder(reordered);
     },
-    [orderedServices, commitReorder, reorderBusy, loading]
+    [orderedServices, commitReorder, reorderServicesMutation.isPending, duplicateServiceMutation.isPending, loading]
   );
 
   const reorderDisabled =
-    reorderBusy || loading || isDeleting || duplicatingId !== null || orderedServices.length <= 1;
+    reorderServicesMutation.isPending || loading || deleteServiceMutation.isPending || duplicateServiceMutation.isPending || orderedServices.length <= 1;
 
   const handleDuplicateService = useCallback(
     async (serviceId: string) => {
-      if (reorderBusy || loading || isDeleting || duplicatingId !== null) {
+      if (reorderServicesMutation.isPending || loading || deleteServiceMutation.isPending || duplicateServiceMutation.isPending) {
         return;
       }
 
-      setDuplicatingId(serviceId);
       try {
-        const response = await fetch(`/api/services/${serviceId}/duplicate`, {
-          method: "POST",
-          credentials: "include",
-        });
-
-        if (!response.ok) {
-          const json = await response.json().catch(() => ({}));
-          throw new Error((json as { error?: string }).error || "Failed to duplicate service");
-        }
-
-        toast.success("Service duplicated");
-        await fetchServices();
-      } catch (error: any) {
-        console.error("Duplicate service error:", error);
-        toast.error(error.message || "Failed to duplicate service");
+        setDuplicatingId(serviceId);
+        setOptimisticServices(null); // Clear any optimistic state to ensure fresh data is shown
+        await duplicateServiceMutation.mutateAsync(serviceId);
+      } catch (error) {
+        // Error is handled by the mutation
       } finally {
         setDuplicatingId(null);
       }
     },
-    [fetchServices, reorderBusy, loading, isDeleting, duplicatingId]
+    [duplicateServiceMutation, reorderServicesMutation.isPending, loading, deleteServiceMutation.isPending]
   );
 
   return (
@@ -350,7 +279,7 @@ export default function ServicesPage() {
                         key={service._id}
                         service={service}
                         reorderDisabled={reorderDisabled}
-                        reorderBusy={reorderBusy}
+                        reorderBusy={reorderServicesMutation.isPending}
                         duplicatingId={duplicatingId}
                         onEdit={() => router.push(`/services/${service._id}`)}
                         onDuplicate={() => handleDuplicateService(service._id)}
@@ -380,12 +309,12 @@ export default function ServicesPage() {
                   setDeleteDialogOpen(false);
                   setServiceToDelete(null);
                 }}
-                disabled={isDeleting}
+                disabled={deleteServiceMutation.isPending}
               >
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleDeleteService} disabled={isDeleting}>
-                {isDeleting ? "Deleting..." : "Delete"}
+              <Button variant="destructive" onClick={handleDeleteService} disabled={deleteServiceMutation.isPending}>
+                {deleteServiceMutation.isPending ? "Deleting..." : "Delete"}
               </Button>
             </DialogFooter>
           </DialogContent>

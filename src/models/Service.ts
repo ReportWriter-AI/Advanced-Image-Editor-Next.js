@@ -40,6 +40,7 @@ export interface IService extends Document {
   defaultInspectionEvents: string[];
   organizationServiceId?: string;
   agreementIds: mongoose.Types.ObjectId[];
+  templateIds: mongoose.Types.ObjectId[];
   modifiers: IServiceModifier[];
   addOns: IServiceAddOn[];
   taxes: IServiceTax[];
@@ -128,6 +129,11 @@ const ServiceSchema = new Schema<IService>(
     agreementIds: {
       type: [mongoose.Schema.Types.ObjectId],
       ref: 'Agreement',
+      default: [],
+    },
+    templateIds: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: 'Template',
       default: [],
     },
     modifiers: {

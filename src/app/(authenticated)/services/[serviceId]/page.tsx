@@ -1,206 +1,115 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Loader2, Save } from "lucide-react";
+import { AlertCircle, Loader2, Save } from "lucide-react";
 import {
   ServiceForm,
   ServiceFormNormalizedValues,
   ServiceFormValues,
 } from "../_components/ServiceForm";
-
-type MessageState = {
-  type: "success" | "error";
-  text: string;
-} | null;
-
-interface ServiceResponse {
-  service: {
-    _id: string;
-    name: string;
-    serviceCategory: string;
-    description?: string;
-    hiddenFromScheduler: boolean;
-    baseCost: number;
-    baseDurationHours: number;
-    defaultInspectionEvents: string[];
-    organizationServiceId?: string;
-    agreementIds?: string[];
-    modifiers: Array<{
-      field: string;
-      type?: string;
-      greaterThan?: number;
-      lessThanOrEqual?: number;
-      equals?: string;
-      addFee?: number;
-      addHours?: number;
-    }>;
-    addOns?: Array<{
-      name: string;
-      serviceCategory: string;
-      description?: string;
-      hiddenFromScheduler?: boolean;
-      baseCost?: number;
-      baseDurationHours?: number;
-      defaultInspectionEvents?: string[];
-      organizationServiceId?: string;
-      agreementIds?: string[];
-      modifiers?: Array<{
-        field: string;
-        type?: string;
-        greaterThan?: number;
-        lessThanOrEqual?: number;
-        equals?: string;
-        addFee?: number;
-        addHours?: number;
-      }>;
-      allowUpsell?: boolean;
-      orderIndex?: number;
-    }>;
-    taxes?: Array<{
-      name: string;
-      addPercent: number;
-      orderIndex?: number;
-    }>;
-  };
-}
+import { useServiceQuery, useUpdateServiceMutation } from "@/components/api/queries/services";
 
 export default function EditServicePage() {
   const router = useRouter();
   const params = useParams<{ serviceId: string }>();
   const serviceId = params?.serviceId;
 
-  const [message, setMessage] = useState<MessageState>(null);
-  const [loading, setLoading] = useState(true);
-  const [initialValues, setInitialValues] = useState<ServiceFormValues | undefined>(undefined);
+  const { data: serviceResponse, isLoading } = useServiceQuery(serviceId || "");
+  const updateServiceMutation = useUpdateServiceMutation();
 
-  useEffect(() => {
-    if (!serviceId) return;
+  const initialValues = useMemo<ServiceFormValues | undefined>(() => {
+    if (!serviceResponse?.data?.service) return undefined;
 
-    const fetchService = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/services/${serviceId}`, {
-          credentials: "include",
-        });
+    const service = serviceResponse.data.service as any;
+    const mapModifierToForm = (modifier: any) => ({
+      field: modifier.field,
+      type: modifier.type || "range",
+      greaterThan:
+        modifier.greaterThan !== undefined && modifier.greaterThan !== null
+          ? modifier.greaterThan.toString()
+          : "",
+      lessThanOrEqual:
+        modifier.lessThanOrEqual !== undefined && modifier.lessThanOrEqual !== null
+          ? modifier.lessThanOrEqual.toString()
+          : "",
+      equals: modifier.equals || "",
+      addFee:
+        modifier.addFee !== undefined && modifier.addFee !== null
+          ? modifier.addFee.toString()
+          : "",
+      addHours:
+        modifier.addHours !== undefined && modifier.addHours !== null
+          ? modifier.addHours.toString()
+          : "",
+    });
 
-        const result: ServiceResponse | { error: string } = await response.json();
-
-        if (!response.ok) {
-          throw new Error((result as { error?: string }).error || "Failed to load service");
-        }
-
-        const service = (result as ServiceResponse).service;
-        const mapModifierToForm = (modifier: ServiceResponse["service"]["modifiers"][number]) => ({
-          field: modifier.field,
-          type: modifier.type || "range",
-          greaterThan:
-            modifier.greaterThan !== undefined && modifier.greaterThan !== null
-              ? modifier.greaterThan.toString()
-              : "",
-          lessThanOrEqual:
-            modifier.lessThanOrEqual !== undefined && modifier.lessThanOrEqual !== null
-              ? modifier.lessThanOrEqual.toString()
-              : "",
-          equals: modifier.equals || "",
-          addFee:
-            modifier.addFee !== undefined && modifier.addFee !== null
-              ? modifier.addFee.toString()
-              : "",
-          addHours:
-            modifier.addHours !== undefined && modifier.addHours !== null
-              ? modifier.addHours.toString()
-              : "",
-        });
-
-        setInitialValues({
-          name: service.name,
-          serviceCategory: service.serviceCategory || "",
-          description: service.description || "",
-          hiddenFromScheduler: service.hiddenFromScheduler,
-          baseCost: service.baseCost !== undefined ? service.baseCost.toString() : "",
-          baseDurationHours:
-            service.baseDurationHours !== undefined ? service.baseDurationHours.toString() : "",
-          defaultInspectionEvents: service.defaultInspectionEvents.join(", "),
-          organizationServiceId: service.organizationServiceId || "",
-          agreementIds: Array.isArray(service.agreementIds)
-            ? service.agreementIds.map((id) => id.toString())
-            : [],
-          modifiers: service.modifiers?.map(mapModifierToForm) || [],
-          addOns:
-            service.addOns
-              ?.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
-              .map((addOn) => ({
-                name: addOn.name,
-                serviceCategory: addOn.serviceCategory || "",
-                description: addOn.description || "",
-                hiddenFromScheduler: Boolean(addOn.hiddenFromScheduler),
-                baseCost:
-                  addOn.baseCost !== undefined && addOn.baseCost !== null
-                    ? addOn.baseCost.toString()
-                    : "",
-                baseDurationHours:
-                  addOn.baseDurationHours !== undefined && addOn.baseDurationHours !== null
-                    ? addOn.baseDurationHours.toString()
-                    : "",
-                defaultInspectionEvents: addOn.defaultInspectionEvents?.join(", ") || "",
-                organizationServiceId: addOn.organizationServiceId || "",
-                modifiers: addOn.modifiers?.map(mapModifierToForm) || [],
-                allowUpsell: Boolean(addOn.allowUpsell),
-                orderIndex: addOn.orderIndex ?? 0,
-                agreementIds: Array.isArray(addOn.agreementIds)
-                  ? addOn.agreementIds.map((id) => id.toString())
-                  : [],
-              })) || [],
-          taxes:
-            service.taxes
-              ?.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
-              .map((tax) => ({
-                name: tax.name,
-                addPercent:
-                  tax.addPercent !== undefined && tax.addPercent !== null
-                    ? tax.addPercent.toString()
-                    : "",
-                orderIndex: tax.orderIndex ?? 0,
-              })) || [],
-        });
-      } catch (error: any) {
-        setMessage({ type: "error", text: error.message || "Failed to load service" });
-      } finally {
-        setLoading(false);
-      }
+    return {
+      name: service.name,
+      serviceCategory: service.serviceCategory || "",
+      description: service.description || "",
+      hiddenFromScheduler: service.hiddenFromScheduler,
+      baseCost: service.baseCost !== undefined ? service.baseCost.toString() : "",
+      baseDurationHours:
+        service.baseDurationHours !== undefined ? service.baseDurationHours.toString() : "",
+      defaultInspectionEvents: service.defaultInspectionEvents.join(", "),
+      organizationServiceId: service.organizationServiceId || "",
+      agreementIds: Array.isArray(service.agreementIds)
+        ? service.agreementIds.map((id: any) => id.toString())
+        : [],
+      templateIds: Array.isArray(service.templateIds)
+        ? service.templateIds.map((id: any) => id.toString())
+        : [],
+      modifiers: service.modifiers?.map(mapModifierToForm) || [],
+      addOns:
+        service.addOns
+          ?.sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+          .map((addOn: any) => ({
+            name: addOn.name,
+            serviceCategory: addOn.serviceCategory || "",
+            description: addOn.description || "",
+            hiddenFromScheduler: Boolean(addOn.hiddenFromScheduler),
+            baseCost:
+              addOn.baseCost !== undefined && addOn.baseCost !== null
+                ? addOn.baseCost.toString()
+                : "",
+            baseDurationHours:
+              addOn.baseDurationHours !== undefined && addOn.baseDurationHours !== null
+                ? addOn.baseDurationHours.toString()
+                : "",
+            defaultInspectionEvents: addOn.defaultInspectionEvents?.join(", ") || "",
+            organizationServiceId: addOn.organizationServiceId || "",
+            modifiers: addOn.modifiers?.map(mapModifierToForm) || [],
+            allowUpsell: Boolean(addOn.allowUpsell),
+            orderIndex: addOn.orderIndex ?? 0,
+            agreementIds: Array.isArray(addOn.agreementIds)
+              ? addOn.agreementIds.map((id: any) => id.toString())
+              : [],
+          })) || [],
+      taxes:
+        service.taxes
+          ?.sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+          .map((tax: any) => ({
+            name: tax.name,
+            addPercent:
+              tax.addPercent !== undefined && tax.addPercent !== null
+                ? tax.addPercent.toString()
+                : "",
+            orderIndex: tax.orderIndex ?? 0,
+          })) || [],
     };
-
-    fetchService();
-  }, [serviceId]);
+  }, [serviceResponse]);
 
   const handleSubmit = async (values: ServiceFormNormalizedValues) => {
     if (!serviceId) return;
 
     try {
-      setMessage(null);
-
-      const response = await fetch(`/api/services/${serviceId}`, {
-        method: "PUT",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(values),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to update service");
-      }
-
-      setMessage({ type: "success", text: result.message || "Service updated successfully" });
+      await updateServiceMutation.mutateAsync({ serviceId, serviceData: values });
       router.push("/services");
-    } catch (error: any) {
-      setMessage({ type: "error", text: error.message || "Failed to update service" });
+    } catch (error) {
+      // Error is handled by the mutation (toast notification)
     }
   };
 
@@ -231,29 +140,7 @@ export default function EditServicePage() {
         </Button>
       </div>
 
-      {message && (
-        <Card
-          className={
-            message.type === "success"
-              ? "border-green-200 bg-green-50"
-              : "border-red-200 bg-red-50"
-          }
-        >
-          <CardContent className="flex items-start gap-3 p-4">
-            {message.type === "success" ? (
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-            ) : (
-              <AlertCircle className="h-5 w-5 text-red-600" />
-            )}
-            <p className="text-sm text-muted-foreground">{message.text}</p>
-            <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setMessage(null)}>
-              Dismiss
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {loading ? (
+      {isLoading ? (
         <Card>
           <CardContent className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -275,6 +162,7 @@ export default function EditServicePage() {
               submitLabel="Save Changes"
               onSubmit={handleSubmit}
               onCancel={() => router.push("/services")}
+              isSubmittingExternal={updateServiceMutation.isPending}
             />
           </CardContent>
         </Card>

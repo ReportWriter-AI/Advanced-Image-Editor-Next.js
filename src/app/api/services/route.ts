@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
       defaultInspectionEvents,
       organizationServiceId,
       agreementIds,
+      templateIds,
       modifiers,
     } = body;
 
@@ -132,6 +133,13 @@ export async function POST(request: NextRequest) {
         .map((id: any) => new mongoose.Types.ObjectId(id));
     }
     
+    let templateObjectIds: mongoose.Types.ObjectId[] = [];
+    if (Array.isArray(templateIds)) {
+      templateObjectIds = templateIds
+        .filter((id: any) => mongoose.Types.ObjectId.isValid(id))
+        .map((id: any) => new mongoose.Types.ObjectId(id));
+    }
+    
     const lastService = await Service.findOne({ company: currentUser.company })
       .sort({ orderIndex: -1 })
       .select('orderIndex')
@@ -150,6 +158,7 @@ export async function POST(request: NextRequest) {
       defaultInspectionEvents: events,
       organizationServiceId: organizationServiceId?.trim() || undefined,
       agreementIds: agreementObjectIds,
+      templateIds: templateObjectIds,
       orderIndex: nextOrderIndex,
       company: currentUser.company,
       createdBy: currentUser._id,
