@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect, type CSSProperties } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -53,6 +53,10 @@ import {
 import { ChecklistItemForm } from "./ChecklistItemForm";
 import { ChecklistFieldInput } from "./ChecklistFieldInput";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
+import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDropdowns";
 import { cn } from "@/lib/utils";
 
 interface ChecklistContentProps {
@@ -76,6 +80,23 @@ interface SortableChecklistItemProps {
   subsectionId: string;
 }
 
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 function SortableChecklistItem({
   checklist,
   onEdit,
@@ -88,6 +109,59 @@ function SortableChecklistItem({
   sectionId,
   subsectionId,
 }: SortableChecklistItemProps) {
+  const { data: dropdownsData } = useReusableDropdownsQuery();
+
+  // Convert API format (Array<{id, value}>) to options format (Array<{value, label}>)
+  const locationOptions = useMemo(() => {
+    if (!dropdownsData?.data?.location) return [];
+    return dropdownsData.data.location.map((item: { id: string; value: string }) => ({
+      value: item.value,
+      label: item.value,
+    }));
+  }, [dropdownsData]);
+
+  const [locationValue, setLocationValue] = useState(checklist.location || "");
+  const [commentValue, setCommentValue] = useState(checklist.comment || "");
+
+  const prevLocationRef = useRef<string | undefined>(checklist.location);
+  const prevCommentRef = useRef<string | undefined>(checklist.comment);
+
+  // Debounce location and comment changes
+  const debouncedLocation = useDebounce(locationValue, 500);
+  const debouncedComment = useDebounce(commentValue, 500);
+
+  // Sync with checklist changes
+  useEffect(() => {
+    const newLocation = checklist.location || "";
+    const newComment = checklist.comment || "";
+
+    if (newLocation !== (prevLocationRef.current || "")) {
+      setLocationValue(newLocation);
+      prevLocationRef.current = checklist.location;
+    }
+
+    if (newComment !== (prevCommentRef.current || "")) {
+      setCommentValue(newComment);
+      prevCommentRef.current = checklist.comment;
+    }
+  }, [checklist.location, checklist.comment]);
+
+  // Save debounced location changes
+  useEffect(() => {
+    if (debouncedLocation !== (prevLocationRef.current || "") && onAnswerChange) {
+      onAnswerChange(checklist._id || "", { location: debouncedLocation });
+      prevLocationRef.current = debouncedLocation;
+    }
+  }, [debouncedLocation, checklist._id, onAnswerChange]);
+
+  // Save debounced comment changes
+  useEffect(() => {
+    if (debouncedComment !== (prevCommentRef.current || "") && onAnswerChange) {
+      onAnswerChange(checklist._id || "", { comment: debouncedComment });
+      prevCommentRef.current = debouncedComment;
+    }
+  }, [debouncedComment, checklist._id, onAnswerChange]);
+
   const {
     attributes: sortableAttributes,
     listeners,
@@ -113,52 +187,54 @@ function SortableChecklistItem({
     <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
       <div className="rounded-lg border p-4 hover:bg-muted/30">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            {/* Checkbox and title for status without field */}
-            {checklist.type === 'status' && !isStatusWithField && (
-              <>
-                <Checkbox
-                  checked={checklist.defaultChecked || false}
-                  onCheckedChange={(checked) => {
-                    if (onAnswerChange) {
-                      onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
-                    }
-                  }}
-                  disabled={disabled}
-                />
-                <span className="text-sm font-medium">{checklist.name}</span>
-              </>
-            )}
-            {/* Checkbox and title for status with field */}
-            {checklist.type === 'status' && isStatusWithField && (
-              <>
-                <Checkbox
-                  checked={checklist.defaultChecked || false}
-                  onCheckedChange={(checked) => {
-                    if (onAnswerChange) {
-                      onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
-                    }
-                  }}
-                  disabled={disabled}
-                />
-                <span className="text-sm font-medium">{checklist.name}</span>
-              </>
-            )}
-            {/* Checkbox and title for information */}
-            {checklist.type === 'information' && (
-              <>
-                <Checkbox
-                  checked={checklist.defaultChecked || false}
-                  onCheckedChange={(checked) => {
-                    if (onAnswerChange) {
-                      onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
-                    }
-                  }}
-                  disabled={disabled}
-                />
-                <span className="text-sm font-medium">{checklist.name}</span>
-              </>
-            )}
+          <div className="flex flex-col gap-1 flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              {/* Checkbox and title for status without field */}
+              {checklist.type === 'status' && !isStatusWithField && (
+                <>
+                  <Checkbox
+                    checked={checklist.defaultChecked || false}
+                    onCheckedChange={(checked) => {
+                      if (onAnswerChange) {
+                        onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
+                      }
+                    }}
+                    disabled={disabled}
+                  />
+                  <span className="text-sm font-medium">{checklist.name}</span>
+                </>
+              )}
+              {/* Checkbox and title for status with field */}
+              {checklist.type === 'status' && isStatusWithField && (
+                <>
+                  <Checkbox
+                    checked={checklist.defaultChecked || false}
+                    onCheckedChange={(checked) => {
+                      if (onAnswerChange) {
+                        onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
+                      }
+                    }}
+                    disabled={disabled}
+                  />
+                  <span className="text-sm font-medium">{checklist.name}</span>
+                </>
+              )}
+              {/* Checkbox and title for information */}
+              {checklist.type === 'information' && (
+                <>
+                  <Checkbox
+                    checked={checklist.defaultChecked || false}
+                    onCheckedChange={(checked) => {
+                      if (onAnswerChange) {
+                        onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
+                      }
+                    }}
+                    disabled={disabled}
+                  />
+                  <span className="text-sm font-medium">{checklist.name}</span>
+                </>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
@@ -196,17 +272,48 @@ function SortableChecklistItem({
             </Button>
           </div>
         </div>
-        {/* Field input for status with field - appears below title with spacing */}
-        {isStatusWithField && onAnswerChange && (
-          <div className="mt-3">
-            <ChecklistFieldInput
-              checklist={checklist}
-              onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
+
+        <div className="mt-3 space-y-3">
+          {/* Location field for status checklists */}
+          {checklist.type === 'status' && (
+            <div className="space-y-2">
+              <CreatableConcatenatedInput
+                value={locationValue}
+                onChange={setLocationValue}
+                label="Location"
+                placeholder="Search location..."
+                inputPlaceholder="Enter location"
+                options={locationOptions}
+                disabled={disabled}
+              />
+            </div>
+          )}
+
+          {/* Comment field for all checklist types */}
+          <div className="space-y-2">
+            <Label htmlFor={`comment-${checklist._id}`}>Comment</Label>
+            <Textarea
+              id={`comment-${checklist._id}`}
+              value={commentValue}
+              onChange={(e) => setCommentValue(e.target.value)}
+              rows={4}
               disabled={disabled}
-              hideTitleAndCheckbox={true}
+              placeholder="Enter comment..."
             />
           </div>
-        )}
+
+          {/* Field input for status with field - appears below location/comment */}
+          {isStatusWithField && onAnswerChange && (
+            <div>
+              <ChecklistFieldInput
+                checklist={checklist}
+                onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
+                disabled={disabled}
+                hideTitleAndCheckbox={true}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

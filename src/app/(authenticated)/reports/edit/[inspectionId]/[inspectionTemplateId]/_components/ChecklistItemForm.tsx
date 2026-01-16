@@ -154,10 +154,12 @@ export function ChecklistItemForm({
   }, [open, initialValues, type, statusForm, informationForm]);
 
   const handleStatusSubmit = async (values: StatusChecklistFormValues) => {
-    // In edit mode, only send the name field
     if (initialValues) {
+      // In edit mode, send name, location, and comment
       await onSubmit({
         name: values.name,
+        location: values.location,
+        comment: values.comment,
       });
     } else {
       await onSubmit({
@@ -168,10 +170,11 @@ export function ChecklistItemForm({
   };
 
   const handleInformationSubmit = async (values: InformationChecklistFormValues) => {
-    // In edit mode, only send the name field
     if (initialValues) {
+      // In edit mode, send name and comment
       await onSubmit({
         name: values.name,
+        comment: values.comment,
       });
     } else {
       await onSubmit(values);
@@ -277,62 +280,6 @@ export function ChecklistItemForm({
                   />
                 )}
 
-                <div className="space-y-2">
-                  <Controller
-                    control={statusForm.control}
-                    name="location"
-                    render={({ field, fieldState }) => (
-                      <div>
-                        <CreatableConcatenatedInput
-                          value={field.value || ""}
-                          onChange={field.onChange}
-                          label="Location"
-                          placeholder="Search location..."
-                          inputPlaceholder="Enter location"
-                          options={locationOptions}
-                          disabled={isSubmitting}
-                        />
-                        {fieldState.error && (
-                          <p className="mt-1 text-sm text-red-600">
-                            {fieldState.error.message}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="comment">Comment</Label>
-                  <Controller
-                    control={statusForm.control}
-                    name="comment"
-                    render={({ field, fieldState }) => (
-                      <div>
-                        {/* <TinyMCERichTextEditor
-                          value={field.value || ""}
-                          onChange={field.onChange}
-                          height={300}
-                          plugins={['textcolor', 'link', 'image', 'media']}
-                          toolbar="bold italic underline | forecolor backcolor | link image media"
-                        /> */}
-                        <Textarea
-                          id="comment"
-                          value={field.value || ""}
-                          onChange={field.onChange}
-                          rows={8}
-                          disabled={isSubmitting}
-                        />
-                        {fieldState.error && (
-                          <p className="mt-1 text-sm text-red-600">
-                            {fieldState.error.message}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  />
-                </div>
-
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div className="space-y-0.5">
                     <Label htmlFor="defaultChecked" className="text-base">
@@ -356,6 +303,62 @@ export function ChecklistItemForm({
                 </div>
               </>
             )}
+
+            <div className="space-y-2">
+              <Controller
+                control={statusForm.control}
+                name="location"
+                render={({ field, fieldState }) => (
+                  <div>
+                    <CreatableConcatenatedInput
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      label="Location"
+                      placeholder="Search location..."
+                      inputPlaceholder="Enter location"
+                      options={locationOptions}
+                      disabled={isSubmitting}
+                    />
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldState.error.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="comment">Comment</Label>
+              <Controller
+                control={statusForm.control}
+                name="comment"
+                render={({ field, fieldState }) => (
+                  <div>
+                    {/* <TinyMCERichTextEditor
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      height={300}
+                      plugins={['textcolor', 'link', 'image', 'media']}
+                      toolbar="bold italic underline | forecolor backcolor | link image media"
+                    /> */}
+                    <Textarea
+                      id="comment"
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      rows={8}
+                      disabled={isSubmitting}
+                    />
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldState.error.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
 
             <DialogFooter>
               <Button
@@ -396,61 +399,59 @@ export function ChecklistItemForm({
             </div>
 
             {!initialValues && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="comment">Comment</Label>
-                  <Controller
-                    control={informationForm.control}
-                    name="comment"
-                    render={({ field, fieldState }) => (
-                      <div>
-                        {/* <TinyMCERichTextEditor
-                          value={field.value || ""}
-                          onChange={field.onChange}
-                          height={300}
-                          plugins={['textcolor', 'link', 'image', 'media']}
-                          toolbar="bold italic underline | forecolor backcolor | link image media"
-                        /> */}
-                        <Textarea
-                          id="comment"
-                          value={field.value || ""}
-                          onChange={field.onChange}
-                          rows={8}
-                          disabled={isSubmitting}
-                        />
-                        {fieldState.error && (
-                          <p className="mt-1 text-sm text-red-600">
-                            {fieldState.error.message}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  />
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="defaultChecked" className="text-base">
+                    Default Checked
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically check this item by default
+                  </p>
                 </div>
-
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="defaultChecked" className="text-base">
-                      Default Checked
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Automatically check this item by default
-                    </p>
-                  </div>
-                  <Controller
-                    control={informationForm.control}
-                    name="defaultChecked"
-                    render={({ field }) => (
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={isSubmitting}
-                      />
-                    )}
-                  />
-                </div>
-              </>
+                <Controller
+                  control={informationForm.control}
+                  name="defaultChecked"
+                  render={({ field }) => (
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={isSubmitting}
+                    />
+                  )}
+                />
+              </div>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="comment">Comment</Label>
+              <Controller
+                control={informationForm.control}
+                name="comment"
+                render={({ field, fieldState }) => (
+                  <div>
+                    {/* <TinyMCERichTextEditor
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      height={300}
+                      plugins={['textcolor', 'link', 'image', 'media']}
+                      toolbar="bold italic underline | forecolor backcolor | link image media"
+                    /> */}
+                    <Textarea
+                      id="comment"
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      rows={8}
+                      disabled={isSubmitting}
+                    />
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldState.error.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
 
             <DialogFooter>
               <Button
