@@ -47,9 +47,12 @@ import {
   useUpdateInspectionTemplateChecklistMutation,
   useDeleteInspectionTemplateChecklistMutation,
   useReorderInspectionTemplateChecklistsMutation,
+  useUpdateChecklistAnswerMutation,
   InspectionTemplateChecklist,
 } from "@/components/api/queries/inspectionTemplateChecklists";
 import { ChecklistItemForm } from "./ChecklistItemForm";
+import { ChecklistFieldInput } from "./ChecklistFieldInput";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 
 interface ChecklistContentProps {
@@ -66,6 +69,11 @@ interface SortableChecklistItemProps {
   onDelete: () => void;
   disabled: boolean;
   reorderDisabled: boolean;
+  onAnswerChange?: (checklistId: string, answerData: Partial<InspectionTemplateChecklist>) => void;
+  inspectionId: string;
+  inspectionTemplateId: string;
+  sectionId: string;
+  subsectionId: string;
 }
 
 function SortableChecklistItem({
@@ -74,6 +82,11 @@ function SortableChecklistItem({
   onDelete,
   disabled,
   reorderDisabled,
+  onAnswerChange,
+  inspectionId,
+  inspectionTemplateId,
+  sectionId,
+  subsectionId,
 }: SortableChecklistItemProps) {
   const {
     attributes: sortableAttributes,
@@ -94,47 +107,106 @@ function SortableChecklistItem({
     transition,
   };
 
+  const isStatusWithField = checklist.type === 'status' && checklist.field;
+
   return (
     <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
-      <div className="flex items-start justify-between rounded-lg border p-4 hover:bg-muted/30">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div
-            {...attributes}
-            role="button"
-            tabIndex={reorderDisabled ? -1 : 0}
-            aria-disabled={reorderDisabled}
-            className={cn(
-              "drag-handle flex items-center justify-center p-1 rounded hover:bg-muted cursor-grab active:cursor-grabbing",
-              reorderDisabled && "cursor-not-allowed opacity-40"
+      <div className="rounded-lg border p-4 hover:bg-muted/30">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {/* Checkbox and title for status without field */}
+            {checklist.type === 'status' && !isStatusWithField && (
+              <>
+                <Checkbox
+                  checked={checklist.defaultChecked || false}
+                  onCheckedChange={(checked) => {
+                    if (onAnswerChange) {
+                      onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
+                    }
+                  }}
+                  disabled={disabled}
+                />
+                <span className="text-sm font-medium">{checklist.name}</span>
+              </>
             )}
-            {...(!reorderDisabled ? listeners : {})}
-          >
-            <GripVertical className="h-4 w-4" />
+            {/* Checkbox and title for status with field */}
+            {checklist.type === 'status' && isStatusWithField && (
+              <>
+                <Checkbox
+                  checked={checklist.defaultChecked || false}
+                  onCheckedChange={(checked) => {
+                    if (onAnswerChange) {
+                      onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
+                    }
+                  }}
+                  disabled={disabled}
+                />
+                <span className="text-sm font-medium">{checklist.name}</span>
+              </>
+            )}
+            {/* Checkbox and title for information */}
+            {checklist.type === 'information' && (
+              <>
+                <Checkbox
+                  checked={checklist.defaultChecked || false}
+                  onCheckedChange={(checked) => {
+                    if (onAnswerChange) {
+                      onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
+                    }
+                  }}
+                  disabled={disabled}
+                />
+                <span className="text-sm font-medium">{checklist.name}</span>
+              </>
+            )}
           </div>
-          <div className="flex-1 space-y-1">
-            <div className="font-medium">{checklist.name}</div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="icon"
+              {...attributes}
+              role="button"
+              tabIndex={reorderDisabled ? -1 : 0}
+              aria-disabled={reorderDisabled}
+              className={cn(
+                reorderDisabled && "cursor-not-allowed opacity-40"
+              )}
+              title="Drag to reorder"
+              {...(!reorderDisabled ? listeners : {})}
+            >
+              <GripVertical className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={onEdit}
+              disabled={disabled}
+              title="Edit checklist"
+            >
+              <Edit2 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={onDelete}
+              disabled={disabled}
+              title="Delete checklist"
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onEdit}
-            disabled={disabled}
-            title="Edit checklist"
-          >
-            <Edit2 className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onDelete}
-            disabled={disabled}
-            title="Delete checklist"
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
+        {/* Field input for status with field - appears below title with spacing */}
+        {isStatusWithField && onAnswerChange && (
+          <div className="mt-3">
+            <ChecklistFieldInput
+              checklist={checklist}
+              onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
+              disabled={disabled}
+              hideTitleAndCheckbox={true}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -165,6 +237,7 @@ export function ChecklistContent({
   const updateChecklistMutation = useUpdateInspectionTemplateChecklistMutation(inspectionId, inspectionTemplateId, sectionId, subsectionId || "");
   const deleteChecklistMutation = useDeleteInspectionTemplateChecklistMutation(inspectionId, inspectionTemplateId, sectionId, subsectionId || "");
   const reorderChecklistsMutation = useReorderInspectionTemplateChecklistsMutation(inspectionId, inspectionTemplateId, sectionId, subsectionId || "");
+  const updateAnswerMutation = useUpdateChecklistAnswerMutation(inspectionId, inspectionTemplateId, sectionId, subsectionId || "");
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -246,6 +319,62 @@ export function ChecklistContent({
       console.error("Delete checklist error:", error);
     }
   };
+
+  const handleAnswerChange = useCallback(
+    async (checklistId: string, answerData: Partial<InspectionTemplateChecklist>) => {
+      try {
+        await updateAnswerMutation.mutateAsync({
+          checklistId,
+          answerData,
+        });
+      } catch (error) {
+        console.error("Update checklist answer error:", error);
+      }
+    },
+    [updateAnswerMutation]
+  );
+
+  const handleToggleAllStatusDefaultChecked = useCallback(
+    async (checked: boolean) => {
+      try {
+        const updatePromises = statusChecklists.map((checklist) =>
+          updateAnswerMutation.mutateAsync({
+            checklistId: checklist._id || "",
+            answerData: { defaultChecked: checked },
+          })
+        );
+        await Promise.all(updatePromises);
+      } catch (error) {
+        console.error("Toggle all status defaultChecked error:", error);
+      }
+    },
+    [statusChecklists, updateAnswerMutation]
+  );
+
+  const handleToggleAllInformationDefaultChecked = useCallback(
+    async (checked: boolean) => {
+      try {
+        const updatePromises = informationChecklists.map((checklist) =>
+          updateAnswerMutation.mutateAsync({
+            checklistId: checklist._id || "",
+            answerData: { defaultChecked: checked },
+          })
+        );
+        await Promise.all(updatePromises);
+      } catch (error) {
+        console.error("Toggle all information defaultChecked error:", error);
+      }
+    },
+    [informationChecklists, updateAnswerMutation]
+  );
+
+  const allStatusChecked = useMemo(() => {
+    return statusChecklists.length > 0 && statusChecklists.every((c) => c.defaultChecked);
+  }, [statusChecklists]);
+
+  const allInformationChecked = useMemo(() => {
+    return informationChecklists.length > 0 && informationChecklists.every((c) => c.defaultChecked);
+  }, [informationChecklists]);
 
   const isReorderDisabled = 
     createChecklistMutation.isPending ||
@@ -458,6 +587,11 @@ export function ChecklistContent({
                             onDelete={() => setDeletingChecklistId(checklist._id || null)}
                             disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
                             reorderDisabled={isReorderDisabled}
+                            onAnswerChange={handleAnswerChange}
+                            inspectionId={inspectionId}
+                            inspectionTemplateId={inspectionTemplateId}
+                            sectionId={sectionId}
+                            subsectionId={subsectionId || ""}
                           />
                         ))}
                       </div>
@@ -494,6 +628,11 @@ export function ChecklistContent({
                             onDelete={() => setDeletingChecklistId(checklist._id || null)}
                             disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
                             reorderDisabled={isReorderDisabled}
+                            onAnswerChange={handleAnswerChange}
+                            inspectionId={inspectionId}
+                            inspectionTemplateId={inspectionTemplateId}
+                            sectionId={sectionId}
+                            subsectionId={subsectionId || ""}
                           />
                         ))}
                       </div>

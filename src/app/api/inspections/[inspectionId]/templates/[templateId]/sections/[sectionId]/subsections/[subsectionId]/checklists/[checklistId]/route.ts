@@ -106,9 +106,19 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       defaultChecked,
       answerChoices,
       orderIndex,
+      // Answer fields
+      textAnswer,
+      selectedAnswers,
+      dateAnswer,
+      numberAnswer,
+      numberUnit,
+      rangeFrom,
+      rangeTo,
+      rangeUnit,
     } = body;
 
-    if (!name || !name.trim()) {
+    // If name is provided, validate it
+    if (name !== undefined && (!name || !name.trim())) {
       return NextResponse.json({ error: 'Checklist name is required' }, { status: 400 });
     }
 
@@ -117,17 +127,105 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Invalid field type' }, { status: 400 });
     }
 
-    const updatedChecklist = {
+    // Validate answer fields match field type
+    const checklistField = field || existingChecklist.field;
+    if (existingChecklist.type === 'status' && checklistField) {
+      // Validate textAnswer for text field
+      if (checklistField === 'text' && textAnswer !== undefined && typeof textAnswer !== 'string') {
+        return NextResponse.json({ error: 'textAnswer must be a string' }, { status: 400 });
+      }
+      
+      // Validate selectedAnswers for multipleAnswers field
+      if (checklistField === 'multipleAnswers' && selectedAnswers !== undefined) {
+        if (!Array.isArray(selectedAnswers)) {
+          return NextResponse.json({ error: 'selectedAnswers must be an array' }, { status: 400 });
+        }
+      }
+      
+      // Validate dateAnswer for date field
+      if (checklistField === 'date' && dateAnswer !== undefined && !(dateAnswer instanceof Date || typeof dateAnswer === 'string')) {
+        return NextResponse.json({ error: 'dateAnswer must be a date' }, { status: 400 });
+      }
+      
+      // Validate numberAnswer for number field
+      if (checklistField === 'number' && numberAnswer !== undefined && typeof numberAnswer !== 'number') {
+        return NextResponse.json({ error: 'numberAnswer must be a number' }, { status: 400 });
+      }
+      
+      // Validate rangeFrom and rangeTo for numberRange field
+      if (checklistField === 'numberRange') {
+        if (rangeFrom !== undefined && typeof rangeFrom !== 'number') {
+          return NextResponse.json({ error: 'rangeFrom must be a number' }, { status: 400 });
+        }
+        if (rangeTo !== undefined && typeof rangeTo !== 'number') {
+          return NextResponse.json({ error: 'rangeTo must be a number' }, { status: 400 });
+        }
+        if (rangeFrom !== undefined && rangeTo !== undefined && rangeFrom > rangeTo) {
+          return NextResponse.json({ error: 'rangeFrom must be less than or equal to rangeTo' }, { status: 400 });
+        }
+      }
+    }
+
+    const updatedChecklist: any = {
       _id: existingChecklist._id || new mongoose.Types.ObjectId(checklistId),
       type: existingChecklist.type,
-      name: name.trim(),
+      name: name !== undefined ? name.trim() : existingChecklist.name,
       field: existingChecklist.type === 'status' ? (field || existingChecklist.field) : undefined,
-      location: existingChecklist.type === 'status' ? (location?.trim() || undefined) : undefined,
+      location: existingChecklist.type === 'status' ? (location !== undefined ? (location?.trim() || undefined) : existingChecklist.location) : undefined,
       comment: comment !== undefined ? (comment || undefined) : existingChecklist.comment,
       defaultChecked: defaultChecked !== undefined ? defaultChecked : existingChecklist.defaultChecked,
       answerChoices: answerChoices !== undefined ? (answerChoices && Array.isArray(answerChoices) ? answerChoices : undefined) : existingChecklist.answerChoices,
       orderIndex: orderIndex !== undefined ? orderIndex : existingChecklist.orderIndex,
     };
+
+    // Add answer fields if provided
+    if (textAnswer !== undefined) {
+      updatedChecklist.textAnswer = textAnswer?.trim() || undefined;
+    } else if (existingChecklist.textAnswer !== undefined) {
+      updatedChecklist.textAnswer = existingChecklist.textAnswer;
+    }
+    
+    if (selectedAnswers !== undefined) {
+      updatedChecklist.selectedAnswers = Array.isArray(selectedAnswers) && selectedAnswers.length > 0 ? selectedAnswers : undefined;
+    } else if (existingChecklist.selectedAnswers !== undefined) {
+      updatedChecklist.selectedAnswers = existingChecklist.selectedAnswers;
+    }
+    
+    if (dateAnswer !== undefined) {
+      updatedChecklist.dateAnswer = dateAnswer ? new Date(dateAnswer) : undefined;
+    } else if (existingChecklist.dateAnswer !== undefined) {
+      updatedChecklist.dateAnswer = existingChecklist.dateAnswer;
+    }
+    
+    if (numberAnswer !== undefined) {
+      updatedChecklist.numberAnswer = numberAnswer !== null && numberAnswer !== undefined ? numberAnswer : undefined;
+    } else if (existingChecklist.numberAnswer !== undefined) {
+      updatedChecklist.numberAnswer = existingChecklist.numberAnswer;
+    }
+    
+    if (numberUnit !== undefined) {
+      updatedChecklist.numberUnit = numberUnit?.trim() || undefined;
+    } else if (existingChecklist.numberUnit !== undefined) {
+      updatedChecklist.numberUnit = existingChecklist.numberUnit;
+    }
+    
+    if (rangeFrom !== undefined) {
+      updatedChecklist.rangeFrom = rangeFrom !== null && rangeFrom !== undefined ? rangeFrom : undefined;
+    } else if (existingChecklist.rangeFrom !== undefined) {
+      updatedChecklist.rangeFrom = existingChecklist.rangeFrom;
+    }
+    
+    if (rangeTo !== undefined) {
+      updatedChecklist.rangeTo = rangeTo !== null && rangeTo !== undefined ? rangeTo : undefined;
+    } else if (existingChecklist.rangeTo !== undefined) {
+      updatedChecklist.rangeTo = existingChecklist.rangeTo;
+    }
+    
+    if (rangeUnit !== undefined) {
+      updatedChecklist.rangeUnit = rangeUnit?.trim() || undefined;
+    } else if (existingChecklist.rangeUnit !== undefined) {
+      updatedChecklist.rangeUnit = existingChecklist.rangeUnit;
+    }
 
     // Update the checklist using arrayFilters
     await InspectionTemplate.updateOne(

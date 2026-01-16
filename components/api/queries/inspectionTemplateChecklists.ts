@@ -13,6 +13,15 @@ export interface InspectionTemplateChecklist {
   defaultChecked?: boolean;
   answerChoices?: string[];
   orderIndex: number;
+  // Answer fields
+  textAnswer?: string;
+  selectedAnswers?: string[];
+  dateAnswer?: Date | string;
+  numberAnswer?: number;
+  numberUnit?: string;
+  rangeFrom?: number;
+  rangeTo?: number;
+  rangeUnit?: string;
 }
 
 export const useInspectionTemplateChecklistsQuery = (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => 
@@ -81,6 +90,21 @@ export const useReorderInspectionTemplateChecklistsMutation = (inspectionId: str
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to reorder checklists');
+      return Promise.reject(error);
+    },
+  })
+}
+
+export const useUpdateChecklistAnswerMutation = (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ checklistId, answerData }: { checklistId: string; answerData: Partial<Pick<InspectionTemplateChecklist, 'textAnswer' | 'selectedAnswers' | 'dateAnswer' | 'numberAnswer' | 'numberUnit' | 'rangeFrom' | 'rangeTo' | 'rangeUnit' | 'defaultChecked'>> }) => 
+      axios.put(apiRoutes.inspectionTemplateChecklists.update(inspectionId, templateId, sectionId, subsectionId, checklistId), answerData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplateChecklists.get(inspectionId, templateId, sectionId, subsectionId)] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to update checklist answer');
       return Promise.reject(error);
     },
   })

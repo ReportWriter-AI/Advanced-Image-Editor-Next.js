@@ -10,6 +10,15 @@ export interface IInspectionTemplateChecklist {
   defaultChecked?: boolean;
   answerChoices?: string[]; // For multipleAnswers, number, numberRange
   orderIndex: number;
+  // Answer fields
+  textAnswer?: string; // For text field type
+  selectedAnswers?: string[]; // For multipleAnswers field type
+  dateAnswer?: Date; // For date field type
+  numberAnswer?: number; // For number field type
+  numberUnit?: string; // For number field type (unit selection)
+  rangeFrom?: number; // For numberRange field type
+  rangeTo?: number; // For numberRange field type
+  rangeUnit?: string; // For numberRange field type (unit selection)
 }
 
 export interface IInspectionTemplateSubsection {
@@ -81,6 +90,35 @@ const InspectionTemplateChecklistSchema = new Schema<IInspectionTemplateChecklis
     orderIndex: {
       type: Number,
       required: true,
+    },
+    // Answer fields
+    textAnswer: {
+      type: String,
+      trim: true,
+    },
+    selectedAnswers: {
+      type: [String],
+      default: undefined,
+    },
+    dateAnswer: {
+      type: Date,
+    },
+    numberAnswer: {
+      type: Number,
+    },
+    numberUnit: {
+      type: String,
+      trim: true,
+    },
+    rangeFrom: {
+      type: Number,
+    },
+    rangeTo: {
+      type: Number,
+    },
+    rangeUnit: {
+      type: String,
+      trim: true,
     },
   },
   { _id: true, timestamps: false }

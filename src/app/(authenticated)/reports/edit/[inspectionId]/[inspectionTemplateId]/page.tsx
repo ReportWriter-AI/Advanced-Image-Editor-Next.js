@@ -47,7 +47,6 @@ import {
   useCreateInspectionTemplateSubsectionMutation,
   useUpdateInspectionTemplateSubsectionMutation,
   useDeleteInspectionTemplateSubsectionMutation,
-  useReorderInspectionTemplateSubsectionsMutation,
   InspectionTemplateSubsection,
 } from "@/components/api/queries/inspectionTemplateSubsections";
 import { InspectionTemplateSectionForm } from "./_components/InspectionTemplateSectionForm";

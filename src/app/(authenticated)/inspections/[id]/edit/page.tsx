@@ -4812,10 +4812,9 @@ export default function InspectionEditPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => {
-                                  // View button - no functionality for now
+                                  router.push(`/reports/${inspectionId}/${template._id}`);
                                 }}
                                 className="gap-2"
-                                disabled
                               >
                                 <Eye className="h-4 w-4" />
                                 View
