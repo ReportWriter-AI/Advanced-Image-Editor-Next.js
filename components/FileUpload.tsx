@@ -99,29 +99,31 @@ const FileUpload: React.FC<FileUploadProps> = ({
             {node}
           </div>
         ))}
-        <label 
-          htmlFor={id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            padding: '0.625rem 0.75rem',
-            backgroundColor: '#3b82f6',
-            color: 'white',
-            borderRadius: '0.375rem',
-            cursor: 'pointer',
-            fontSize: '0.875rem',
-            fontWeight: 600,
-            border: 'none',
-            transition: 'background-color 0.2s',
-            whiteSpace: 'nowrap'
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#8230c9')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#3b82f6')}
-        >
-          📷 {labels?.upload ?? 'Upload Image'}
-        </label>
+        {(!labels || labels.upload !== undefined) && (
+          <label 
+            htmlFor={id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              padding: '0.625rem 0.75rem',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              borderRadius: '0.375rem',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              border: 'none',
+              transition: 'background-color 0.2s',
+              whiteSpace: 'nowrap'
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#8230c9')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#3b82f6')}
+          >
+            📷 {labels?.upload ?? 'Upload Image'}
+          </label>
+        )}
         
         <label
           htmlFor={`${id}-camera`}

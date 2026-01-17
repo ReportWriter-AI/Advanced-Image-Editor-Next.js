@@ -22,6 +22,8 @@ export interface InspectionTemplateChecklist {
   rangeFrom?: number;
   rangeTo?: number;
   rangeUnit?: string;
+  // Media array
+  media?: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }>;
 }
 
 export const useInspectionTemplateChecklistsQuery = (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => 
@@ -98,7 +100,7 @@ export const useReorderInspectionTemplateChecklistsMutation = (inspectionId: str
 export const useUpdateChecklistAnswerMutation = (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ checklistId, answerData }: { checklistId: string; answerData: Partial<Pick<InspectionTemplateChecklist, 'textAnswer' | 'selectedAnswers' | 'dateAnswer' | 'numberAnswer' | 'numberUnit' | 'rangeFrom' | 'rangeTo' | 'rangeUnit' | 'defaultChecked'>> }) => 
+    mutationFn: ({ checklistId, answerData }: { checklistId: string; answerData: Partial<Pick<InspectionTemplateChecklist, 'textAnswer' | 'selectedAnswers' | 'dateAnswer' | 'numberAnswer' | 'numberUnit' | 'rangeFrom' | 'rangeTo' | 'rangeUnit' | 'defaultChecked' | 'location' | 'comment' | 'media'>> }) => 
       axios.put(apiRoutes.inspectionTemplateChecklists.update(inspectionId, templateId, sectionId, subsectionId, checklistId), answerData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplateChecklists.get(inspectionId, templateId, sectionId, subsectionId)] });

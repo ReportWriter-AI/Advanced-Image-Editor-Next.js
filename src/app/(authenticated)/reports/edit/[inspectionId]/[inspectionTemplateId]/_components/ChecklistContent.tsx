@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -57,6 +58,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
 import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDropdowns";
+import { ChecklistImageUpload, ChecklistImage } from "./ChecklistImageUpload";
 import { cn } from "@/lib/utils";
 
 interface ChecklistContentProps {
@@ -78,6 +80,7 @@ interface SortableChecklistItemProps {
   inspectionTemplateId: string;
   sectionId: string;
   subsectionId: string;
+  onMediaUpdate?: (checklistId: string, media: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }>) => void;
 }
 
 // Debounce hook
@@ -108,8 +111,10 @@ function SortableChecklistItem({
   inspectionTemplateId,
   sectionId,
   subsectionId,
+  onMediaUpdate,
 }: SortableChecklistItemProps) {
   const { data: dropdownsData } = useReusableDropdownsQuery();
+  const router = useRouter();
 
   // Convert API format (Array<{id, value}>) to options format (Array<{value, label}>)
   const locationOptions = useMemo(() => {
@@ -120,8 +125,18 @@ function SortableChecklistItem({
     }));
   }, [dropdownsData]);
 
+  // Convert to string array for LocationSearch component
+  const locationOptionsArray = useMemo(() => {
+    if (!dropdownsData?.data?.location) return [];
+    return dropdownsData.data.location.map((item: { id: string; value: string }) => item.value);
+  }, [dropdownsData]);
+
   const [locationValue, setLocationValue] = useState(checklist.location || "");
   const [commentValue, setCommentValue] = useState(checklist.comment || "");
+
+  // Image upload state
+  const [images, setImages] = useState<ChecklistImage[]>([]);
+  const [locationInputs, setLocationInputs] = useState<Record<string, string>>({});
 
   const prevLocationRef = useRef<string | undefined>(checklist.location);
   const prevCommentRef = useRef<string | undefined>(checklist.comment);
@@ -129,6 +144,33 @@ function SortableChecklistItem({
   // Debounce location and comment changes
   const debouncedLocation = useDebounce(locationValue, 500);
   const debouncedComment = useDebounce(commentValue, 500);
+
+  // Load media from database on checklist load
+  useEffect(() => {
+    if (checklist.media && Array.isArray(checklist.media)) {
+      const loadedImages: ChecklistImage[] = checklist.media
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .map((mediaItem) => ({
+          url: mediaItem.url,
+          mediaType: mediaItem.mediaType,
+          location: mediaItem.location,
+          order: mediaItem.order,
+        }));
+      setImages(loadedImages);
+      
+      // Populate locationInputs from loaded media
+      const inputs: Record<string, string> = {};
+      loadedImages.forEach((img, idx) => {
+        if (img.location) {
+          inputs[`${checklist._id}-${idx}`] = img.location;
+        }
+      });
+      setLocationInputs(inputs);
+    } else {
+      setImages([]);
+      setLocationInputs({});
+    }
+  }, [checklist._id, checklist.media]);
 
   // Sync with checklist changes
   useEffect(() => {
@@ -161,6 +203,360 @@ function SortableChecklistItem({
       prevCommentRef.current = debouncedComment;
     }
   }, [debouncedComment, checklist._id, onAnswerChange]);
+
+  // Proxy helper for reliable image loading
+  const getProxiedSrc = useCallback((url: string | null | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('data:') || url.startsWith('/api/proxy-image?') || url.startsWith('blob:')) return url;
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  }, []);
+
+  // Upload file to R2 storage
+  const handleMediaUpload = useCallback(async (file: File): Promise<string> => {
+    // Normalize smartphone EXIF orientation for JPEG/PNG before upload (HEIC handled on server)
+    const fixOrientationIfNeeded = async (f: File): Promise<File> => {
+      try {
+        if (!f.type.startsWith('image/') || /heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)) return f;
+        const exifr: any = (await import('exifr/dist/full.esm.mjs')) as any;
+        const orientation: number | undefined = await exifr.orientation(f);
+        if (!orientation || orientation === 1) return f;
+
+        const imgUrl = URL.createObjectURL(f);
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const i = new Image();
+          i.onload = () => resolve(i);
+          i.onerror = reject;
+          i.src = imgUrl;
+        });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { URL.revokeObjectURL(imgUrl); return f; }
+        const w = img.naturalWidth || img.width; const h = img.naturalHeight || img.height;
+        switch (orientation) {
+          case 2: canvas.width=w; canvas.height=h; ctx.translate(w,0); ctx.scale(-1,1); break;
+          case 3: canvas.width=w; canvas.height=h; ctx.translate(w,h); ctx.rotate(Math.PI); break;
+          case 4: canvas.width=w; canvas.height=h; ctx.translate(0,h); ctx.scale(1,-1); break;
+          case 5: canvas.width=h; canvas.height=w; ctx.rotate(0.5*Math.PI); ctx.scale(1,-1); ctx.translate(0,-h); break;
+          case 6: canvas.width=h; canvas.height=w; ctx.rotate(0.5*Math.PI); ctx.translate(0,-h); break;
+          case 7: canvas.width=h; canvas.height=w; ctx.rotate(0.5*Math.PI); ctx.translate(w,-h); ctx.scale(-1,1); break;
+          case 8: canvas.width=h; canvas.height=w; ctx.rotate(-0.5*Math.PI); ctx.translate(-w,0); break;
+          default: canvas.width=w; canvas.height=h; break;
+        }
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(imgUrl);
+        const blob: Blob = await new Promise((resolve)=> canvas.toBlob((b)=> resolve(b || new Blob()), 'image/jpeg', 0.95));
+        return new File([blob], f.name.replace(/\.(png|jpg|jpeg|webp)$/i,'') + '.jpg', { type: 'image/jpeg' });
+      } catch (e) {
+        console.warn('EXIF normalize skipped:', e); return f;
+      }
+    };
+
+    try {
+      let processedFile = await fixOrientationIfNeeded(file);
+      
+      // Get presigned upload URL from server
+      const presignedRes = await fetch(
+        `/api/r2api?action=presigned&fileName=${encodeURIComponent(processedFile.name)}&contentType=${encodeURIComponent(processedFile.type)}`
+      );
+      
+      if (!presignedRes.ok) {
+        throw new Error('Failed to get presigned upload URL');
+      }
+      
+      const { uploadUrl, publicUrl } = await presignedRes.json();
+      
+      // Upload file directly to R2 using presigned URL
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: processedFile,
+        headers: {
+          'Content-Type': processedFile.type,
+        },
+      });
+      
+      if (!uploadRes.ok) {
+        throw new Error(`Direct R2 upload failed with status ${uploadRes.status}`);
+      }
+
+      return publicUrl;
+    } catch (error: any) {
+      console.error('❌ Error uploading file:', error);
+      throw error;
+    }
+  }, []);
+
+  // Save media array to database
+  const saveMediaToDatabase = useCallback((mediaArray: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }>) => {
+    if (onMediaUpdate && checklist._id) {
+      onMediaUpdate(checklist._id, mediaArray);
+    }
+  }, [onMediaUpdate, checklist._id]);
+
+  // Check for pending annotations from image-editor
+  useEffect(() => {
+    const checkPendingAnnotation = async () => {
+      const pendingData = localStorage.getItem('pendingAnnotation');
+      if (!pendingData) return;
+
+      try {
+        const annotation = JSON.parse(pendingData);
+
+        // Validate that this annotation belongs to this checklist
+        if (annotation.checklistId !== checklist._id) {
+          return; // Not for this checklist, ignore
+        }
+
+        // Validate inspectionId matches (optional safety check)
+        if (annotation.inspectionId && annotation.inspectionId !== inspectionId) {
+          return; // Not for this inspection, ignore
+        }
+
+        // Find the media item by matching originalImageUrl
+        const mediaIndex = images.findIndex(
+          (img) => typeof img.url === 'string' && img.url === annotation.originalImageUrl
+        );
+
+        if (mediaIndex !== -1) {
+          // Update the media item with the annotated image URL
+          const updatedImages = [...images];
+          updatedImages[mediaIndex] = {
+            ...updatedImages[mediaIndex],
+            url: annotation.imageUrl, // Update to annotated URL
+          };
+          setImages(updatedImages);
+
+          // Save to database
+          const mediaArray = updatedImages
+            .filter(img => typeof img.url === 'string')
+            .map(img => ({
+              url: img.url as string,
+              mediaType: img.mediaType,
+              location: img.location,
+              order: img.order,
+            }));
+          
+          try {
+            saveMediaToDatabase(mediaArray);
+            
+            // Clear the pending annotation ONLY after successful save
+            localStorage.removeItem('pendingAnnotation');
+          } catch (error) {
+            console.error('❌ Error saving annotation to database:', error);
+            // Don't clear localStorage - allow retry
+          }
+        } else {
+          // Media item not found - might not be loaded yet, will retry via polling
+          console.warn('⚠️ Media item not found for annotation, will retry...');
+        }
+      } catch (error) {
+        console.error('❌ Error processing pending annotation:', error);
+        // Only clear if it's a parse error (bad JSON)
+        if (error instanceof SyntaxError) {
+          localStorage.removeItem('pendingAnnotation');
+        }
+      }
+    };
+
+    // Check immediately
+    checkPendingAnnotation();
+
+    // Check on window focus (when user returns from image-editor)
+    const handleFocus = () => {
+      checkPendingAnnotation();
+    };
+
+    // Listen for storage events from other tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'pendingAnnotation' && e.newValue) {
+        setTimeout(() => checkPendingAnnotation(), 100);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('storage', handleStorageChange);
+
+    // Polling mechanism to catch annotations even if events don't fire
+    let pollCount = 0;
+    const maxPolls = 20; // 6 seconds total (20 * 300ms)
+    const pollInterval = setInterval(() => {
+      pollCount++;
+      const pending = localStorage.getItem('pendingAnnotation');
+      if (pending) {
+        checkPendingAnnotation();
+      }
+      if (pollCount >= maxPolls) {
+        clearInterval(pollInterval);
+      }
+    }, 300); // Check every 300ms
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(pollInterval);
+    };
+  }, [checklist._id, inspectionId, images, saveMediaToDatabase]);
+
+  // Handler for file selection with mediaType
+  const handleImagesSelect = useCallback(async (checklistId: string, files: File[], mediaType: 'image' | 'video' | '360pic') => {
+    if (!checklist._id || checklistId !== checklist._id) return;
+
+    try {
+      // Get current media to determine next order
+      const currentMedia = images.filter(img => typeof img.url === 'string');
+      const maxOrder = currentMedia.length > 0 
+        ? Math.max(...currentMedia.map(img => img.order || 0))
+        : -1;
+
+      // Upload files sequentially
+      const uploadedMedia: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }> = [];
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const publicUrl = await handleMediaUpload(file);
+        uploadedMedia.push({
+          url: publicUrl,
+          mediaType,
+          order: maxOrder + i + 1,
+        });
+      }
+
+      // Update local state
+      const newImages: ChecklistImage[] = uploadedMedia.map(media => ({
+        url: media.url,
+        mediaType: media.mediaType,
+        location: media.location,
+        order: media.order,
+      }));
+
+      const updatedImages = [...images, ...newImages];
+      setImages(updatedImages);
+
+      // Save to database
+      const mediaArray = updatedImages
+        .filter(img => typeof img.url === 'string')
+        .map(img => ({
+          url: img.url as string,
+          mediaType: img.mediaType,
+          location: img.location,
+          order: img.order,
+        }));
+      saveMediaToDatabase(mediaArray);
+    } catch (error: any) {
+      console.error('Error uploading files:', error);
+      alert(`Failed to upload files: ${error.message || 'Unknown error'}`);
+    }
+  }, [images, checklist._id, handleMediaUpload, saveMediaToDatabase]);
+
+  // Handler for image deletion
+  const handleImageDelete = useCallback((checklistId: string, imageIndex: number) => {
+    if (!checklist._id || checklistId !== checklist._id) return;
+
+    const checklistImages = images.filter(img => typeof img.url === 'string');
+    const imageToDelete = checklistImages[imageIndex];
+    const updatedImages = images.filter(img => img !== imageToDelete);
+    
+    // Build reindexed location inputs
+    const reindexedInputs: Record<string, string> = {};
+    checklistImages.forEach((img, idx) => {
+      if (idx !== imageIndex) {
+        const oldKey = `${checklistId}-${idx}`;
+        const newKey = `${checklistId}-${idx < imageIndex ? idx : idx - 1}`;
+        const locationValue = locationInputs[oldKey] || img.location || '';
+        if (locationValue) {
+          reindexedInputs[newKey] = locationValue;
+        }
+      }
+    });
+    
+    setLocationInputs(reindexedInputs);
+    setImages(updatedImages);
+
+    // Save to database with reordered media
+    const mediaArray = updatedImages
+      .filter(img => typeof img.url === 'string')
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map((img, idx) => ({
+        url: img.url as string,
+        mediaType: img.mediaType,
+        location: reindexedInputs[`${checklistId}-${idx}`] || img.location,
+        order: idx, // Reorder
+      }));
+    saveMediaToDatabase(mediaArray);
+  }, [images, checklist._id, locationInputs, saveMediaToDatabase]);
+
+  // Handler for location change
+  const handleLocationChange = useCallback((checklistId: string, imageIndex: number, location: string) => {
+    if (!checklist._id || checklistId !== checklist._id) return;
+
+    const inputKey = `${checklistId}-${imageIndex}`;
+    setLocationInputs(prev => ({ ...prev, [inputKey]: location }));
+    
+    const checklistImages = images.filter(img => typeof img.url === 'string');
+    const imageToUpdate = checklistImages[imageIndex];
+    const updatedImages = images.map(i => 
+      i === imageToUpdate ? { ...i, location } : i
+    );
+    setImages(updatedImages);
+
+    // Save to database
+    const mediaArray = updatedImages
+      .filter(img => typeof img.url === 'string')
+      .map(img => ({
+        url: img.url as string,
+        mediaType: img.mediaType,
+        location: img.location,
+        order: img.order,
+      }));
+    saveMediaToDatabase(mediaArray);
+  }, [images, checklist._id, saveMediaToDatabase]);
+
+  // Handler for media reorder
+  const handleMediaReorder = useCallback((checklistId: string, reorderedMedia: ChecklistImage[]) => {
+    if (!checklist._id || checklistId !== checklist._id) return;
+    // Get current images for reference
+    const currentImages = images.filter(img => typeof img.url === 'string');
+    
+    // Update locationInputs keys to match new indices by matching URL
+    const newLocationInputs: Record<string, string> = {};
+    reorderedMedia.forEach((img, newIdx) => {
+      if (typeof img.url === 'string') {
+        // Find the old index by matching URL
+        const oldIdx = currentImages.findIndex(oldImg => 
+          typeof oldImg.url === 'string' && oldImg.url === img.url
+        );
+        
+        if (oldIdx !== -1) {
+          const oldKey = `${checklist._id}-${oldIdx}`;
+          // Use location from locationInputs if available, otherwise from image.location
+          newLocationInputs[`${checklist._id}-${newIdx}`] = 
+            locationInputs[oldKey] || img.location || '';
+        } else if (img.location) {
+          newLocationInputs[`${checklist._id}-${newIdx}`] = img.location;
+        }
+      }
+    });
+    
+    setLocationInputs(newLocationInputs);
+    setImages(reorderedMedia);
+    
+    // Update order indices and save to database
+    const mediaArray = reorderedMedia
+      .filter(img => typeof img.url === 'string')
+      .map((img, idx) => ({
+        url: img.url as string,
+        mediaType: img.mediaType,
+        location: newLocationInputs[`${checklist._id}-${idx}`] || img.location,
+        order: idx, // Update order based on new index
+      }));
+    
+    saveMediaToDatabase(mediaArray);
+  }, [checklist._id, images, locationInputs, saveMediaToDatabase]);
+
+  // Get images for current checklist
+  const checklistImages = useMemo(() => {
+    return images.filter(img => typeof img.url === 'string').sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [images]);
 
   const {
     attributes: sortableAttributes,
@@ -313,6 +709,22 @@ function SortableChecklistItem({
               />
             </div>
           )}
+
+          {/* Image upload section - status checklist */}
+          {checklist.type === 'status' && (
+            <ChecklistImageUpload
+              checklistId={checklist._id || ""}
+              images={checklistImages}
+              onImagesSelect={handleImagesSelect}
+              onImageDelete={handleImageDelete}
+              onLocationChange={handleLocationChange}
+              onMediaReorder={handleMediaReorder}
+              locationOptions={locationOptions}
+              locationInputs={locationInputs}
+              inspectionId={inspectionId}
+              getProxiedSrc={getProxiedSrc}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -436,6 +848,21 @@ export function ChecklistContent({
         });
       } catch (error) {
         console.error("Update checklist answer error:", error);
+      }
+    },
+    [updateAnswerMutation]
+  );
+
+  // Handler for media updates
+  const handleMediaUpdate = useCallback(
+    async (checklistId: string, media: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }>) => {
+      try {
+        await updateAnswerMutation.mutateAsync({
+          checklistId,
+          answerData: { media },
+        });
+      } catch (error) {
+        console.error("Update checklist media error:", error);
       }
     },
     [updateAnswerMutation]
@@ -695,6 +1122,7 @@ export function ChecklistContent({
                             disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
                             reorderDisabled={isReorderDisabled}
                             onAnswerChange={handleAnswerChange}
+                            onMediaUpdate={handleMediaUpdate}
                             inspectionId={inspectionId}
                             inspectionTemplateId={inspectionTemplateId}
                             sectionId={sectionId}
@@ -736,6 +1164,7 @@ export function ChecklistContent({
                             disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
                             reorderDisabled={isReorderDisabled}
                             onAnswerChange={handleAnswerChange}
+                            onMediaUpdate={handleMediaUpdate}
                             inspectionId={inspectionId}
                             inspectionTemplateId={inspectionTemplateId}
                             sectionId={sectionId}

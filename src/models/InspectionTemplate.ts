@@ -19,6 +19,8 @@ export interface IInspectionTemplateChecklist {
   rangeFrom?: number; // For numberRange field type
   rangeTo?: number; // For numberRange field type
   rangeUnit?: string; // For numberRange field type (unit selection)
+  // Media array
+  media?: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }>;
 }
 
 export interface IInspectionTemplateSubsection {
@@ -119,6 +121,31 @@ const InspectionTemplateChecklistSchema = new Schema<IInspectionTemplateChecklis
     rangeUnit: {
       type: String,
       trim: true,
+    },
+    // Media array
+    media: {
+      type: [
+        {
+          url: {
+            type: String,
+            required: true,
+          },
+          mediaType: {
+            type: String,
+            enum: ['image', 'video', '360pic'],
+            required: true,
+          },
+          location: {
+            type: String,
+            trim: true,
+          },
+          order: {
+            type: Number,
+            required: true,
+          },
+        },
+      ],
+      default: undefined,
     },
   },
   { _id: true, timestamps: false }

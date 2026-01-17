@@ -16,6 +16,7 @@ import {
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { InspectionTemplateChecklist } from "@/components/api/queries/inspectionTemplateChecklists";
+import ThreeSixtyViewer from "@/components/ThreeSixtyViewer";
 
 interface ReportDisplayProps {
   inspectionId: string;
@@ -33,6 +34,13 @@ interface ChecklistWithAnswers extends InspectionTemplateChecklist {
   rangeTo?: number;
   rangeUnit?: string;
 }
+
+// Helper function to get proxied image URL
+const getProxiedSrc = (url: string | null | undefined) => {
+  if (!url) return '';
+  if (url.startsWith('data:') || url.startsWith('/api/proxy-image?') || url.startsWith('blob:')) return url;
+  return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+};
 
 export function ReportDisplay({
   inspectionId,
@@ -163,6 +171,7 @@ export function ReportDisplay({
                         </p>
                       )}
                       {renderAnswer(checklist)}
+                      {checklist.type === 'status' && checklist.media && renderMedia(checklist.media)}
                     </div>
                   ))}
                 </div>
@@ -263,4 +272,70 @@ function renderAnswer(checklist: ChecklistWithAnswers) {
     default:
       return null;
   }
+}
+
+function renderMedia(mediaArray: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }> | undefined) {
+  if (!mediaArray || !Array.isArray(mediaArray) || mediaArray.length === 0) {
+    return null;
+  }
+
+  // Filter out invalid entries and sort by order
+  const validMedia = mediaArray
+    .filter((item) => item && item.url && item.mediaType && typeof item.order === 'number')
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  if (validMedia.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="grid grid-cols-4 gap-4">
+        {validMedia.map((mediaItem, index) => (
+          <div key={index} className="space-y-2">
+            {mediaItem.mediaType === '360pic' ? (
+              <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
+                <ThreeSixtyViewer
+                  imageUrl={getProxiedSrc(mediaItem.url)}
+                  alt={mediaItem.location ? `360° photo - ${mediaItem.location}` : '360° photo'}
+                  height="300px"
+                  width="300px"
+                />
+              </div>
+            ) : mediaItem.mediaType === 'video' ? (
+              <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
+                <video
+                  src={getProxiedSrc(mediaItem.url)}
+                  controls
+                  preload="metadata"
+                  className="rounded-lg"
+                  style={{ width: '300px', maxWidth: '100%', height: 'auto' }}
+                >
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            ) : (
+              <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
+                <img
+                  src={getProxiedSrc(mediaItem.url)}
+                  alt={mediaItem.location || `Image ${index + 1}`}
+                  className="rounded-lg"
+                  style={{ width: '300px', maxWidth: '100%', height: 'auto' }}
+                  onError={(e) => {
+                    console.error('Failed to load image:', mediaItem.url);
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+            {mediaItem.location && (
+              <p className="text-xs text-muted-foreground text-center">
+                {mediaItem.location}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

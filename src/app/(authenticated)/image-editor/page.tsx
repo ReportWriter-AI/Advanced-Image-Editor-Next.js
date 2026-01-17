@@ -671,10 +671,12 @@ function ImageEditorPageContent() {
         // Include inspectionId so main page can reopen the correct modal
         const urlParams = new URLSearchParams(window.location.search);
         const inspectionIdFromUrl = urlParams.get('inspectionId');
+        const originalImageUrl = urlParams.get('originalImageUrl') || preloadImageUrl || uploadData.url;
         
         const annotationData = {
           checklistId,
           imageUrl: uploadData.url,
+          originalImageUrl: originalImageUrl, // Use originalImageUrl from params, or fallback to preloadImageUrl or uploadData.url
           annotations: 'annotated', // Mark as annotated
           inspectionId: inspectionIdFromUrl, // Store inspection ID for modal reopening
           timestamp: Date.now()

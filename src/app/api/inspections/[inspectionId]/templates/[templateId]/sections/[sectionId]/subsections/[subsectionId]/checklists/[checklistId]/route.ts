@@ -115,6 +115,8 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       rangeFrom,
       rangeTo,
       rangeUnit,
+      // Media array
+      media,
     } = body;
 
     // If name is provided, validate it
@@ -225,6 +227,32 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       updatedChecklist.rangeUnit = rangeUnit?.trim() || undefined;
     } else if (existingChecklist.rangeUnit !== undefined) {
       updatedChecklist.rangeUnit = existingChecklist.rangeUnit;
+    }
+    
+    // Handle media array
+    if (media !== undefined) {
+      // Validate media array structure
+      if (Array.isArray(media)) {
+        const validMedia = media
+          .filter((item: any) => {
+            // Validate required fields
+            if (!item || typeof item.url !== 'string' || !item.url.trim()) return false;
+            if (!item.mediaType || !['image', 'video', '360pic'].includes(item.mediaType)) return false;
+            if (typeof item.order !== 'number') return false;
+            return true;
+          })
+          .map((item: any) => ({
+            url: item.url.trim(),
+            mediaType: item.mediaType as 'image' | 'video' | '360pic',
+            location: item.location && typeof item.location === 'string' ? item.location.trim() : undefined,
+            order: item.order,
+          }));
+        updatedChecklist.media = validMedia.length > 0 ? validMedia : undefined;
+      } else {
+        updatedChecklist.media = undefined;
+      }
+    } else if (existingChecklist.media !== undefined) {
+      updatedChecklist.media = existingChecklist.media;
     }
 
     // Update the checklist using arrayFilters
