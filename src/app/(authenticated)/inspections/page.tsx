@@ -108,9 +108,9 @@ export default function InspectionsPage() {
     }
   };
 
-  // Handle row click to open ImageEditor
+  // Handle row click to open inspection editor
   const handleRowClick = (inspectionId: string) => {
-    router.push(`/image-editor?inspectionId=${inspectionId}`);
+    router.push(`/inspections/${inspectionId}/edit`);
   };
 
   // Handle document click to view inspection report
@@ -122,41 +122,6 @@ export default function InspectionsPage() {
   const handleEditClick = (inspectionId: string) => {
     router.push(`/inspections/${inspectionId}/edit`);
   };
-
-  // Check for pending annotations when page loads or receives focus
-  useEffect(() => {
-    const checkPendingAnnotation = () => {
-      const pending = localStorage.getItem('pendingAnnotation');
-      if (pending) {
-        try {
-          const annotation = JSON.parse(pending);
-          console.log('🔍 Main page detected pending annotation:', annotation);
-
-          // If we have an inspectionId, navigate to the edit page
-          if (annotation.inspectionId) {
-            console.log('🚀 Auto-navigating to edit page for inspection:', annotation.inspectionId);
-            router.push(`/inspections/${annotation.inspectionId}/edit`);
-            // Note: Don't clear localStorage here - let InformationSections handle it
-          }
-        } catch (e) {
-          console.error('Error parsing pending annotation:', e);
-        }
-      }
-    };
-
-    // Check immediately on mount
-    checkPendingAnnotation();
-
-    // Also check when window regains focus
-    const handleFocus = () => {
-      checkPendingAnnotation();
-    };
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [router]);
 
   // Handle delete click to delete inspection
   const handleDeleteClick = (inspectionId: string) => {

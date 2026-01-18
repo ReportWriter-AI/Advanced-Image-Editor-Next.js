@@ -27,6 +27,9 @@ const ThreeSixtyViewer = dynamic(() => import('@/components/ThreeSixtyViewer'), 
 export interface Defect {
   _id: string;
   inspection_id: string;
+  templateId?: string;
+  sectionId?: string;
+  subsectionId?: string;
   image: string;
   location: string;
   section: string;
@@ -81,6 +84,7 @@ interface DefectCardProps {
   onDelete: (defectId: string) => void;
   onFieldChange: (field: keyof Defect, value: string) => void;
   onAnnotateMainImage: (defect: Defect) => void;
+  onAnnotateAdditionalImage: (defect: Defect, index: number) => void;
   onUpdateLocationForImage: (index: number, newLocation: string) => void;
   onRemoveLocationPhoto: (index: number) => void;
   onSetPlayingVideoId: (id: string | null) => void;
@@ -110,6 +114,7 @@ export default function DefectCard({
   onDelete,
   onFieldChange,
   onAnnotateMainImage,
+  onAnnotateAdditionalImage,
   onUpdateLocationForImage,
   onRemoveLocationPhoto,
   onSetPlayingVideoId,
@@ -496,10 +501,7 @@ export default function DefectCard({
                         />
                       </div>
                       <button
-                        onClick={() => {
-                          const editorUrl = `/image-editor/?inspectionId=${encodeURIComponent(inspectionId)}&imageUrl=${encodeURIComponent(img.url)}&mode=edit-additional&defectId=${encodeURIComponent(displayDefect._id)}&index=${idx}`;
-                          window.open(editorUrl, '_blank');
-                        }}
+                        onClick={() => onAnnotateAdditionalImage(displayDefect, idx)}
                         className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium mr-2"
                         title="Annotate this photo"
                       >

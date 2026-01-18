@@ -40,6 +40,9 @@ async function handler(request: Request) {
       inspectionId,
       section,
       subSection,
+      templateId,
+      sectionId,
+      subsectionId,
       selectedColor,
       analysisId,
       finalVideoUrl,
@@ -174,6 +177,9 @@ async function handler(request: Request) {
 
     const defectData = {
       inspection_id: inspectionId,
+      templateId: templateId,
+      sectionId: sectionId,
+      subsectionId: subsectionId,
       image: finalImageUrl!,
       location: location || "",
       section: section || "",

@@ -6,6 +6,7 @@ import LocationSearch from './LocationSearch';
 import { LOCATION_OPTIONS } from '../constants/locations';
 import { splitCommaSeparated, extractPlainTextFromHtml, truncateText } from '@/lib/utils';
 import { sanitizeHtml } from '@/lib/sanitize-html';
+import ImageEditorModal from './ImageEditorModal';
 
 interface ISectionChecklist {
   _id: string;
@@ -105,6 +106,10 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
 
   // Local input values for location fields (to prevent last character issue)
   const [locationInputs, setLocationInputs] = useState<Record<string, string>>({});
+
+  // Image editor modal state
+  const [imageEditorOpen, setImageEditorOpen] = useState(false);
+  const [annotationProps, setAnnotationProps] = useState<any>({});
 
   // Custom answer inputs for ad-hoc answers during inspection
   const [customAnswerInputs, setCustomAnswerInputs] = useState<Record<string, string>>({});
@@ -2246,6 +2251,62 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
     return allStatusIds.every(id => selectedIds.has(id) || hiddenIds.has(id));
   }, [blocks, inspectionChecklists, sections]);
 
+  // Handler: Image editor save callback
+  const handleAnnotationSave = async (result: any) => {
+    console.log('📥 Annotation save result:', result);
+    const { checklistId, imageUrl, originalImageUrl } = result;
+    
+    if (!editingBlockId || !checklistId) {
+      console.error('Missing editingBlockId or checklistId');
+      setImageEditorOpen(false);
+      return;
+    }
+
+    // Update the block's image with the annotated version
+    const updatedBlocks = blocks.map(block => {
+      if (block._id !== editingBlockId) return block;
+      
+      const updatedImages = block.images.map(img => {
+        // Match by checklist_id
+        if (img.checklist_id === checklistId) {
+          return {
+            ...img,
+            url: imageUrl,
+            annotations: 'annotated'
+          };
+        }
+        return img;
+      });
+      
+      return { ...block, images: updatedImages };
+    });
+
+    setBlocks(updatedBlocks);
+    
+    // Save to backend
+    const blockToUpdate = blocks.find(b => b._id === editingBlockId);
+    if (blockToUpdate) {
+      try {
+        const response = await fetch(`/api/inspections/${inspectionId}/information-blocks/${editingBlockId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...blockToUpdate,
+            images: updatedBlocks.find(b => b._id === editingBlockId)?.images || []
+          })
+        });
+        
+        if (response.ok) {
+          console.log('✅ Annotation saved successfully');
+        }
+      } catch (error) {
+        console.error('Error saving annotation:', error);
+      }
+    }
+    
+    setImageEditorOpen(false);
+  };
+
   return (
     <div style={{ padding: '1rem' }}>
       <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}>Information Sections</h2>
@@ -3246,10 +3307,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                             blockId: editingBlockId
                                           }));
                                           
-                                          // Navigate to image editor with the image URL and inspectionId
+                                          // Open image editor modal
                                           const imageUrl = typeof img.url === 'string' ? img.url : previewUrl;
-                                          const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(imageUrl)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${cl._id}&inspectionId=${inspectionId}`;
-                                          router.push(editorUrl);
+                                          setAnnotationProps({
+                                            imageUrl,
+                                            checklistId: cl._id,
+                                            originalImageUrl: img.url
+                                          });
+                                          setImageEditorOpen(true);
                                         }}
                                         style={{
                                           padding: '0.5rem 0.75rem',
@@ -3851,10 +3916,14 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
                                             blockId: editingBlockId
                                           }));
                                           
-                                          // Navigate to image editor with the image URL and inspectionId
+                                          // Open image editor modal
                                           const imageUrl = typeof img.url === 'string' ? img.url : previewUrl;
-                                          const editorUrl = `/image-editor?imageUrl=${encodeURIComponent(imageUrl)}&returnTo=${encodeURIComponent(window.location.pathname)}&checklistId=${cl._id}&inspectionId=${inspectionId}`;
-                                          router.push(editorUrl);
+                                          setAnnotationProps({
+                                            imageUrl,
+                                            checklistId: cl._id,
+                                            originalImageUrl: img.url
+                                          });
+                                          setImageEditorOpen(true);
                                         }}
                                         style={{
                                           padding: '0.5rem 0.75rem',
@@ -4420,6 +4489,16 @@ const InformationSections: React.FC<InformationSectionsProps> = ({ inspectionId 
           </div>
         </div>
       )}
+
+      {/* Image Editor Modal */}
+      <ImageEditorModal
+        isOpen={imageEditorOpen}
+        onClose={() => setImageEditorOpen(false)}
+        mode="annotation"
+        inspectionId={inspectionId}
+        onSave={handleAnnotationSave}
+        {...annotationProps}
+      />
     </div>
   );
 };

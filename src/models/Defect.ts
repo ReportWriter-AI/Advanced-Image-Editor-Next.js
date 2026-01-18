@@ -8,6 +8,9 @@ export interface IAdditionalImage {
 
 export interface IDefect extends Document {
 	inspection_id: mongoose.Types.ObjectId;
+	templateId?: mongoose.Types.ObjectId;
+	sectionId?: mongoose.Types.ObjectId;
+	subsectionId?: mongoose.Types.ObjectId;
 	image: string;
 	location: string;
 	section: string;
@@ -48,6 +51,21 @@ const DefectSchema = new Schema<IDefect>(
 			type: mongoose.Schema.Types.ObjectId,
 			ref: 'Inspection',
 			required: [true, 'Inspection ID is required'],
+			index: true,
+		},
+		templateId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'InspectionTemplate',
+			index: true,
+		},
+		sectionId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'InspectionTemplateSection',
+			index: true,
+		},
+		subsectionId: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'InspectionTemplateSubsection',
 			index: true,
 		},
 		image: {
@@ -153,6 +171,9 @@ const DefectSchema = new Schema<IDefect>(
 
 // Index for efficient queries by inspection
 DefectSchema.index({ inspection_id: 1, createdAt: -1 });
+
+// Compound index for efficient subsection queries
+DefectSchema.index({ inspection_id: 1, templateId: 1, sectionId: 1, subsectionId: 1, createdAt: -1 });
 
 export const Defect: Model<IDefect> =
 	mongoose.models.Defect || mongoose.model<IDefect>('Defect', DefectSchema);

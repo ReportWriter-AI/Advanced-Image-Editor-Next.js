@@ -6,6 +6,9 @@ import mongoose from "mongoose";
 // 3. Create defect
 export async function createDefect(data: {
   inspection_id: string;
+  templateId?: string;
+  sectionId?: string;
+  subsectionId?: string;
   image: string;
   location: string;
   section: string;
@@ -34,6 +37,9 @@ export async function createDefect(data: {
   const defectData = {
     ...data,
     inspection_id: new mongoose.Types.ObjectId(data.inspection_id),
+    ...(data.templateId && { templateId: new mongoose.Types.ObjectId(data.templateId) }),
+    ...(data.sectionId && { sectionId: new mongoose.Types.ObjectId(data.sectionId) }),
+    ...(data.subsectionId && { subsectionId: new mongoose.Types.ObjectId(data.subsectionId) }),
   };
 
   const result = await Defect.create(defectData);
@@ -46,6 +52,22 @@ export async function getDefectsByInspection(inspectionId: string) {
   return await Defect.find({ 
     inspection_id: new mongoose.Types.ObjectId(inspectionId) 
   }).lean();
+}
+
+// Get defects by subsection (for report editing page)
+export async function getDefectsBySubsection(
+  inspectionId: string,
+  templateId: string,
+  sectionId: string,
+  subsectionId: string
+) {
+  await dbConnect();
+  return await Defect.find({
+    inspection_id: new mongoose.Types.ObjectId(inspectionId),
+    templateId: new mongoose.Types.ObjectId(templateId),
+    sectionId: new mongoose.Types.ObjectId(sectionId),
+    subsectionId: new mongoose.Types.ObjectId(subsectionId),
+  }).sort({ createdAt: -1 }).lean();
 }
 
 
@@ -66,6 +88,9 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   location?: string;
   section?: string;
   subsection?: string;
+  templateId?: string;
+  sectionId?: string;
+  subsectionId?: string;
   labor_type?: string;
   labor_rate?: number;
   hours_required?: number;
@@ -83,13 +108,25 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
 }) {
   await dbConnect();
 
+  // Convert string IDs to ObjectIds if provided
+  const updateData: any = { ...updates };
+  if (updates.templateId) {
+    updateData.templateId = new mongoose.Types.ObjectId(updates.templateId);
+  }
+  if (updates.sectionId) {
+    updateData.sectionId = new mongoose.Types.ObjectId(updates.sectionId);
+  }
+  if (updates.subsectionId) {
+    updateData.subsectionId = new mongoose.Types.ObjectId(updates.subsectionId);
+  }
+
   const result = await Defect.updateOne(
     {
       _id: new mongoose.Types.ObjectId(defectId),
       inspection_id: new mongoose.Types.ObjectId(inspectionId), // ensure it belongs to the right inspection
     },
     {
-      $set: updates,
+      $set: updateData,
     }
   );
 

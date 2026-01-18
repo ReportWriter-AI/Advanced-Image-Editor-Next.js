@@ -5,6 +5,7 @@ import HeaderImageUploader from './HeaderImageUploader';
 import LocationSearch from './LocationSearch';
 import FileUpload from './FileUpload';
 import { LOCATION_OPTIONS } from '../constants/locations';
+import ImageEditorModal from './ImageEditorModal';
 import dynamic from 'next/dynamic';
 
 const InformationSections = dynamic(() => import('./InformationSections'), { 
@@ -60,6 +61,9 @@ const ThreeSixtyViewer = dynamic(() => import('./ThreeSixtyViewer'), {
 interface Defect {
   _id: string;
   inspection_id: string;
+  templateId?: string;
+  sectionId?: string;
+  subsectionId?: string;
   image: string;
   location: string;
   section: string;
@@ -121,6 +125,11 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId }: Defec
   const [customLocations, setCustomLocations] = useState<string[]>([]);
   const allLocationOptions = [...LOCATION_OPTIONS, ...customLocations];
 
+  // Image editor modal state
+  const [imageEditorOpen, setImageEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<'create' | 'defect-main' | 'additional-location' | 'edit-additional'>('create');
+  const [editorProps, setEditorProps] = useState<any>({});
+
   // Note: Previously used a forced re-render counter for LocationSearch. Removed to keep
   // the component truly controlled by value props and avoid wiping user selections.
 
@@ -164,214 +173,6 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId }: Defec
     if (isOpen && inspectionId) {
       fetchDefects();
       fetchInspectionDetails();
-      
-      // Flag to prevent showing the alert multiple times
-      let hasAlerted = false;
-      
-      // Check for pending annotation and switch to Information Sections tab
-      const checkForPendingAnnotation = () => {
-        const pending = localStorage.getItem('pendingAnnotation');
-        if (pending && !hasAlerted) {
-          try {
-            const annotation = JSON.parse(pending);
-            if (annotation.inspectionId === inspectionId) {
-              console.log('🔄 Switching to Information Sections tab for pending annotation');
-              setActiveTab('information');
-              // Show success notification immediately - don't wait for processing
-              alert('✅ Image saved successfully!');
-              hasAlerted = true; // Set flag to prevent duplicate alerts
-            }
-          } catch (e) {
-            console.error('Error parsing pending annotation:', e);
-          }
-        }
-      };
-      
-      // Check immediately
-      checkForPendingAnnotation();
-      
-      // Also poll for 3 seconds to handle race condition where image-editor saves after modal opens
-      let pollCount = 0;
-      const maxPolls = 6; // 3 seconds (6 checks * 500ms)
-      
-      const pollInterval = setInterval(() => {
-        pollCount++;
-        if (pollCount >= maxPolls) {
-          clearInterval(pollInterval);
-          return;
-        }
-        
-        const pending = localStorage.getItem('pendingAnnotation');
-        if (pending && !hasAlerted) {
-          try {
-            const annotation = JSON.parse(pending);
-            if (annotation.inspectionId === inspectionId) {
-              console.log('📡 Polling detected pending annotation');
-              setActiveTab('information');
-              alert('✅ Image saved successfully!');
-              hasAlerted = true;
-              clearInterval(pollInterval);
-            }
-          } catch (e) {
-            console.error('Error in polling:', e);
-          }
-        }
-      }, 500);
-      
-      // Listen for additional location photo notifications (from image editor)
-      const applyPendingAdditionalPhoto = () => {
-        try {
-          const pending = localStorage.getItem('pendingAdditionalLocationPhoto');
-          if (!pending) return;
-          const data = JSON.parse(pending);
-          if (data && data.inspectionId === inspectionId && data.defectId) {
-            // Optimistically update UI without a full refetch
-            setDefects(prev => prev.map(d => {
-              if (d._id !== data.defectId) return d;
-              const nextImages = [...(d.additional_images || [])];
-              // Avoid duplicates
-              if (!nextImages.some((img) => img.url === data.photo?.url)) {
-                nextImages.push({ url: data.photo?.url, location: data.photo?.location || '', isThreeSixty: !!data.photo?.isThreeSixty });
-              }
-              return { ...d, additional_images: nextImages };
-            }));
-
-            // If currently editing this defect, also reflect in editedValues
-            setEditedValues(prev => {
-              if (!editingId || editingId !== data.defectId) return prev;
-              const curr = defects.find(d => d._id === editingId);
-              const baseArr = (prev.additional_images as any) || curr?.additional_images || [];
-              const nextArr = [...baseArr];
-              if (!nextArr.some((img: any) => img.url === data.photo?.url)) {
-                nextArr.push({ url: data.photo?.url, location: data.photo?.location || '', isThreeSixty: !!data.photo?.isThreeSixty });
-              }
-              return { ...prev, additional_images: nextArr };
-            });
-
-            // Clear the flag so it doesn't re-apply
-            localStorage.removeItem('pendingAdditionalLocationPhoto');
-          }
-        } catch (e) {
-          console.error('Error applying pending additional photo:', e);
-        }
-      };
-
-      // Listen for edited additional photo notifications (from image editor)
-      const applyPendingEditedAdditionalPhoto = () => {
-        try {
-          const pending = localStorage.getItem('pendingEditedAdditionalLocationPhoto');
-          if (!pending) return;
-          const data = JSON.parse(pending);
-          if (data && data.inspectionId === inspectionId && data.defectId) {
-            const { defectId, index, oldUrl, newUrl } = data as { defectId: string; index?: number; oldUrl?: string; newUrl: string };
-
-            // Update defects list optimistically
-            setDefects(prev => prev.map(d => {
-              if (d._id !== defectId) return d;
-              const nextImages = [...(d.additional_images || [])];
-              let replaced = false;
-              if (typeof index === 'number' && nextImages[index]) {
-                nextImages[index] = { ...nextImages[index], url: newUrl };
-                replaced = true;
-              } else if (oldUrl) {
-                const idx = nextImages.findIndex(img => img.url === oldUrl);
-                if (idx >= 0) {
-                  nextImages[idx] = { ...nextImages[idx], url: newUrl };
-                  replaced = true;
-                }
-              }
-              return { ...d, additional_images: nextImages };
-            }));
-
-            // If currently editing this defect, also reflect in editedValues
-            setEditedValues(prev => {
-              if (!editingId || editingId !== defectId) return prev;
-              const curr = defects.find(d => d._id === editingId);
-              const baseArr = (prev.additional_images as any) || curr?.additional_images || [];
-              const nextArr = [...baseArr];
-              let updated = false;
-              if (typeof index === 'number' && nextArr[index]) {
-                nextArr[index] = { ...nextArr[index], url: newUrl };
-                updated = true;
-              } else if (oldUrl) {
-                const idx = nextArr.findIndex((img: any) => img.url === oldUrl);
-                if (idx >= 0) {
-                  nextArr[idx] = { ...nextArr[idx], url: newUrl };
-                  updated = true;
-                }
-              }
-              return updated ? { ...prev, additional_images: nextArr } : prev;
-            });
-
-            // Clear the flag so it doesn't re-apply
-            localStorage.removeItem('pendingEditedAdditionalLocationPhoto');
-          }
-        } catch (e) {
-          console.error('Error applying edited additional photo:', e);
-        }
-      };
-
-      // Apply pending main defect image update from image editor
-      const applyPendingMainImageUpdate = () => {
-        try {
-          const pending = localStorage.getItem('pendingDefectMainImageUpdate');
-          if (!pending) return;
-          const data = JSON.parse(pending);
-          if (data && data.inspectionId === inspectionId && data.defectId && data.newImageUrl) {
-            const { defectId, newImageUrl } = data;
-
-            // Update defects list optimistically
-            setDefects(prev => prev.map(d => {
-              if (d._id !== defectId) return d;
-              return { ...d, image: newImageUrl };
-            }));
-
-            // If currently editing this defect, also update editedValues
-            setEditedValues(prev => {
-              if (!editingId || editingId !== defectId) return prev;
-              return { ...prev, image: newImageUrl };
-            });
-
-            // Clear the flag so it doesn't re-apply
-            localStorage.removeItem('pendingDefectMainImageUpdate');
-          }
-        } catch (e) {
-          console.error('Error applying main image update:', e);
-        }
-      };
-
-      // Immediate check on open
-      applyPendingAdditionalPhoto();
-      applyPendingEditedAdditionalPhoto();
-      applyPendingMainImageUpdate();
-
-      // Listen to storage events (in case image editor tab updates it while this stays open)
-      const onStorage = (e: StorageEvent) => {
-        if (e.key === 'pendingAdditionalLocationPhoto' && e.newValue) {
-          applyPendingAdditionalPhoto();
-        }
-        if (e.key === 'pendingEditedAdditionalLocationPhoto' && e.newValue) {
-          applyPendingEditedAdditionalPhoto();
-        }
-        if (e.key === 'pendingDefectMainImageUpdate' && e.newValue) {
-          applyPendingMainImageUpdate();
-        }
-      };
-      window.addEventListener('storage', onStorage);
-
-      // Also refresh on window focus
-      const onFocus = () => {
-        applyPendingAdditionalPhoto();
-        applyPendingEditedAdditionalPhoto();
-        applyPendingMainImageUpdate();
-      };
-      window.addEventListener('focus', onFocus);
-
-      return () => {
-        clearInterval(pollInterval);
-        window.removeEventListener('storage', onStorage);
-        window.removeEventListener('focus', onFocus);
-      };
     } else if (!isOpen) {
       // Reset tab to defects when modal closes
       setActiveTab('defects');
@@ -489,15 +290,10 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId }: Defec
     const defect = defects.find(d => d._id === editingId);
     if (!defect) return;
     
-    // No upper limit for number of location photos
-
-    // Redirect to image editor with defect context
-    const params = new URLSearchParams({
-      inspectionId: inspectionId,
-      mode: 'additional-location',
-      defectId: editingId,
-    });
-    window.open(`/image-editor?${params.toString()}`, '_blank');
+    // Open image editor modal
+    setEditorMode('additional-location');
+    setEditorProps({ defectId: editingId });
+    setImageEditorOpen(true);
   };
 
   // Handler: Remove location photo
@@ -563,28 +359,26 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId }: Defec
       currentImage: defect.image
     });
 
-    localStorage.setItem('editorMode', 'defect-main');
-    localStorage.setItem('editingDefectId', defect._id);
-    localStorage.setItem('editingInspectionId', inspectionId);
+    // Open image editor modal
+    setEditorMode('defect-main');
+    setEditorProps({ 
+      defectId: defect._id, 
+      imageUrl: defect.originalImage || defect.image,
+      preloadedAnnotations: defect.annotations,
+      originalImageUrl: defect.originalImage || defect.image
+    });
+    setImageEditorOpen(true);
+  };
 
-    // Pass annotations and original image for re-editing
-    if (defect.annotations && defect.annotations.length > 0) {
-      console.log('✅ Saving annotations to localStorage:', defect.annotations);
-      localStorage.setItem('defectAnnotations', JSON.stringify(defect.annotations));
-    } else {
-      console.log('⚠️ No annotations found in defect, removing from localStorage');
-      localStorage.removeItem('defectAnnotations');
-    }
-
-    // Use original image if available, otherwise use current image
-    const imageToEdit = defect.originalImage || defect.image;
-    console.log('🖼️ Image to edit:', imageToEdit);
-    localStorage.setItem('defectOriginalImage', imageToEdit);
-
-    window.open(
-      `/image-editor?src=${encodeURIComponent(imageToEdit)}&mode=defect-main&defectId=${defect._id}&inspectionId=${inspectionId}`,
-      '_blank'
-    );
+  // Handler: Image editor save callback
+  const handleImageEditorSave = async (result: any) => {
+    console.log('📥 Image editor save result:', result);
+    
+    // Refresh defects list to show updated data
+    await fetchDefects();
+    
+    // Close the modal
+    setImageEditorOpen(false);
   };
 
   // Handler: Update location for additional image
@@ -1613,6 +1407,16 @@ export default function DefectEditModal({ isOpen, onClose, inspectionId }: Defec
           </div>
         </div>
       </div>
+
+      {/* Image Editor Modal */}
+      <ImageEditorModal
+        isOpen={imageEditorOpen}
+        onClose={() => setImageEditorOpen(false)}
+        mode={editorMode}
+        inspectionId={inspectionId}
+        onSave={handleImageEditorSave}
+        {...editorProps}
+      />
     </div>
   );
 }

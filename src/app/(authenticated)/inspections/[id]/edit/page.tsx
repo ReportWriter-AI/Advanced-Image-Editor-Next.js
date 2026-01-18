@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import HeaderImageUploader from '../../../../../../components/HeaderImageUploader';
 import LocationSearch from '../../../../../../components/LocationSearch';
 import FileUpload from '../../../../../../components/FileUpload';
+import ImageEditorModal from '../../../../../../components/ImageEditorModal';
 import dynamic from 'next/dynamic';
 import { ArrowLeft, X, Plus, Trash2, Power, PowerOff, Download, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -92,6 +93,12 @@ export default function InspectionEditPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Partial<Defect>>({});
+  
+  // Image editor modal state
+  const [imageEditorOpen, setImageEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<'create' | 'defect-main' | 'additional-location' | 'edit-additional'>('create');
+  const [editorProps, setEditorProps] = useState<any>({});
+  
   const [inspectionDetails, setInspectionDetails] = useState<{
     headerImage?: string;
     headerText?: string;
@@ -1049,12 +1056,10 @@ export default function InspectionEditPage() {
     const defect = defects.find(d => d._id === editingId);
     if (!defect) return;
     
-    const params = new URLSearchParams({
-      inspectionId: inspectionId,
-      mode: 'additional-location',
-      defectId: editingId,
-    });
-    window.open(`/image-editor?${params.toString()}`, '_blank');
+    // Open image editor modal
+    setEditorMode('additional-location');
+    setEditorProps({ defectId: editingId });
+    setImageEditorOpen(true);
   };
 
   const handleRemoveLocationPhoto = async (index: number) => {
@@ -1101,23 +1106,44 @@ export default function InspectionEditPage() {
       return;
     }
 
-    localStorage.setItem('editorMode', 'defect-main');
-    localStorage.setItem('editingDefectId', defect._id);
-    localStorage.setItem('editingInspectionId', inspectionId);
+    // Open image editor modal
+    setEditorMode('defect-main');
+    setEditorProps({ 
+      defectId: defect._id, 
+      imageUrl: defect.originalImage || defect.image,
+      preloadedAnnotations: defect.annotations,
+      originalImageUrl: defect.originalImage || defect.image
+    });
+    setImageEditorOpen(true);
+  };
 
-    if (defect.annotations && defect.annotations.length > 0) {
-      localStorage.setItem('defectAnnotations', JSON.stringify(defect.annotations));
-    } else {
-      localStorage.removeItem('defectAnnotations');
+  const handleAnnotateAdditionalImage = (defect: Defect, index: number) => {
+    const additionalImage = defect.additional_images?.[index];
+    if (!additionalImage) {
+      alert('No image to annotate');
+      return;
     }
 
-    const imageToEdit = defect.originalImage || defect.image;
-    localStorage.setItem('defectOriginalImage', imageToEdit);
+    // Open image editor modal in edit-additional mode
+    setEditorMode('edit-additional');
+    setEditorProps({
+      defectId: defect._id,
+      editIndex: index,
+      imageUrl: additionalImage.url,
+      originalImageUrl: additionalImage.url
+    });
+    setImageEditorOpen(true);
+  };
 
-    window.open(
-      `/image-editor?src=${encodeURIComponent(imageToEdit)}&mode=defect-main&defectId=${defect._id}&inspectionId=${inspectionId}`,
-      '_blank'
-    );
+  // Handler: Image editor save callback
+  const handleImageEditorSave = async (result: any) => {
+    console.log('📥 Image editor save result:', result);
+    
+    // Refresh defects list to show updated data
+    await fetchDefects();
+    
+    // Close the modal
+    setImageEditorOpen(false);
   };
 
   const handleUpdateLocationForImage = async (index: number, newLocation: string) => {
@@ -1170,6 +1196,11 @@ export default function InspectionEditPage() {
     setDefects(prev => prev.map(d => d._id === defectId ? { ...d, ...updates } : d));
     if (editingId === defectId) {
       setEditedValues(prev => ({ ...prev, ...updates }));
+      // Trigger auto-save to persist changes to backend
+      // Use setTimeout to ensure state updates are processed first
+      setTimeout(() => {
+        triggerAutoSave();
+      }, 100);
     }
   };
 
@@ -3410,7 +3441,22 @@ export default function InspectionEditPage() {
             </div>
             
             <div className="border-t my-6"></div>
-            <h3 className="text-xl font-semibold mb-4">Manage Defects</h3>
+            
+            {/* Defects Section Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold">Manage Defects</h3>
+              <Button
+                onClick={() => {
+                  setEditorMode('create');
+                  setEditorProps({});
+                  setImageEditorOpen(true);
+                }}
+                className="bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] hover:from-[rgb(106,17,203)] hover:to-[rgb(75,108,183)]"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Defect
+              </Button>
+            </div>
             
             {loading ? (
               <div className="loading-container flex flex-col items-center justify-center py-12">
@@ -3418,10 +3464,22 @@ export default function InspectionEditPage() {
                 <p>Loading defects...</p>
               </div>
             ) : defects.length === 0 ? (
-              <div className="empty-state text-center py-12">
-                <i className="fas fa-exclamation-triangle empty-icon text-4xl text-muted-foreground mb-4"></i>
+              <div className="empty-state text-center py-12 bg-muted/30 rounded-lg border-2 border-dashed">
+                <i className="fas fa-clipboard-list empty-icon text-4xl text-muted-foreground mb-4"></i>
                 <h3 className="text-xl font-semibold mb-2">No Defects Found</h3>
-                <p className="text-muted-foreground">This inspection has no defects recorded.</p>
+                <p className="text-muted-foreground mb-6">Start documenting inspection findings by creating your first defect.</p>
+                <Button
+                  onClick={() => {
+                    setEditorMode('create');
+                    setEditorProps({});
+                    setImageEditorOpen(true);
+                  }}
+                  className="bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] hover:from-[rgb(106,17,203)] hover:to-[rgb(75,108,183)]"
+                  size="lg"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  Create Your First Defect
+                </Button>
               </div>
             ) : (
               <>
@@ -3471,6 +3529,7 @@ export default function InspectionEditPage() {
                       onDelete={handleDeleteDefect}
                       onFieldChange={handleFieldChange}
                       onAnnotateMainImage={handleAnnotateMainImage}
+                      onAnnotateAdditionalImage={handleAnnotateAdditionalImage}
                       onUpdateLocationForImage={handleUpdateLocationForImage}
                       onRemoveLocationPhoto={handleRemoveLocationPhoto}
                       onSetPlayingVideoId={setPlayingVideoId}
@@ -7067,6 +7126,16 @@ export default function InspectionEditPage() {
           <i className="fas fa-arrow-up text-xl"></i>
         </button>
       )}
+
+      {/* Image Editor Modal */}
+      <ImageEditorModal
+        isOpen={imageEditorOpen}
+        onClose={() => setImageEditorOpen(false)}
+        mode={editorMode}
+        inspectionId={inspectionId}
+        onSave={handleImageEditorSave}
+        {...editorProps}
+      />
     </div>
   );
 }

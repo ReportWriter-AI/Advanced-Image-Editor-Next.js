@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect, useRef, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -60,6 +59,7 @@ import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenat
 import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDropdowns";
 import { ChecklistImageUpload, ChecklistImage } from "./ChecklistImageUpload";
 import { cn } from "@/lib/utils";
+import { DefectsSection } from "./DefectsSection";
 
 interface ChecklistContentProps {
   inspectionId: string;
@@ -114,7 +114,6 @@ function SortableChecklistItem({
   onMediaUpdate,
 }: SortableChecklistItemProps) {
   const { data: dropdownsData } = useReusableDropdownsQuery();
-  const router = useRouter();
 
   // Convert API format (Array<{id, value}>) to options format (Array<{value, label}>)
   const locationOptions = useMemo(() => {
@@ -123,12 +122,6 @@ function SortableChecklistItem({
       value: item.value,
       label: item.value,
     }));
-  }, [dropdownsData]);
-
-  // Convert to string array for LocationSearch component
-  const locationOptionsArray = useMemo(() => {
-    if (!dropdownsData?.data?.location) return [];
-    return dropdownsData.data.location.map((item: { id: string; value: string }) => item.value);
   }, [dropdownsData]);
 
   const [locationValue, setLocationValue] = useState(checklist.location || "");
@@ -293,110 +286,6 @@ function SortableChecklistItem({
     }
   }, [onMediaUpdate, checklist._id]);
 
-  // Check for pending annotations from image-editor
-  useEffect(() => {
-    const checkPendingAnnotation = async () => {
-      const pendingData = localStorage.getItem('pendingAnnotation');
-      if (!pendingData) return;
-
-      try {
-        const annotation = JSON.parse(pendingData);
-
-        // Validate that this annotation belongs to this checklist
-        if (annotation.checklistId !== checklist._id) {
-          return; // Not for this checklist, ignore
-        }
-
-        // Validate inspectionId matches (optional safety check)
-        if (annotation.inspectionId && annotation.inspectionId !== inspectionId) {
-          return; // Not for this inspection, ignore
-        }
-
-        // Find the media item by matching originalImageUrl
-        const mediaIndex = images.findIndex(
-          (img) => typeof img.url === 'string' && img.url === annotation.originalImageUrl
-        );
-
-        if (mediaIndex !== -1) {
-          // Update the media item with the annotated image URL
-          const updatedImages = [...images];
-          updatedImages[mediaIndex] = {
-            ...updatedImages[mediaIndex],
-            url: annotation.imageUrl, // Update to annotated URL
-          };
-          setImages(updatedImages);
-
-          // Save to database
-          const mediaArray = updatedImages
-            .filter(img => typeof img.url === 'string')
-            .map(img => ({
-              url: img.url as string,
-              mediaType: img.mediaType,
-              location: img.location,
-              order: img.order,
-            }));
-          
-          try {
-            saveMediaToDatabase(mediaArray);
-            
-            // Clear the pending annotation ONLY after successful save
-            localStorage.removeItem('pendingAnnotation');
-          } catch (error) {
-            console.error('❌ Error saving annotation to database:', error);
-            // Don't clear localStorage - allow retry
-          }
-        } else {
-          // Media item not found - might not be loaded yet, will retry via polling
-          console.warn('⚠️ Media item not found for annotation, will retry...');
-        }
-      } catch (error) {
-        console.error('❌ Error processing pending annotation:', error);
-        // Only clear if it's a parse error (bad JSON)
-        if (error instanceof SyntaxError) {
-          localStorage.removeItem('pendingAnnotation');
-        }
-      }
-    };
-
-    // Check immediately
-    checkPendingAnnotation();
-
-    // Check on window focus (when user returns from image-editor)
-    const handleFocus = () => {
-      checkPendingAnnotation();
-    };
-
-    // Listen for storage events from other tabs
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'pendingAnnotation' && e.newValue) {
-        setTimeout(() => checkPendingAnnotation(), 100);
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('storage', handleStorageChange);
-
-    // Polling mechanism to catch annotations even if events don't fire
-    let pollCount = 0;
-    const maxPolls = 20; // 6 seconds total (20 * 300ms)
-    const pollInterval = setInterval(() => {
-      pollCount++;
-      const pending = localStorage.getItem('pendingAnnotation');
-      if (pending) {
-        checkPendingAnnotation();
-      }
-      if (pollCount >= maxPolls) {
-        clearInterval(pollInterval);
-      }
-    }, 300); // Check every 300ms
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(pollInterval);
-    };
-  }, [checklist._id, inspectionId, images, saveMediaToDatabase]);
-
   // Handler for file selection with mediaType
   const handleImagesSelect = useCallback(async (checklistId: string, files: File[], mediaType: 'image' | 'video' | '360pic') => {
     if (!checklist._id || checklistId !== checklist._id) return;
@@ -552,6 +441,27 @@ function SortableChecklistItem({
     
     saveMediaToDatabase(mediaArray);
   }, [checklist._id, images, locationInputs, saveMediaToDatabase]);
+
+  // Handler for image update (e.g., after annotation)
+  const handleImageUpdate = useCallback((checklistId: string, imageIndex: number, newImageUrl: string) => {
+    if (!checklist._id || checklistId !== checklist._id) return;
+    
+    const updatedImages = images.map((img, idx) => 
+      idx === imageIndex ? { ...img, url: newImageUrl } : img
+    );
+    setImages(updatedImages);
+    
+    // Save to database
+    const mediaArray = updatedImages
+      .filter(img => typeof img.url === 'string')
+      .map(img => ({
+        url: img.url as string,
+        mediaType: img.mediaType,
+        location: img.location,
+        order: img.order,
+      }));
+    saveMediaToDatabase(mediaArray);
+  }, [images, checklist._id, saveMediaToDatabase]);
 
   // Get images for current checklist
   const checklistImages = useMemo(() => {
@@ -719,6 +629,7 @@ function SortableChecklistItem({
               onImageDelete={handleImageDelete}
               onLocationChange={handleLocationChange}
               onMediaReorder={handleMediaReorder}
+              onImageUpdate={handleImageUpdate}
               locationOptions={locationOptions}
               locationInputs={locationInputs}
               inspectionId={inspectionId}
@@ -1177,6 +1088,15 @@ export function ChecklistContent({
                 )}
               </CardContent>
             </Card>
+
+            {/* Defects Section */}
+            <DefectsSection
+              inspectionId={inspectionId}
+              templateId={inspectionTemplateId}
+              sectionId={sectionId}
+              subsectionId={subsectionId || ""}
+              subsectionName={subsectionName}
+            />
           </>
         )}
       </div>

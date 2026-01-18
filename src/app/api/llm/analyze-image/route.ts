@@ -66,6 +66,9 @@ export async function POST(request: Request) {
     let inspectionId: string | undefined;
     let section: string | undefined;
     let subSection: string | undefined;
+    let templateId: string | undefined;
+    let sectionId: string | undefined;
+    let subsectionId: string | undefined;
     let selectedColor: string | undefined;
     let videoFile: File | null = null;
     let thumbnail: string | null = null;
@@ -88,6 +91,9 @@ export async function POST(request: Request) {
       inspectionId = body.inspectionId;
       section = body.section;
       subSection = body.subSection;
+      templateId = body.templateId;
+      sectionId = body.sectionId;
+      subsectionId = body.subsectionId;
       selectedColor = body.selectedColor;
       isThreeSixty = body.isThreeSixty || false;
       type = body.type;
@@ -208,6 +214,9 @@ export async function POST(request: Request) {
         inspectionId,
         section,
         subSection,
+        templateId,
+        sectionId,
+        subsectionId,
         selectedColor,
         analysisId,
         finalVideoUrl,
