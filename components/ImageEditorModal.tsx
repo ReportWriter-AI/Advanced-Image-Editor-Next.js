@@ -264,6 +264,31 @@ export default function ImageEditorModal({
     }
   }, [isOpen, isDefectMainMode, propAnnotations]);
 
+  // Cleanup all state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset all state when modal closes
+      setCurrentImage(null);
+      setEditedFile(null);
+      setOriginalFile(null);
+      setPreloadedAnnotations(undefined);
+      setCurrentAnnotations([]);
+      setDescription('');
+      setSelectedLocation('');
+      setSelectedSubLocation('');
+      setSelectedLocation2('');
+      setVideoFile(null);
+      setVideoSrc(null);
+      setThumbnail(null);
+      setIsThreeSixty(false);
+      setActiveMode('none');
+      setHasCropFrame(false);
+      setShowDrawingDropdown(false);
+      setShowCircleDropdown(false);
+      setShowSquareDropdown(false);
+    }
+  }, [isOpen]);
+
   // Actions for editing images
   const handleActionClick = (mode: 'none' | 'crop' | 'arrow' | 'circle' | 'square') => {
     if (mode === 'arrow') {

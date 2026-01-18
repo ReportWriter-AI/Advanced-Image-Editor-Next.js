@@ -80,6 +80,7 @@ export function DefectsSection({
     console.log('📥 Image editor save result:', result);
     await fetchDefects();
     setImageEditorOpen(false);
+    setEditorProps({}); // Clear editor props to ensure fresh data on next open
   };
 
   const handleDeleteDefect = async (defectId: string) => {
@@ -165,9 +166,12 @@ export function DefectsSection({
     try {
       setAutoSaving(true);
       const response = await fetch(`/api/defects/${defectId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({
+          ...updates,
+          inspection_id: inspectionId, // Required by PATCH endpoint
+        }),
       });
 
       if (response.ok) {
@@ -175,9 +179,14 @@ export function DefectsSection({
           d._id === defectId ? { ...d, ...updates } : d
         ));
         setLastSaved(new Date().toLocaleTimeString());
+      } else {
+        const errorData = await response.json();
+        console.error('Error updating defect:', errorData);
+        alert(`Failed to update defect: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error updating defect:', error);
+      alert('Error updating defect. Please try again.');
     } finally {
       setAutoSaving(false);
     }
@@ -187,8 +196,9 @@ export function DefectsSection({
     setEditorMode('defect-main');
     setEditorProps({
       defectId: defect._id,
-      currentImageUrl: defect.image,
-      existingAnnotations: defect.annotations || [],
+      imageUrl: defect.originalImage || defect.image,
+      originalImageUrl: defect.originalImage || defect.image,
+      preloadedAnnotations: defect.annotations || [],
     });
     setImageEditorOpen(true);
   };
@@ -200,9 +210,9 @@ export function DefectsSection({
     setEditorMode('edit-additional');
     setEditorProps({
       defectId: defect._id,
-      imageIndex,
-      currentImageUrl: additionalImage.url,
-      existingAnnotations: [],
+      editIndex: imageIndex,
+      imageUrl: additionalImage.url,
+      preloadedAnnotations: [],
     });
     setImageEditorOpen(true);
   };
@@ -363,6 +373,7 @@ export function DefectsSection({
 
       {/* Image Editor Modal */}
       <ImageEditorModal
+        key={`${editorMode}-${editorProps.defectId || 'create'}-${editorProps.editIndex || '0'}`}
         isOpen={imageEditorOpen}
         onClose={() => setImageEditorOpen(false)}
         mode={editorMode}
