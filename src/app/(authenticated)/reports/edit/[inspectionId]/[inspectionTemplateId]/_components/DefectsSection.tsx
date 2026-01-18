@@ -32,6 +32,9 @@ export function DefectsSection({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Partial<Defect>>({});
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
 
   // Fetch defects for this subsection
   const fetchDefects = useCallback(async () => {
@@ -158,6 +161,89 @@ export function DefectsSection({
     return baseCost * imageCount;
   };
 
+  const handleUpdateDefect = async (defectId: string, updates: Partial<Defect>) => {
+    try {
+      setAutoSaving(true);
+      const response = await fetch(`/api/defects/${defectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+
+      if (response.ok) {
+        setDefects(prev => prev.map(d => 
+          d._id === defectId ? { ...d, ...updates } : d
+        ));
+        setLastSaved(new Date().toLocaleTimeString());
+      }
+    } catch (error) {
+      console.error('Error updating defect:', error);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  const handleAnnotateMainImage = (defect: Defect) => {
+    setEditorMode('defect-main');
+    setEditorProps({
+      defectId: defect._id,
+      currentImageUrl: defect.image,
+      existingAnnotations: defect.annotations || [],
+    });
+    setImageEditorOpen(true);
+  };
+
+  const handleAnnotateAdditionalImage = (defect: Defect, imageIndex: number) => {
+    const additionalImage = defect.additional_images?.[imageIndex];
+    if (!additionalImage) return;
+
+    setEditorMode('edit-additional');
+    setEditorProps({
+      defectId: defect._id,
+      imageIndex,
+      currentImageUrl: additionalImage.url,
+      existingAnnotations: [],
+    });
+    setImageEditorOpen(true);
+  };
+
+  const handleUpdateLocationForImage = async (imageIndex: number, newLocation: string) => {
+    if (!editingId) return;
+    const defect = defects.find(d => d._id === editingId);
+    if (!defect || !defect.additional_images) return;
+
+    const updatedImages = [...defect.additional_images];
+    updatedImages[imageIndex] = { ...updatedImages[imageIndex], location: newLocation };
+    await handleUpdateDefect(editingId, { additional_images: updatedImages });
+  };
+
+  const handleRemoveLocationPhoto = async (imageIndex: number) => {
+    if (!editingId) return;
+    const defect = defects.find(d => d._id === editingId);
+    if (!defect || !defect.additional_images) return;
+
+    const updatedImages = defect.additional_images.filter((_, idx) => idx !== imageIndex);
+    await handleUpdateDefect(editingId, { additional_images: updatedImages });
+  };
+
+  const getProxiedSrc = (url?: string | null): string => {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    if (url.startsWith('blob:')) return url;
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  };
+
+  const handleImgError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const img = e.currentTarget;
+    if (img.src && !img.src.includes('/api/proxy-image')) {
+      img.src = getProxiedSrc(img.src);
+    }
+  };
+
+  const allLocationOptions: string[] = Array.from(
+    new Set(defects.map(d => d.location).filter(Boolean))
+  );
+
   const filteredDefects = filterDefects(defects, searchQuery);
 
   if (!subsectionId) {
@@ -233,13 +319,19 @@ export function DefectsSection({
                         index={index}
                         displayDefect={displayDefect}
                         isEditing={isEditing}
+                        editingId={editingId}
                         editedValues={editedValues}
                         deleting={deleting}
+                        autoSaving={autoSaving}
+                        lastSaved={lastSaved}
+                        playingVideoId={playingVideoId}
                         inspectionId={inspectionId}
-                        startEditing={startEditing}
-                        cancelEditing={cancelEditing}
-                        handleDeleteDefect={handleDeleteDefect}
-                        handleFieldChange={(field, value) => {
+                        inspectionDetails={{}}
+                        allLocationOptions={allLocationOptions}
+                        onStartEditing={startEditing}
+                        onCancelEditing={cancelEditing}
+                        onDelete={handleDeleteDefect}
+                        onFieldChange={(field, value) => {
                           setEditedValues(prev => {
                             let parsed: any = value;
                             if (field === 'material_total_cost' || field === 'labor_rate' || field === 'hours_required') {
@@ -249,14 +341,16 @@ export function DefectsSection({
                             return { ...prev, [field]: parsed };
                           });
                         }}
+                        onAnnotateMainImage={handleAnnotateMainImage}
+                        onAnnotateAdditionalImage={handleAnnotateAdditionalImage}
+                        onUpdateLocationForImage={handleUpdateLocationForImage}
+                        onRemoveLocationPhoto={handleRemoveLocationPhoto}
+                        onSetPlayingVideoId={setPlayingVideoId}
+                        onUpdateDefect={handleUpdateDefect}
+                        getProxiedSrc={getProxiedSrc}
+                        handleImgError={handleImgError}
                         formatCurrency={formatCurrency}
                         calculateTotalCost={calculateTotalCost}
-                        inspectionDetails={{}}
-                        setEditorMode={setEditorMode}
-                        setEditorProps={setEditorProps}
-                        setImageEditorOpen={setImageEditorOpen}
-                        setEditedValues={setEditedValues}
-                        setDefects={setDefects}
                       />
                     );
                   })}
