@@ -58,6 +58,8 @@ export const useUpdateInspectionTemplateChecklistMutation = (inspectionId: strin
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplateChecklists.get(inspectionId, templateId, sectionId, subsectionId)] });
       // Invalidate validation query to update publish button state
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)] });
+      // Invalidate completion status query to update check icons
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplates.completionStatus(inspectionId, templateId)] });
       toast.success('Checklist updated successfully');
     },
     onError: (error: any) => {
@@ -108,6 +110,8 @@ export const useUpdateChecklistAnswerMutation = (inspectionId: string, templateI
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplateChecklists.get(inspectionId, templateId, sectionId, subsectionId)] });
       // Invalidate validation query to update publish button state
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)] });
+      // Invalidate completion status query to update check icons
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplates.completionStatus(inspectionId, templateId)] });
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to update checklist answer');

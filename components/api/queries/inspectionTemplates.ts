@@ -21,6 +21,21 @@ export interface PublishValidationResponse {
   isAlreadyPublished: boolean;
 }
 
+export interface CompletionStatus {
+  sections: {
+    [sectionId: string]: {
+      isComplete: boolean;
+      subsections: {
+        [subsectionId: string]: {
+          isComplete: boolean;
+          totalStatusChecklists: number;
+          completedStatusChecklists: number;
+        };
+      };
+    };
+  };
+}
+
 export const useInspectionTemplatesQuery = (inspectionId: string) => 
   useQuery({
     queryKey: [apiRoutes.inspectionTemplates.get(inspectionId)],
@@ -39,6 +54,15 @@ export const useInspectionTemplatePublishValidationQuery = (inspectionId: string
   useQuery({
     queryKey: [apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)],
     queryFn: () => axios.get(apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)),
+    enabled: !!inspectionId && !!templateId,
+    refetchOnMount: true,
+    staleTime: 0,
+  })
+
+export const useInspectionTemplateCompletionStatusQuery = (inspectionId: string, templateId: string) => 
+  useQuery({
+    queryKey: [apiRoutes.inspectionTemplates.completionStatus(inspectionId, templateId)],
+    queryFn: () => axios.get(apiRoutes.inspectionTemplates.completionStatus(inspectionId, templateId)),
     enabled: !!inspectionId && !!templateId,
     refetchOnMount: true,
     staleTime: 0,

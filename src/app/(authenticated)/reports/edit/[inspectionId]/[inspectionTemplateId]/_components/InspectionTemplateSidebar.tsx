@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ChevronRight, ChevronDown, GripVertical, Loader2, PlusCircle, Edit2, Trash2, RotateCcw } from "lucide-react";
+import { ChevronRight, ChevronDown, GripVertical, Loader2, PlusCircle, Edit2, Trash2, RotateCcw, Check } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -36,6 +36,10 @@ import {
   useReorderInspectionTemplateSubsectionsMutation,
   InspectionTemplateSubsection,
 } from "@/components/api/queries/inspectionTemplateSubsections";
+import {
+  useInspectionTemplateCompletionStatusQuery,
+  CompletionStatus,
+} from "@/components/api/queries/inspectionTemplates";
 import { cn } from "@/lib/utils";
 
 interface InspectionTemplateSidebarProps {
@@ -82,7 +86,10 @@ export function InspectionTemplateSidebar({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: sectionsData, isLoading: sectionsLoading } = useInspectionTemplateSectionsQuery(inspectionId, inspectionTemplateId);
+  const { data: completionStatusData } = useInspectionTemplateCompletionStatusQuery(inspectionId, inspectionTemplateId);
   const reorderSectionsMutation = useReorderInspectionTemplateSectionsMutation(inspectionId, inspectionTemplateId);
+
+  const completionStatus = completionStatusData?.data || { sections: {} };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -328,6 +335,7 @@ export function InspectionTemplateSidebar({
                     reorderDisabled={reorderSectionsDisabled}
                     reorderSubsectionsDisabled={reorderSubsectionsDisabled(section._id || "")}
                     renderIcon={renderIcon}
+                    completionStatus={completionStatus}
                   />
                 ))}
               </SortableContext>
@@ -360,6 +368,7 @@ interface SectionItemProps {
   reorderDisabled: boolean;
   reorderSubsectionsDisabled: boolean;
   renderIcon: (iconName?: string) => React.ReactNode;
+  completionStatus: CompletionStatus;
 }
 
 function SectionItem({
@@ -383,6 +392,7 @@ function SectionItem({
   reorderDisabled,
   reorderSubsectionsDisabled,
   renderIcon,
+  completionStatus,
 }: SectionItemProps) {
   const { attributes: sortableAttributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: section._id || "",
@@ -391,6 +401,9 @@ function SectionItem({
 
   // Extract conflicting props and override with our own
   const { role, tabIndex, ...attributes } = sortableAttributes;
+
+  // Get section completion status
+  const isSectionComplete = completionStatus.sections[section._id || '']?.isComplete || false;
 
   const { data: subsectionsData, isLoading: subsectionsLoading } = useInspectionTemplateSubsectionsQuery(
     inspectionId,
@@ -534,6 +547,9 @@ function SectionItem({
               </div>
               {renderIcon(section.sectionIcon)}
               <span className="truncate">{section.name}</span>
+              {isSectionComplete && (
+                <Check className="h-4 w-4 text-green-600 shrink-0 ml-auto" />
+              )}
             </div>
           </button>
         </ContextMenuTrigger>
@@ -581,6 +597,9 @@ function SectionItem({
                     onEdit={() => onSubsectionEdit(subsection)}
                     onDelete={() => onSubsectionDelete(subsection._id || "")}
                     reorderDisabled={reorderSubsectionsDisabled}
+                    isComplete={
+                      completionStatus.sections[section._id || '']?.subsections[subsection._id || '']?.isComplete || false
+                    }
                   />
                 ))}
               </SortableContext>
@@ -599,6 +618,7 @@ interface SubsectionItemProps {
   onEdit: () => void;
   onDelete: () => void;
   reorderDisabled: boolean;
+  isComplete: boolean;
 }
 
 function SubsectionItem({
@@ -608,6 +628,7 @@ function SubsectionItem({
   onEdit,
   onDelete,
   reorderDisabled,
+  isComplete,
 }: SubsectionItemProps) {
   const { attributes: sortableAttributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: subsection._id || "",
@@ -649,6 +670,9 @@ function SubsectionItem({
                 <GripVertical className="h-3 w-3" />
               </div>
               <span className="truncate">{subsection.name}</span>
+              {isComplete && (
+                <Check className="h-4 w-4 text-green-600 shrink-0 ml-auto" />
+              )}
             </div>
           </button>
         </ContextMenuTrigger>

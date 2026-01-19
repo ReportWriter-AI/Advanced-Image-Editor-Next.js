@@ -67,6 +67,7 @@ export default {
 		update: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}`,
 		delete: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}`,
 		validatePublish: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/validate-publish`,
+		completionStatus: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/completion-status`,
 	},
 	// Inspection Template Sections
 	inspectionTemplateSections: {
