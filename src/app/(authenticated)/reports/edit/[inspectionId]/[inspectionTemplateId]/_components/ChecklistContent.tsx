@@ -115,6 +115,18 @@ function SortableChecklistItem({
 }: SortableChecklistItemProps) {
   const { data: dropdownsData } = useReusableDropdownsQuery();
 
+  // Expand/collapse state - default is minimized (false)
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Helper function to truncate comment
+  const truncateComment = (comment: string | undefined, maxLength: number = 80): string => {
+    if (!comment || comment.length <= maxLength) return comment || '';
+    return comment.substring(0, maxLength) + '...';
+  };
+
+  // Toggle handler for expand/collapse
+  const handleToggle = () => setIsExpanded(!isExpanded);
+
   // Convert API format (Array<{id, value}>) to options format (Array<{value, label}>)
   const locationOptions = useMemo(() => {
     if (!dropdownsData?.data?.location) return [];
@@ -489,58 +501,40 @@ function SortableChecklistItem({
 
   const isStatusWithField = checklist.type === 'status' && checklist.field;
 
+  // Handler for checkbox that toggles both expanded state and checked value
+  const handleCheckboxChange = (checked: boolean | string) => {
+    setIsExpanded(!isExpanded);
+    if (onAnswerChange) {
+      onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
+    }
+  };
+
   return (
     <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
-      <div className="rounded-lg border p-4 hover:bg-muted/30">
+      <div className="rounded-lg border p-4 hover:bg-muted/30 transition-colors duration-200">
         <div className="flex items-center justify-between gap-2">
           <div className="flex flex-col gap-1 flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              {/* Checkbox and title for status without field */}
-              {checklist.type === 'status' && !isStatusWithField && (
-                <>
-                  <Checkbox
-                    checked={checklist.defaultChecked || false}
-                    onCheckedChange={(checked) => {
-                      if (onAnswerChange) {
-                        onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
-                      }
-                    }}
-                    disabled={disabled}
-                  />
-                  <span className="text-sm font-medium">{checklist.name}</span>
-                </>
-              )}
-              {/* Checkbox and title for status with field */}
-              {checklist.type === 'status' && isStatusWithField && (
-                <>
-                  <Checkbox
-                    checked={checklist.defaultChecked || false}
-                    onCheckedChange={(checked) => {
-                      if (onAnswerChange) {
-                        onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
-                      }
-                    }}
-                    disabled={disabled}
-                  />
-                  <span className="text-sm font-medium">{checklist.name}</span>
-                </>
-              )}
-              {/* Checkbox and title for information */}
-              {checklist.type === 'information' && (
-                <>
-                  <Checkbox
-                    checked={checklist.defaultChecked || false}
-                    onCheckedChange={(checked) => {
-                      if (onAnswerChange) {
-                        onAnswerChange(checklist._id || "", { defaultChecked: Boolean(checked) });
-                      }
-                    }}
-                    disabled={disabled}
-                  />
-                  <span className="text-sm font-medium">{checklist.name}</span>
-                </>
-              )}
+              {/* Checkbox */}
+              <Checkbox
+                checked={checklist.defaultChecked || false}
+                onCheckedChange={handleCheckboxChange}
+                disabled={disabled}
+              />
+              {/* Clickable title area */}
+              <div 
+                className="flex items-center gap-2 flex-1 cursor-pointer hover:opacity-70 transition-opacity"
+                onClick={handleToggle}
+              >
+                <span className="text-sm font-medium">{checklist.name}</span>
+              </div>
             </div>
+            {/* Truncated comment in minimized view */}
+            {!isExpanded && checklist.comment && (
+              <div className="ml-6 text-sm text-muted-foreground">
+                {truncateComment(checklist.comment)}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
@@ -579,64 +573,67 @@ function SortableChecklistItem({
           </div>
         </div>
 
-        <div className="mt-3 space-y-3">
-          {/* Location field for status checklists */}
-          {checklist.type === 'status' && (
+        {/* Expanded view - all fields */}
+        {isExpanded && (
+          <div className="mt-3 space-y-3">
+            {/* Location field for status checklists */}
+            {checklist.type === 'status' && (
+              <div className="space-y-2">
+                <CreatableConcatenatedInput
+                  value={locationValue}
+                  onChange={setLocationValue}
+                  label="Location"
+                  placeholder="Search location..."
+                  inputPlaceholder="Enter location"
+                  options={locationOptions}
+                  disabled={disabled}
+                />
+              </div>
+            )}
+
+            {/* Comment field for all checklist types */}
             <div className="space-y-2">
-              <CreatableConcatenatedInput
-                value={locationValue}
-                onChange={setLocationValue}
-                label="Location"
-                placeholder="Search location..."
-                inputPlaceholder="Enter location"
-                options={locationOptions}
+              <Label htmlFor={`comment-${checklist._id}`}>Comment</Label>
+              <Textarea
+                id={`comment-${checklist._id}`}
+                value={commentValue}
+                onChange={(e) => setCommentValue(e.target.value)}
+                rows={4}
                 disabled={disabled}
+                placeholder="Enter comment..."
               />
             </div>
-          )}
 
-          {/* Comment field for all checklist types */}
-          <div className="space-y-2">
-            <Label htmlFor={`comment-${checklist._id}`}>Comment</Label>
-            <Textarea
-              id={`comment-${checklist._id}`}
-              value={commentValue}
-              onChange={(e) => setCommentValue(e.target.value)}
-              rows={4}
-              disabled={disabled}
-              placeholder="Enter comment..."
-            />
+            {/* Field input for status with field - appears below location/comment */}
+            {isStatusWithField && onAnswerChange && (
+              <div>
+                <ChecklistFieldInput
+                  checklist={checklist}
+                  onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
+                  disabled={disabled}
+                  hideTitleAndCheckbox={true}
+                />
+              </div>
+            )}
+
+            {/* Image upload section - status checklist */}
+            {checklist.type === 'status' && (
+              <ChecklistImageUpload
+                checklistId={checklist._id || ""}
+                images={checklistImages}
+                onImagesSelect={handleImagesSelect}
+                onImageDelete={handleImageDelete}
+                onLocationChange={handleLocationChange}
+                onMediaReorder={handleMediaReorder}
+                onImageUpdate={handleImageUpdate}
+                locationOptions={locationOptions}
+                locationInputs={locationInputs}
+                inspectionId={inspectionId}
+                getProxiedSrc={getProxiedSrc}
+              />
+            )}
           </div>
-
-          {/* Field input for status with field - appears below location/comment */}
-          {isStatusWithField && onAnswerChange && (
-            <div>
-              <ChecklistFieldInput
-                checklist={checklist}
-                onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
-                disabled={disabled}
-                hideTitleAndCheckbox={true}
-              />
-            </div>
-          )}
-
-          {/* Image upload section - status checklist */}
-          {checklist.type === 'status' && (
-            <ChecklistImageUpload
-              checklistId={checklist._id || ""}
-              images={checklistImages}
-              onImagesSelect={handleImagesSelect}
-              onImageDelete={handleImageDelete}
-              onLocationChange={handleLocationChange}
-              onMediaReorder={handleMediaReorder}
-              onImageUpdate={handleImageUpdate}
-              locationOptions={locationOptions}
-              locationInputs={locationInputs}
-              inspectionId={inspectionId}
-              getProxiedSrc={getProxiedSrc}
-            />
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
