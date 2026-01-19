@@ -152,11 +152,10 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   // Responsive sizing for canvas container
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasSizeVersion, setCanvasSizeVersion] = useState(0);
-  
-  // Magnifying glass state
-  const [showMagnifyingGlass, setShowMagnifyingGlass] = useState(false);
-  const [magnifyMousePosition, setMagnifyMousePosition] = useState<{ x: number, y: number } | null>(null);
-  const magnifyCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Zoom view state
+  const [arrowTipPosition, setArrowTipPosition] = useState<Point | null>(null);
+  const zoomCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Dynamically size the canvas to its container to avoid overflow and keep aspect
   useEffect(() => {
@@ -1422,14 +1421,6 @@ const captureImage = () => {
     }
   }, [activeMode, cropFrame, onCropStateChange]);
 
-  // Hide magnifying glass when arrow mode is deactivated
-  useEffect(() => {
-    if (activeMode !== 'arrow') {
-      setShowMagnifyingGlass(false);
-      setMagnifyMousePosition(null);
-    }
-  }, [activeMode]);
-
   useEffect(() => {
     const handleUndoAction = () => {
       handleUndo();
@@ -1601,6 +1592,10 @@ const captureImage = () => {
           const c = getArrowCenter(clickedShape);
           setDragArrowOffset({ x: mouseX - c.x, y: mouseY - c.y });
           setInteractionMode('move');
+          // Set arrow tip position for zoom
+          if (clickedShape.points.length > 0) {
+            setArrowTipPosition(clickedShape.points[clickedShape.points.length - 1]);
+          }
         } else if (clickedShape.type === 'circle' || clickedShape.type === 'square') {
           // For circles and squares, check for resize handles FIRST
           const center = clickedShape.center || clickedShape.points[0];
@@ -1809,6 +1804,10 @@ const captureImage = () => {
           const c = getArrowCenter(clickedShape);
           setDragArrowOffset({ x: mouseX - c.x, y: mouseY - c.y });
           setInteractionMode('move');
+          // Set arrow tip position for zoom
+          if (clickedShape.points.length > 0) {
+            setArrowTipPosition(clickedShape.points[clickedShape.points.length - 1]);
+          }
           return;
         } else if (clickedShape.type === 'circle' || clickedShape.type === 'square') {
           // For circles and squares, check for resize handles
@@ -1883,9 +1882,7 @@ const captureImage = () => {
         setIsDrawing(true);
         setCurrentLine([{ x: mouseX, y: mouseY }]);
         setCurrentArrowSize(3); // Reset arrow size when starting to draw
-        // Initialize magnifying glass
-        setMagnifyMousePosition({ x: mouseX, y: mouseY });
-        setShowMagnifyingGlass(true);
+        setArrowTipPosition({ x: mouseX, y: mouseY }); // Set initial arrow tip position for zoom
       }
     } else if (activeMode === 'circle' || activeMode === 'square') {
       // Check if clicking on any existing shape (universal selection)
@@ -1962,6 +1959,10 @@ const captureImage = () => {
           const c = getArrowCenter(clickedShape);
           setDragArrowOffset({ x: mouseX - c.x, y: mouseY - c.y });
           setInteractionMode('move');
+          // Set arrow tip position for zoom
+          if (clickedShape.points.length > 0) {
+            setArrowTipPosition(clickedShape.points[clickedShape.points.length - 1]);
+          }
           return;
         } else {
           // Check if clicking on a resize handle for circles/squares
@@ -2138,14 +2139,25 @@ const captureImage = () => {
           if (frameCounterRef.current++ % 3 === 0) {
             setLines(prev => prev.map(line => {
               if (line.id !== selectedArrowId) return line;
-              return {
+              const updatedLine = {
                 ...line,
                 points: line.points.map(point => ({
                   x: point.x + deltaX,
                   y: point.y + deltaY
                 }))
               };
+              // Update arrow tip position for zoom
+              if (updatedLine.points.length > 0) {
+                setArrowTipPosition(updatedLine.points[updatedLine.points.length - 1]);
+              }
+              return updatedLine;
             }));
+          } else {
+            // Update tip position even when not updating lines
+            if (selectedArrow.points.length > 0) {
+              const tip = selectedArrow.points[selectedArrow.points.length - 1];
+              setArrowTipPosition({ x: tip.x + deltaX, y: tip.y + deltaY });
+            }
           }
         } else if (interactionMode === 'rotate') {
           // Faster rotation with less easing for more responsive feel
@@ -2405,11 +2417,9 @@ const captureImage = () => {
       if (isDrawing) {
         setCurrentLine(prev => {
           const newLine = [...prev!, { x: mouseX, y: mouseY }];
-          // Update magnifying glass to show arrow tip (end point of the arrow)
+          // Update arrow tip position for zoom
           if (newLine.length > 0) {
-            const arrowTip = newLine[newLine.length - 1];
-            setMagnifyMousePosition({ x: arrowTip.x, y: arrowTip.y });
-            setShowMagnifyingGlass(true);
+            setArrowTipPosition(newLine[newLine.length - 1]);
           }
           return newLine;
         });
@@ -2521,12 +2531,6 @@ const captureImage = () => {
       return;
     }
     
-    // Hide magnifying glass when arrow drawing is complete
-    if (activeMode === 'arrow' && isDrawing) {
-      setShowMagnifyingGlass(false);
-      setMagnifyMousePosition(null);
-    }
-    
     if (activeMode === 'arrow' && isDrawing && currentLine && currentLine.length > 1) {
       const lineType = 'arrow';
       const newLine: Line = {
@@ -2634,6 +2638,9 @@ const captureImage = () => {
     // Reset drag detection states
     setDragStartPoint(null);
     setHasDragged(false);
+    
+    // Clear arrow tip position for zoom
+    setArrowTipPosition(null);
     
     setIsDrawing(false);
     setIsDraggingCrop(false);
@@ -3055,85 +3062,6 @@ const drawSquare = (
     ctx.restore();
   };
 
-  // Magnifying glass rendering effect
-  useEffect(() => {
-    if (!showMagnifyingGlass || !magnifyMousePosition || !image || !magnifyCanvasRef.current) {
-      return;
-    }
-
-    const magnifyCanvas = magnifyCanvasRef.current;
-    const ctx = magnifyCanvas.getContext('2d');
-    if (!ctx) return;
-
-    // Set canvas size (reduced to 80x80px)
-    const magnifyCanvasSize = 80;
-    magnifyCanvas.width = magnifyCanvasSize;
-    magnifyCanvas.height = magnifyCanvasSize;
-
-    // Convert canvas coordinates to image coordinates
-    const imageCoords = canvasToImageCoordinates(magnifyMousePosition.x, magnifyMousePosition.y);
-    if (!imageCoords) {
-      // Clear canvas if coordinates are invalid
-      ctx.clearRect(0, 0, magnifyCanvasSize, magnifyCanvasSize);
-      return;
-    }
-
-    // Calculate the region to extract (40px radius at 1.5x zoom = ~26.67px radius in image)
-    const zoomLevel = 1.5;
-    const magnifySize = magnifyCanvasSize / 2; // Half of canvas size (40px)
-    const sourceSize = magnifySize / zoomLevel; // ~26.67px radius in image coordinates
-
-    // Calculate source rectangle in image coordinates
-    let sourceX = imageCoords.x - sourceSize;
-    let sourceY = imageCoords.y - sourceSize;
-    let sourceWidth = sourceSize * 2;
-    let sourceHeight = sourceSize * 2;
-
-    // Handle edge cases - clamp to image boundaries
-    sourceX = Math.max(0, Math.min(sourceX, image.width - sourceWidth));
-    sourceY = Math.max(0, Math.min(sourceY, image.height - sourceHeight));
-    sourceWidth = Math.min(sourceWidth, image.width - sourceX);
-    sourceHeight = Math.min(sourceHeight, image.height - sourceY);
-
-    // Clear canvas with white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, magnifyCanvasSize, magnifyCanvasSize);
-
-    // Enable high-quality image smoothing
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    // Draw the magnified region
-    // The destination is the full canvas, source is the calculated region
-    ctx.drawImage(
-      image,
-      sourceX, sourceY, sourceWidth, sourceHeight, // Source rectangle in image
-      0, 0, magnifyCanvasSize, magnifyCanvasSize // Destination rectangle in canvas (2x zoom)
-    );
-
-    // Draw a crosshair at the center to show the exact cursor position
-    ctx.strokeStyle = 'rgba(220, 53, 69, 0.9)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([]);
-    
-    // Center of magnifying glass
-    const centerX = magnifyCanvasSize / 2;
-    const centerY = magnifyCanvasSize / 2;
-    
-    // Draw crosshair
-    ctx.beginPath();
-    ctx.moveTo(centerX - 10, centerY);
-    ctx.lineTo(centerX + 10, centerY);
-    ctx.moveTo(centerX, centerY - 10);
-    ctx.lineTo(centerX, centerY + 10);
-    ctx.stroke();
-
-    // Draw border
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(0, 0, magnifyCanvasSize, magnifyCanvasSize);
-  }, [showMagnifyingGlass, magnifyMousePosition, image, canvasToImageCoordinates]);
-
   // Draw everything on canvas
   useEffect(() => {
     console.log('🎨 Canvas render useEffect triggered!');
@@ -3480,6 +3408,61 @@ const drawSquare = (
     }
   }, [image, imageRotation, lines, currentLine, isDrawing, drawingColor, brushSize, activeMode, cropFrame, selectedArrowId, hoveredArrowId, currentArrowSize, circleColor, squareColor, hasDragged, canvasSizeVersion]);
 
+  // Zoom view rendering effect
+  useEffect(() => {
+    const zoomCanvas = zoomCanvasRef.current;
+    const sourceCanvas = canvasRef.current;
+    
+    // Check if we should show zoom (dragging or creating arrow)
+    const isDraggingExisting = isDraggingArrow && selectedArrowId !== null && arrowTipPosition;
+    const isCreatingNew = activeMode === 'arrow' && isDrawing && currentLine && currentLine.length > 0 && arrowTipPosition;
+    
+    if (!zoomCanvas || !sourceCanvas || !image || (!isDraggingExisting && !isCreatingNew)) return;
+    
+    const ctx = zoomCanvas.getContext("2d");
+    if (!ctx) return;
+
+    const zoomSize = 80;
+    const zoomFactor = 1.5;
+    const sourceSize = zoomSize / zoomFactor;
+    const halfSourceSize = sourceSize / 2;
+
+    ctx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height);
+
+    // Get tip coordinates
+    let tipX, tipY;
+    if (isCreatingNew && currentLine && currentLine.length > 0) {
+      const tip = currentLine[currentLine.length - 1];
+      tipX = tip.x;
+      tipY = tip.y;
+    } else {
+      tipX = arrowTipPosition!.x;
+      tipY = arrowTipPosition!.y;
+    }
+
+    // Clamp source region to canvas bounds
+    const sourceLeft = Math.max(0, tipX - halfSourceSize);
+    const sourceRight = Math.min(sourceCanvas.width, tipX + halfSourceSize);
+    const sourceTop = Math.max(0, tipY - halfSourceSize);
+    const sourceBottom = Math.min(sourceCanvas.height, tipY + halfSourceSize);
+
+    const sourceWidth = sourceRight - sourceLeft;
+    const sourceHeight = sourceBottom - sourceTop;
+
+    if (sourceWidth <= 0 || sourceHeight <= 0) return;
+
+    // Calculate destination position (centered)
+    const destX = (zoomCanvas.width / 2) - (sourceWidth * zoomFactor / 2);
+    const destY = (zoomCanvas.height / 2) - (sourceHeight * zoomFactor / 2);
+
+    // Copy region from main canvas
+    ctx.drawImage(
+      sourceCanvas,
+      sourceLeft, sourceTop, sourceWidth, sourceHeight,
+      destX, destY, sourceWidth * zoomFactor, sourceHeight * zoomFactor
+    );
+  }, [isDraggingArrow, selectedArrowId, arrowTipPosition, image, lines, imageRotation, activeMode, isDrawing, currentLine]);
+
   const getCursor = () => {
     if (isMovingShape) {
       return 'grabbing';
@@ -3692,12 +3675,15 @@ const drawSquare = (
         onTouchEnd={handleTouchEnd}
         style={{ cursor: getCursor(), display: 'block' }}
       />
-      {/* Magnifying Glass */}
-      {showMagnifyingGlass && image && (
-        <div className={styles.magnifyingGlass}>
+      {/* Zoom View */}
+      {((isDraggingArrow && selectedArrowId !== null && arrowTipPosition) ||
+        (activeMode === 'arrow' && isDrawing && currentLine && currentLine.length > 0 && arrowTipPosition)) && (
+        <div className={styles.zoomView}>
           <canvas
-            ref={magnifyCanvasRef}
-            className={styles.magnifyingGlassCanvas}
+            ref={zoomCanvasRef}
+            className={styles.zoomCanvas}
+            width={80}
+            height={80}
           />
         </div>
       )}

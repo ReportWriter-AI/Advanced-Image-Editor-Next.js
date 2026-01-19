@@ -160,11 +160,11 @@
     width: 100%;
     max-width: 100%;
     border-radius: 8px;
-    overflow: visible; /* Allow magnifying glass to be visible */
+    overflow: visible; /* Allow zoom view to be visible */
     background: #ffffff; /* subtle background behind canvas */
     box-sizing: border-box;
     display: block;
-    position: relative; /* Enable absolute positioning for magnifying glass */
+    position: relative; /* Enable absolute positioning for zoom view */
   }
 
   /* Ensure the canvas scales within its container and keeps aspect ratio */
@@ -213,23 +213,23 @@
     gap: 20px;
   }
 
-  /* Magnifying Glass Styles */
-  .magnifyingGlass {
+  /* Zoom View Styles */
+  .zoomView {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: 1rem;
+    left: 1rem;
     width: 80px;
     height: 80px;
-    z-index: 100;
+    z-index: 50;
     pointer-events: none;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    border-radius: 4px;
+    background: white;
+    border: 2px solid rgba(156, 163, 175, 0.6);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     overflow: hidden;
-    background: #ffffff;
-    border: 2px solid rgba(0, 0, 0, 0.2);
   }
 
-  .magnifyingGlassCanvas {
+  .zoomCanvas {
     display: block;
     width: 100%;
     height: 100%;
