@@ -70,6 +70,18 @@ export async function getDefectsBySubsection(
   }).sort({ createdAt: -1 }).lean();
 }
 
+// Get all defects by template (for report viewing page)
+export async function getDefectsByTemplate(
+  inspectionId: string,
+  templateId: string
+) {
+  await dbConnect();
+  return await Defect.find({
+    inspection_id: new mongoose.Types.ObjectId(inspectionId),
+    templateId: new mongoose.Types.ObjectId(templateId),
+  }).sort({ createdAt: -1 }).lean();
+}
+
 
 export async function deleteDefect(defectId: string) {
   await dbConnect();

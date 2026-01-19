@@ -729,27 +729,43 @@
   color: #FFFFFF;
 }
 
-/* Mobile: show dropdown, hide individual buttons */
+/* Mobile: show navigation buttons in responsive layout */
 @media (max-width: 768px) {
-  .toolbarGroup, .toolbarRightGroup { display: none; }
-  .toolbarMenuContainer { display: block; width: 100%; }
-  /* Make the toolbar full-bleed across the screen and center the dropdown */
+  /* Hide the dropdown menu container (not used in this component) */
+  .toolbarMenuContainer { display: none; }
+  
+  /* Make the toolbar stack vertically on mobile */
   .reportToolbar {
-    justify-content: center;
-    /* Slightly inset from screen edges */
-    width: calc(100vw - 16px);
-    margin-left: calc(50% - 50vw + 8px);
-    margin-right: calc(50% - 50vw + 8px);
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
     border-radius: 10px;
-    background: #d1d5db; /* medium gray outer frame - darker to ensure visibility */
-    border: 1px solid #9ca3af;
+    background: #222222;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
   }
-  /* Make the trigger button fill the bar and center its label */
-  .toolbarMenuBtn {
-    /* Slightly inset inside the toolbar */
-    width: calc(100% - 16px);
-    margin: 0 8px;
+  
+  /* Make button groups full width and stack their buttons */
+  .toolbarGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+  
+  .toolbarRightGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+  
+  /* Make buttons full width on mobile with better touch targets */
+  .toolbarBtn {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 14px;
     text-align: center;
+    border-radius: 6px;
   }
   
   /* Header Image responsive styles */
@@ -771,13 +787,6 @@
     border: none; /* Remove border so image sits cleanly */
     object-fit: cover; /* Fill width cleanly */
     object-position: center;
-  }
-  .toolbarMenuBtn:hover { background: #475569; }
-  /* Center the dropdown menu under the button */
-  .toolbarMenuDropdown {
-    right: auto;
-    left: 50%;
-    transform: translateX(-50%);
   }
 }
 
