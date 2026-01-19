@@ -66,6 +66,7 @@ export default {
 		getById: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}`,
 		update: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}`,
 		delete: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}`,
+		validatePublish: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/validate-publish`,
 	},
 	// Inspection Template Sections
 	inspectionTemplateSections: {
@@ -106,5 +107,6 @@ export default {
 	inspections: {
 		get: (inspectionId: string) => `/inspections/${inspectionId}`,
 		update: (inspectionId: string) => `/inspections/${inspectionId}`,
+		publish: (inspectionId: string) => `/inspections/${inspectionId}/publish`,
 	},
 }

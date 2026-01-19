@@ -37,6 +37,12 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   useInspectionTemplateSectionsQuery,
   useCreateInspectionTemplateSectionMutation,
   useUpdateInspectionTemplateSectionMutation,
@@ -61,7 +67,11 @@ import { InspectionTemplateSettingsModal } from "./_components/InspectionTemplat
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { useInspectionQuery, useUpdateInspectionMutation } from "@/components/api/queries/inspections";
-import { useInspectionTemplateQuery } from "@/components/api/queries/inspectionTemplates";
+import { 
+  useInspectionTemplateQuery,
+  useInspectionTemplatePublishValidationQuery,
+  usePublishInspectionMutation,
+} from "@/components/api/queries/inspectionTemplates";
 
 export default function InspectionTemplateEditPage() {
   const params = useParams();
@@ -93,7 +103,9 @@ export default function InspectionTemplateEditPage() {
   const { data, isLoading, error } = useInspectionTemplateSectionsQuery(inspectionId, inspectionTemplateId);
   const { data: inspectionData } = useInspectionQuery(inspectionId);
   const { data: templateData } = useInspectionTemplateQuery(inspectionId, inspectionTemplateId);
+  const { data: validationData } = useInspectionTemplatePublishValidationQuery(inspectionId, inspectionTemplateId);
   const updateInspectionMutation = useUpdateInspectionMutation(inspectionId);
+  const publishMutation = usePublishInspectionMutation(inspectionId);
   const createSectionMutation = useCreateInspectionTemplateSectionMutation(inspectionId, inspectionTemplateId);
   const updateSectionMutation = useUpdateInspectionTemplateSectionMutation(inspectionId, inspectionTemplateId);
   const deleteSectionMutation = useDeleteInspectionTemplateSectionMutation(inspectionId, inspectionTemplateId);
@@ -198,6 +210,18 @@ export default function InspectionTemplateEditPage() {
   const handleHeaderImageUpdate = async (imageUrl: string) => {
     try {
       await updateInspectionMutation.mutateAsync({ headerImage: imageUrl });
+    } catch (error) {
+      // Error already handled by mutation's onError
+    }
+  };
+
+  const handlePublish = async () => {
+    try {
+      await publishMutation.mutateAsync();
+      // Refetch validation data to update button state
+      queryClient.invalidateQueries({ 
+        queryKey: [apiRoutes.inspectionTemplates.validatePublish(inspectionId, inspectionTemplateId)] 
+      });
     } catch (error) {
       // Error already handled by mutation's onError
     }
@@ -469,7 +493,42 @@ export default function InspectionTemplateEditPage() {
                           <Link href={`/reports/${inspectionId}/${inspectionTemplateId}`}>
                             <Button variant="outline">Preview</Button>
                           </Link>
-                          <Button variant="outline">Publish</Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div>
+                                  <Button 
+                                    variant="outline"
+                                    onClick={handlePublish}
+                                    disabled={
+                                      !validationData?.data?.canPublish || 
+                                      validationData?.data?.isAlreadyPublished ||
+                                      publishMutation.isPending
+                                    }
+                                  >
+                                    {publishMutation.isPending ? (
+                                      <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Publishing...
+                                      </>
+                                    ) : validationData?.data?.isAlreadyPublished ? (
+                                      'Published'
+                                    ) : (
+                                      'Publish'
+                                    )}
+                                  </Button>
+                                </div>
+                              </TooltipTrigger>
+                              {!validationData?.data?.canPublish && !validationData?.data?.isAlreadyPublished && (
+                                <TooltipContent>
+                                  <p>
+                                    {validationData?.data?.checkedStatusChecklists || 0} of{' '}
+                                    {validationData?.data?.totalStatusChecklists || 0} status checklists completed
+                                  </p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </div>
                       <div className="flex-col justify-end space-y-2">

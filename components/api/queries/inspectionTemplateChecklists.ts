@@ -56,6 +56,8 @@ export const useUpdateInspectionTemplateChecklistMutation = (inspectionId: strin
       axios.put(apiRoutes.inspectionTemplateChecklists.update(inspectionId, templateId, sectionId, subsectionId, checklistId), checklistData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplateChecklists.get(inspectionId, templateId, sectionId, subsectionId)] });
+      // Invalidate validation query to update publish button state
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)] });
       toast.success('Checklist updated successfully');
     },
     onError: (error: any) => {
@@ -104,6 +106,8 @@ export const useUpdateChecklistAnswerMutation = (inspectionId: string, templateI
       axios.put(apiRoutes.inspectionTemplateChecklists.update(inspectionId, templateId, sectionId, subsectionId, checklistId), answerData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplateChecklists.get(inspectionId, templateId, sectionId, subsectionId)] });
+      // Invalidate validation query to update publish button state
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)] });
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to update checklist answer');

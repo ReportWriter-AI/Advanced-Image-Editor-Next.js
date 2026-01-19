@@ -14,6 +14,13 @@ export interface InspectionTemplate {
   deletedAt?: string;
 }
 
+export interface PublishValidationResponse {
+  canPublish: boolean;
+  totalStatusChecklists: number;
+  checkedStatusChecklists: number;
+  isAlreadyPublished: boolean;
+}
+
 export const useInspectionTemplatesQuery = (inspectionId: string) => 
   useQuery({
     queryKey: [apiRoutes.inspectionTemplates.get(inspectionId)],
@@ -26,6 +33,15 @@ export const useInspectionTemplateQuery = (inspectionId: string, templateId: str
     queryKey: [apiRoutes.inspectionTemplates.getById(inspectionId, templateId)],
     queryFn: () => axios.get(apiRoutes.inspectionTemplates.getById(inspectionId, templateId)),
     enabled: !!inspectionId && !!templateId,
+  })
+
+export const useInspectionTemplatePublishValidationQuery = (inspectionId: string, templateId: string) => 
+  useQuery({
+    queryKey: [apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)],
+    queryFn: () => axios.get(apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)),
+    enabled: !!inspectionId && !!templateId,
+    refetchOnMount: true,
+    staleTime: 0,
   })
 
 export const useUpdateInspectionTemplateMutation = () => {
@@ -56,6 +72,21 @@ export const useDeleteInspectionTemplateMutation = () => {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to delete template');
+      return Promise.reject(error);
+    },
+  })
+}
+
+export const usePublishInspectionMutation = (inspectionId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => axios.post(apiRoutes.inspections.publish(inspectionId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [apiRoutes.inspections.get(inspectionId)] });
+      toast.success('Report published successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to publish report');
       return Promise.reject(error);
     },
   })
