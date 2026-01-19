@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Search,
   Settings,
+  Check,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -493,42 +494,46 @@ export default function InspectionTemplateEditPage() {
                           <Link href={`/reports/${inspectionId}/${inspectionTemplateId}`}>
                             <Button variant="outline">Preview</Button>
                           </Link>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div>
-                                  <Button 
-                                    variant="outline"
-                                    onClick={handlePublish}
-                                    disabled={
-                                      !validationData?.data?.canPublish || 
-                                      validationData?.data?.isAlreadyPublished ||
-                                      publishMutation.isPending
-                                    }
-                                  >
-                                    {publishMutation.isPending ? (
-                                      <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Publishing...
-                                      </>
-                                    ) : validationData?.data?.isAlreadyPublished ? (
-                                      'Published'
-                                    ) : (
-                                      'Publish'
-                                    )}
-                                  </Button>
-                                </div>
-                              </TooltipTrigger>
-                              {!validationData?.data?.canPublish && !validationData?.data?.isAlreadyPublished && (
-                                <TooltipContent>
-                                  <p>
-                                    {validationData?.data?.checkedStatusChecklists || 0} of{' '}
-                                    {validationData?.data?.totalStatusChecklists || 0} status checklists completed
-                                  </p>
-                                </TooltipContent>
-                              )}
-                            </Tooltip>
-                          </TooltipProvider>
+                          {validationData?.data?.isAlreadyPublished ? (
+                            <Button variant="outline" disabled>
+                              <Check className="mr-2 h-4 w-4" />
+                              Published
+                            </Button>
+                          ) : (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div>
+                                    <Button 
+                                      variant="outline"
+                                      onClick={handlePublish}
+                                      disabled={
+                                        !validationData?.data?.canPublish || 
+                                        publishMutation.isPending
+                                      }
+                                    >
+                                      {publishMutation.isPending ? (
+                                        <>
+                                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                          Publishing...
+                                        </>
+                                      ) : (
+                                        'Publish'
+                                      )}
+                                    </Button>
+                                  </div>
+                                </TooltipTrigger>
+                                {!validationData?.data?.canPublish && (
+                                  <TooltipContent>
+                                    <p>
+                                      {validationData?.data?.checkedStatusChecklists || 0} of{' '}
+                                      {validationData?.data?.totalStatusChecklists || 0} status checklists completed
+                                    </p>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       </div>
                       <div className="flex-col justify-end space-y-2">
