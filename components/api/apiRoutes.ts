@@ -95,4 +95,11 @@ export default {
 		delete: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string, checklistId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists/${checklistId}`,
 		reorder: (inspectionId: string, templateId: string, sectionId: string, subsectionId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections/${sectionId}/subsections/${subsectionId}/checklists/reorder`,
 	},
+	// Defects
+	defects: {
+		bySubsection: (params: { inspectionId: string; templateId: string; sectionId: string; subsectionId: string }) => 
+			`/defects/by-subsection?inspectionId=${params.inspectionId}&templateId=${params.templateId}&sectionId=${params.sectionId}&subsectionId=${params.subsectionId}`,
+		update: (defectId: string) => `/defects/${defectId}`,
+		delete: (defectId: string) => `/defects/${defectId}`,
+	},
 }

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Plus, Loader2, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import ImageEditorModal from '@/components/ImageEditorModal';
-import DefectCard, { type Defect } from '@/src/app/(authenticated)/inspections/[id]/edit/_components/DefectCard';
+import DefectCard from '@/src/app/(authenticated)/inspections/[id]/edit/_components/DefectCard';
+import { useDefectsBySubsectionQuery, useUpdateDefectMutation, useDeleteDefectMutation, type Defect } from '@/components/api/queries/defects';
 
 interface DefectsSectionProps {
   inspectionId: string;
@@ -23,48 +24,25 @@ export function DefectsSection({
   subsectionId,
   subsectionName,
 }: DefectsSectionProps) {
-  const [defects, setDefects] = useState<Defect[]>([]);
-  const [loading, setLoading] = useState(false);
+  // TanStack Query hooks
+  const { data: defects = [], isLoading, refetch } = useDefectsBySubsectionQuery({
+    inspectionId,
+    templateId,
+    sectionId,
+    subsectionId,
+  });
+  const updateDefectMutation = useUpdateDefectMutation();
+  const deleteDefectMutation = useDeleteDefectMutation();
+
+  // Local UI state
   const [searchQuery, setSearchQuery] = useState('');
   const [imageEditorOpen, setImageEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<'create' | 'defect-main' | 'additional-location' | 'edit-additional'>('create');
   const [editorProps, setEditorProps] = useState<any>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Partial<Defect>>({});
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [autoSaving, setAutoSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
-
-  // Fetch defects for this subsection
-  const fetchDefects = useCallback(async () => {
-    if (!subsectionId) return;
-    
-    try {
-      setLoading(true);
-      const response = await fetch(
-        `/api/defects/by-subsection?inspectionId=${inspectionId}&templateId=${templateId}&sectionId=${sectionId}&subsectionId=${subsectionId}`
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        const safeData = Array.isArray(data) ? data : [];
-        setDefects(safeData);
-      } else {
-        console.error('Failed to fetch defects');
-        setDefects([]);
-      }
-    } catch (error) {
-      console.error('Error fetching defects:', error);
-      setDefects([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [inspectionId, templateId, sectionId, subsectionId]);
-
-  useEffect(() => {
-    fetchDefects();
-  }, [fetchDefects]);
 
   const handleCreateDefect = () => {
     setEditorMode('create');
@@ -78,7 +56,7 @@ export function DefectsSection({
 
   const handleImageEditorSave = async (result: any) => {
     console.log('📥 Image editor save result:', result);
-    await fetchDefects();
+    await refetch();
     setImageEditorOpen(false);
     setEditorProps({}); // Clear editor props to ensure fresh data on next open
   };
@@ -88,23 +66,7 @@ export function DefectsSection({
       return;
     }
 
-    try {
-      setDeleting(defectId);
-      const response = await fetch(`/api/defects/${defectId}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setDefects(prev => prev.filter(defect => defect._id !== defectId));
-      } else {
-        alert('Failed to delete defect. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error deleting defect:', error);
-      alert('Error deleting defect. Please try again.');
-    } finally {
-      setDeleting(null);
-    }
+    deleteDefectMutation.mutate(defectId);
   };
 
   const filterDefects = (defects: Defect[], query: string): Defect[] => {
@@ -163,33 +125,20 @@ export function DefectsSection({
   };
 
   const handleUpdateDefect = async (defectId: string, updates: Partial<Defect>) => {
-    try {
-      setAutoSaving(true);
-      const response = await fetch(`/api/defects/${defectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    updateDefectMutation.mutate(
+      { 
+        defectId, 
+        updates: {
           ...updates,
           inspection_id: inspectionId, // Required by PATCH endpoint
-        }),
-      });
-
-      if (response.ok) {
-        setDefects(prev => prev.map(d => 
-          d._id === defectId ? { ...d, ...updates } : d
-        ));
-        setLastSaved(new Date().toLocaleTimeString());
-      } else {
-        const errorData = await response.json();
-        console.error('Error updating defect:', errorData);
-        alert(`Failed to update defect: ${errorData.error || 'Unknown error'}`);
+        }
+      },
+      {
+        onSuccess: () => {
+          setLastSaved(new Date().toLocaleTimeString());
+        }
       }
-    } catch (error) {
-      console.error('Error updating defect:', error);
-      alert('Error updating defect. Please try again.');
-    } finally {
-      setAutoSaving(false);
-    }
+    );
   };
 
   const handleAnnotateMainImage = (defect: Defect) => {
@@ -219,7 +168,7 @@ export function DefectsSection({
 
   const handleUpdateLocationForImage = async (imageIndex: number, newLocation: string) => {
     if (!editingId) return;
-    const defect = defects.find(d => d._id === editingId);
+    const defect = defects.find((d: Defect) => d._id === editingId);
     if (!defect || !defect.additional_images) return;
 
     const updatedImages = [...defect.additional_images];
@@ -229,10 +178,10 @@ export function DefectsSection({
 
   const handleRemoveLocationPhoto = async (imageIndex: number) => {
     if (!editingId) return;
-    const defect = defects.find(d => d._id === editingId);
+    const defect = defects.find((d: Defect) => d._id === editingId);
     if (!defect || !defect.additional_images) return;
 
-    const updatedImages = defect.additional_images.filter((_, idx) => idx !== imageIndex);
+    const updatedImages = defect.additional_images.filter((_: any, idx: number) => idx !== imageIndex);
     await handleUpdateDefect(editingId, { additional_images: updatedImages });
   };
 
@@ -251,7 +200,7 @@ export function DefectsSection({
   };
 
   const allLocationOptions: string[] = Array.from(
-    new Set(defects.map(d => d.location).filter(Boolean))
+    new Set(defects.map((d: Defect) => d.location).filter(Boolean))
   );
 
   const filteredDefects = filterDefects(defects, searchQuery);
@@ -280,7 +229,7 @@ export function DefectsSection({
             </Button>
           </div>
 
-          {loading ? (
+          {isLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
               <p>Loading defects...</p>
@@ -331,8 +280,8 @@ export function DefectsSection({
                         isEditing={isEditing}
                         editingId={editingId}
                         editedValues={editedValues}
-                        deleting={deleting}
-                        autoSaving={autoSaving}
+                        deleting={deleteDefectMutation.isPending ? defect._id : null}
+                        autoSaving={updateDefectMutation.isPending}
                         lastSaved={lastSaved}
                         playingVideoId={playingVideoId}
                         inspectionId={inspectionId}
