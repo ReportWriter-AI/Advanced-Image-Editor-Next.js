@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ChevronRight, ChevronDown, GripVertical, Loader2, PlusCircle, Edit2, Trash2, RotateCcw } from "lucide-react";
 import * as LucideIcons from "lucide-react";
+import { toast } from "sonner";
 import {
   DndContext,
   PointerSensor,
@@ -52,6 +53,8 @@ interface InspectionTemplateSidebarProps {
   onSectionRestoreClick: (sectionId: string) => void;
   reorderSectionsDisabled: boolean;
   reorderSubsectionsDisabled: (sectionId: string) => boolean;
+  headerImage: string | null;
+  onHeaderImageUpdate: (imageUrl: string) => void;
 }
 
 export function InspectionTemplateSidebar({
@@ -69,10 +72,14 @@ export function InspectionTemplateSidebar({
   onSectionRestoreClick,
   reorderSectionsDisabled,
   reorderSubsectionsDisabled,
+  headerImage,
+  onHeaderImageUpdate,
 }: InspectionTemplateSidebarProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [sections, setSections] = useState<InspectionTemplateSection[]>([]);
   const [subsectionsMap, setSubsectionsMap] = useState<Map<string, InspectionTemplateSubsection[]>>(new Map());
+  const [isUploadingHeaderImage, setIsUploadingHeaderImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: sectionsData, isLoading: sectionsLoading } = useInspectionTemplateSectionsQuery(inspectionId, inspectionTemplateId);
   const reorderSectionsMutation = useReorderInspectionTemplateSectionsMutation(inspectionId, inspectionTemplateId);
@@ -203,8 +210,84 @@ export function InspectionTemplateSidebar({
     return <IconComponent className="h-4 w-4" />;
   };
 
+  const handleHeaderImageClick = () => {
+    if (isUploadingHeaderImage) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingHeaderImage(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/r2api', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to upload image');
+      }
+
+      const data = await response.json();
+
+      if (!data?.url) {
+        throw new Error('Upload succeeded but no URL was returned');
+      }
+
+      // Call parent callback (which uses mutation internally)
+      await onHeaderImageUpdate(data.url);
+    } catch (error: any) {
+      console.error('Header image upload failed:', error);
+      toast.error(error.message || 'Header image upload failed');
+    } finally {
+      setIsUploadingHeaderImage(false);
+      // Reset value so the same file can be selected again if needed
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <div className="w-full border-b md:border-b-0 md:border-r bg-sidebar text-sidebar-foreground flex flex-col h-full">
+      <div className="min-w-0 relative group cursor-pointer" onClick={handleHeaderImageClick}>
+        {isUploadingHeaderImage ? (
+          <div className="w-full h-28 flex items-center justify-center bg-muted">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            <img
+              src={headerImage || `/api/inspections/${inspectionId}/client-view/map-image`}
+              alt="Property photo"
+              className="w-full h-28 object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            {/* Hover overlay with edit icon */}
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <Edit2 className="h-8 w-8 text-white" />
+            </div>
+          </>
+        )}
+        {/* Hidden file input */}
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          disabled={isUploadingHeaderImage}
+        />
+      </div>
       <div className="flex-1 overflow-y-auto">
         {sectionsLoading ? (
           <div className="flex items-center justify-center gap-2 p-4 text-muted-foreground">

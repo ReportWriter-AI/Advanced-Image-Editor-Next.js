@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { toast } from "sonner";
 import { axios } from "@/components/api/axios";
 import apiRoutes from "@/components/api/apiRoutes";
@@ -17,6 +18,7 @@ import {
   Loader2,
   PlusCircle,
   RotateCcw,
+  Search,
   Settings,
 } from "lucide-react";
 import {
@@ -57,6 +59,9 @@ import { RestoreSectionModal } from "./_components/RestoreSectionModal";
 import { RestoreSubsectionModal } from "./_components/RestoreSubsectionModal";
 import { InspectionTemplateSettingsModal } from "./_components/InspectionTemplateSettingsModal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { useInspectionQuery, useUpdateInspectionMutation } from "@/components/api/queries/inspections";
+import { useInspectionTemplateQuery } from "@/components/api/queries/inspectionTemplates";
 
 export default function InspectionTemplateEditPage() {
   const params = useParams();
@@ -73,12 +78,12 @@ export default function InspectionTemplateEditPage() {
   const [restoreSubsectionModalSectionId, setRestoreSubsectionModalSectionId] = useState<string | null>(null);
   const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
   const [templateSettingsModalOpen, setTemplateSettingsModalOpen] = useState(false);
-  
+
   const [createSubsectionDialogOpen, setCreateSubsectionDialogOpen] = useState(false);
   const [editingSubsection, setEditingSubsection] = useState<{ section: InspectionTemplateSection; subsection: InspectionTemplateSubsection } | null>(null);
   const [deletingSubsection, setDeletingSubsection] = useState<{ section: InspectionTemplateSection; subsectionId: string } | null>(null);
   const [isDeletingSubsection, setIsDeletingSubsection] = useState(false);
-  
+
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [selectedSubsectionId, setSelectedSubsectionId] = useState<string | null>(null);
   const [selectedSectionForSubsection, setSelectedSectionForSubsection] = useState<InspectionTemplateSection | null>(null);
@@ -86,6 +91,9 @@ export default function InspectionTemplateEditPage() {
   const initialSelectionMadeRef = useRef(false);
 
   const { data, isLoading, error } = useInspectionTemplateSectionsQuery(inspectionId, inspectionTemplateId);
+  const { data: inspectionData } = useInspectionQuery(inspectionId);
+  const { data: templateData } = useInspectionTemplateQuery(inspectionId, inspectionTemplateId);
+  const updateInspectionMutation = useUpdateInspectionMutation(inspectionId);
   const createSectionMutation = useCreateInspectionTemplateSectionMutation(inspectionId, inspectionTemplateId);
   const updateSectionMutation = useUpdateInspectionTemplateSectionMutation(inspectionId, inspectionTemplateId);
   const deleteSectionMutation = useDeleteInspectionTemplateSectionMutation(inspectionId, inspectionTemplateId);
@@ -116,10 +124,10 @@ export default function InspectionTemplateEditPage() {
   // Auto-select first subsection of first section on initial load
   useEffect(() => {
     if (initialSelectionMadeRef.current) return;
-    
+
     // Wait for sections to load
     if (isLoading || !data?.data?.sections) return;
-    
+
     const sectionsArray = Array.isArray(data.data.sections) ? data.data.sections : [];
     if (sectionsArray.length === 0) {
       initialSelectionMadeRef.current = true;
@@ -129,7 +137,7 @@ export default function InspectionTemplateEditPage() {
     // Sort sections by orderIndex
     const sortedSections = [...sectionsArray].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
     const firstSection = sortedSections[0];
-    
+
     if (!firstSection?._id) {
       initialSelectionMadeRef.current = true;
       return;
@@ -144,14 +152,14 @@ export default function InspectionTemplateEditPage() {
   useEffect(() => {
     if (!initialSelectionMadeRef.current || !selectedSectionId) return;
     if (selectedSubsectionId) return; // Already have a subsection selected
-    
+
     // Wait for subsections to load
     if (subsectionsLoading || !subsectionsData?.data?.subsections) return;
 
-    const subsectionsArray = Array.isArray(subsectionsData.data.subsections) 
-      ? subsectionsData.data.subsections 
+    const subsectionsArray = Array.isArray(subsectionsData.data.subsections)
+      ? subsectionsData.data.subsections
       : [];
-    
+
     if (subsectionsArray.length > 0) {
       // Sort subsections by orderIndex
       const sortedSubsections = [...subsectionsArray].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
@@ -161,6 +169,39 @@ export default function InspectionTemplateEditPage() {
       }
     }
   }, [selectedSectionId, subsectionsData, subsectionsLoading, selectedSubsectionId]);
+
+  // Helper functions to format display data
+  const formatClientNames = (clients?: Array<{firstName?: string; lastName?: string; companyName?: string; isCompany?: boolean}>) => {
+    if (!clients || clients.length === 0) return 'No client assigned';
+    
+    return clients.map(client => {
+      if (client.isCompany && client.companyName) {
+        return client.companyName;
+      }
+      return `${client.firstName || ''} ${client.lastName || ''}`.trim() || 'Unknown Client';
+    }).filter(Boolean).join(', ');
+  };
+
+  const formatLocationAddress = (location?: {address?: string; city?: string; state?: string; zip?: string}) => {
+    if (!location) return '';
+    
+    const parts = [
+      location.address,
+      location.city,
+      location.state,
+      location.zip
+    ].filter(Boolean);
+    
+    return parts.join(', ') || 'No location specified';
+  };
+
+  const handleHeaderImageUpdate = async (imageUrl: string) => {
+    try {
+      await updateInspectionMutation.mutateAsync({ headerImage: imageUrl });
+    } catch (error) {
+      // Error already handled by mutation's onError
+    }
+  };
 
   const handleCreateSection = async (values: any) => {
     try {
@@ -241,13 +282,13 @@ export default function InspectionTemplateEditPage() {
     setIsDeletingSubsection(true);
     try {
       await axios.delete(apiRoutes.inspectionTemplateSubsections.delete(inspectionId, inspectionTemplateId, sectionId, subsectionId));
-      
+
       // Invalidate queries
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplateSubsections.get(inspectionId, inspectionTemplateId, sectionId)] });
       queryClient.invalidateQueries({ queryKey: [apiRoutes.inspectionTemplateSubsections.deleted(inspectionId, inspectionTemplateId, sectionId)] });
-      
+
       toast.success('Subsection deleted successfully');
-      
+
       setDeletingSubsection(null);
       if (selectedSubsectionId === subsectionId) {
         setSelectedSubsectionId(null);
@@ -311,52 +352,6 @@ export default function InspectionTemplateEditPage() {
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-5rem)] w-full -m-4">
-      <div className="flex h-16 items-center border-b px-4 md:px-6 shrink-0 bg-background">
-        <div className="flex flex-1 items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold truncate">Manage Inspection Template</h1>
-            <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">
-              Manage sections, subsections, and checklists for this inspection template.
-            </p>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm">
-              <PlusCircle className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Add Section</span>
-              <span className="sm:hidden">Add</span>
-            </Button>
-            <Popover open={settingsPopoverOpen} onOpenChange={setSettingsPopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-48 p-1" align="end">
-                <div className="flex flex-col">
-                  <button
-                    className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                    onClick={() => {
-                      setSettingsPopoverOpen(false);
-                      setTemplateSettingsModalOpen(true);
-                    }}
-                  >
-                    Settings
-                  </button>
-                  <button
-                    className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                    onClick={() => {
-                      setSettingsPopoverOpen(false);
-                      setRestoreSectionModalOpen(true);
-                    }}
-                  >
-                    Restore
-                  </button>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-      </div>
 
       {isMobile ? (
         // Mobile: Vertical layout - sidebar on top, checklist below
@@ -377,6 +372,8 @@ export default function InspectionTemplateEditPage() {
               onSectionRestoreClick={handleSectionRestoreClick}
               reorderSectionsDisabled={reorderSectionsDisabled}
               reorderSubsectionsDisabled={reorderSubsectionsDisabled}
+              headerImage={inspectionData?.headerImage || null}
+              onHeaderImageUpdate={handleHeaderImageUpdate}
             />
           </div>
           <div className="flex flex-col flex-1 min-h-0 bg-background overflow-y-auto">
@@ -430,6 +427,8 @@ export default function InspectionTemplateEditPage() {
               onSectionRestoreClick={handleSectionRestoreClick}
               reorderSectionsDisabled={reorderSectionsDisabled}
               reorderSubsectionsDisabled={reorderSubsectionsDisabled}
+              headerImage={inspectionData?.headerImage || null}
+              onHeaderImageUpdate={handleHeaderImageUpdate}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
@@ -457,13 +456,77 @@ export default function InspectionTemplateEditPage() {
                     </div>
                   </div>
                 ) : (
-                  <ChecklistContent
-                    inspectionId={inspectionId}
-                    inspectionTemplateId={inspectionTemplateId}
-                    sectionId={selectedSectionId || ""}
-                    subsectionId={selectedSubsectionId}
-                    subsectionName={selectedSubsectionName}
-                  />
+                  <>
+                    <div className="flex h-28 justify-between items-center border-b shrink-0 bg-background px-4">
+                      <div className="flex flex-col gap-2">
+                        <h1 className="text-xl md:text-2xl font-bold truncate">
+                          {templateData?.data?.template?.name || 'Loading template...'}
+                        </h1>
+                        <h3 className="text-muted-foreground">
+                          {formatClientNames(inspectionData?.clients)} - {formatLocationAddress(inspectionData?.location)}
+                        </h3>
+                        <div className="flex gap-2">
+                          <Link href={`/reports/${inspectionId}/${inspectionTemplateId}`}>
+                            <Button variant="outline">Preview</Button>
+                          </Link>
+                          <Button variant="outline">Publish</Button>
+                        </div>
+                      </div>
+                      <div className="flex-col justify-end space-y-2">
+                        <div className="flex justify-end gap-2 shrink-0">
+                          <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            <span className="hidden sm:inline">Add Section</span>
+                            <span className="sm:hidden">Add</span>
+                          </Button>
+                          <Popover open={settingsPopoverOpen} onOpenChange={setSettingsPopoverOpen}>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" size="icon">
+                                <Settings className="h-4 w-4" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-48 p-1" align="end">
+                              <div className="flex flex-col">
+                                <button
+                                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                  onClick={() => {
+                                    setSettingsPopoverOpen(false);
+                                    setTemplateSettingsModalOpen(true);
+                                  }}
+                                >
+                                  Settings
+                                </button>
+                                <button
+                                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                  onClick={() => {
+                                    setSettingsPopoverOpen(false);
+                                    setRestoreSectionModalOpen(true);
+                                  }}
+                                >
+                                  Restore
+                                </button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        <div className="relative w-64">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            type="text"
+                            placeholder="Search checklists"
+                            className="w-64 pl-9"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <ChecklistContent
+                      inspectionId={inspectionId}
+                      inspectionTemplateId={inspectionTemplateId}
+                      sectionId={selectedSectionId || ""}
+                      subsectionId={selectedSubsectionId}
+                      subsectionName={selectedSubsectionName}
+                    />
+                  </>
                 )}
               </div>
             </div>
@@ -590,8 +653,8 @@ export default function InspectionTemplateEditPage() {
         </>
       )}
 
-      <RestoreSectionModal 
-        open={restoreSectionModalOpen} 
+      <RestoreSectionModal
+        open={restoreSectionModalOpen}
         onOpenChange={setRestoreSectionModalOpen}
         inspectionId={inspectionId}
         inspectionTemplateId={inspectionTemplateId}
@@ -607,9 +670,9 @@ export default function InspectionTemplateEditPage() {
         />
       )}
 
-      <InspectionTemplateSettingsModal 
-        open={templateSettingsModalOpen} 
-        onOpenChange={setTemplateSettingsModalOpen} 
+      <InspectionTemplateSettingsModal
+        open={templateSettingsModalOpen}
+        onOpenChange={setTemplateSettingsModalOpen}
         inspectionId={inspectionId}
         inspectionTemplateId={inspectionTemplateId}
       />

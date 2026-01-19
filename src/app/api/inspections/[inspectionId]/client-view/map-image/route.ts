@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Inspection from "@/src/models/Inspection";
 import mongoose from "mongoose";
-import { isValidTokenFormat } from "@/src/lib/token-utils";
 
-// GET /api/inspections/[inspectionId]/client-view/map-image?token=xxx → get map image for the inspection address
+// GET /api/inspections/[inspectionId]/client-view/map-image → get map image for the inspection address
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ inspectionId: string }> }
@@ -22,36 +21,15 @@ export async function GET(
       );
     }
 
-    // Get token from query params
-    const { searchParams } = new URL(req.url);
-    const token = searchParams.get("token");
+    // Find inspection by ID
+    const inspection = await Inspection.findById(
+      new mongoose.Types.ObjectId(inspectionId)
+    ).lean();
 
-    // Validate token is provided
-    if (!token) {
-      return NextResponse.json(
-        { error: "Token is required" },
-        { status: 401 }
-      );
-    }
-
-    // Validate token format
-    if (!isValidTokenFormat(token)) {
-      return NextResponse.json(
-        { error: "Invalid token format" },
-        { status: 401 }
-      );
-    }
-
-    // Find inspection by ID and token
-    const inspection = await Inspection.findOne({
-      _id: new mongoose.Types.ObjectId(inspectionId),
-      token: token,
-    }).lean();
-
-    // If inspection not found or token doesn't match
+    // If inspection not found
     if (!inspection) {
       return NextResponse.json(
-        { error: "Inspection not found or invalid token" },
+        { error: "Inspection not found" },
         { status: 404 }
       );
     }

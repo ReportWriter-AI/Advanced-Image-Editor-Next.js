@@ -1413,7 +1413,7 @@ export default function InspectionClientViewPage() {
                 {inspection.location.address && (
                   <div className="mt-4 rounded-lg overflow-hidden border border-gray-200 shadow-md">
                     <img
-                      src={`/api/inspections/${inspectionId}/client-view/map-image?token=${encodeURIComponent(token || '')}`}
+                      src={`/api/inspections/${inspectionId}/client-view/map-image`}
                       alt="Property photo"
                       className="w-full h-auto"
                       onError={(e) => {

@@ -102,4 +102,9 @@ export default {
 		update: (defectId: string) => `/defects/${defectId}`,
 		delete: (defectId: string) => `/defects/${defectId}`,
 	},
+	// Inspections
+	inspections: {
+		get: (inspectionId: string) => `/inspections/${inspectionId}`,
+		update: (inspectionId: string) => `/inspections/${inspectionId}`,
+	},
 }
