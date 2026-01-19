@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import HeaderImageUploader from '../../../../../../components/HeaderImageUploader';
 import LocationSearch from '../../../../../../components/LocationSearch';
 import FileUpload from '../../../../../../components/FileUpload';
@@ -4867,27 +4868,27 @@ export default function InspectionEditPage() {
                               )}
                             </div>
                             <div className="flex items-center gap-2 ml-4">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  router.push(`/reports/${inspectionId}/${template._id}`);
-                                }}
-                                className="gap-2"
-                              >
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              className="gap-2"
+                            >
+                              <Link href={`/reports/${inspectionId}/${template._id}`}>
                                 <Eye className="h-4 w-4" />
                                 View
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  router.push(`/reports/edit/${inspectionId}/${template._id}`);
-                                }}
-                                className="gap-2"
-                              >
+                              </Link>
+                            </Button>
+                            <Button
+                              size="sm"
+                              asChild
+                              className="gap-2"
+                            >
+                              <Link href={`/reports/edit/${inspectionId}/${template._id}`}>
                                 <i className="fas fa-edit"></i>
                                 Edit
-                              </Button>
+                              </Link>
+                            </Button>
                             </div>
                           </div>
                         </div>
