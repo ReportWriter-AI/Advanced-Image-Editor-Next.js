@@ -44,39 +44,39 @@ import DefectCard, { type Defect } from './_components/DefectCard';
 import { useInspectionTemplatesQuery } from '@/components/api/queries/inspectionTemplates';
 import { Eye } from 'lucide-react';
 
-const InformationSections = dynamic(() => import('../../../../../../components/InformationSections'), { 
-  ssr: false,
-  loading: () => (
-    <div style={{ 
-      width: '100%', 
-      padding: '40px 20px',
-      display: 'flex', 
-      flexDirection: 'column',
-      alignItems: 'center', 
-      justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      borderRadius: '12px',
-      gap: '16px'
-    }}>
-      <div style={{
-        width: '50px',
-        height: '50px',
-        border: '4px solid rgba(255, 255, 255, 0.3)',
-        borderTopColor: 'white',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite'
-      }} />
-      <p style={{ color: 'white', fontSize: '16px', fontWeight: 600 }}>
-        Loading Information Sections...
-      </p>
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  )
-});
+// const InformationSections = dynamic(() => import('../../../../../../components/InformationSections'), { 
+//   ssr: false,
+//   loading: () => (
+//     <div style={{ 
+//       width: '100%', 
+//       padding: '40px 20px',
+//       display: 'flex', 
+//       flexDirection: 'column',
+//       alignItems: 'center', 
+//       justifyContent: 'center',
+//       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+//       borderRadius: '12px',
+//       gap: '16px'
+//     }}>
+//       <div style={{
+//         width: '50px',
+//         height: '50px',
+//         border: '4px solid rgba(255, 255, 255, 0.3)',
+//         borderTopColor: 'white',
+//         borderRadius: '50%',
+//         animation: 'spin 1s linear infinite'
+//       }} />
+//       <p style={{ color: 'white', fontSize: '16px', fontWeight: 600 }}>
+//         Loading Information Sections...
+//       </p>
+//       <style>{`
+//         @keyframes spin {
+//           to { transform: rotate(360deg); }
+//         }
+//       `}</style>
+//     </div>
+//   )
+// });
 
 
 export default function InspectionEditPage() {
@@ -3358,7 +3358,7 @@ export default function InspectionEditPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 border-b">
+      {/* <div className="mb-6 border-b">
         <div className="flex gap-4">
           <button
             onClick={() => setActiveTab('details')}
@@ -3391,14 +3391,14 @@ export default function InspectionEditPage() {
             Information Sections
           </button>
         </div>
-      </div>
+      </div> */}
 
       {/* Content */}
       <div className="bg-card rounded-lg border p-6">
-        {activeTab === 'defects' && (
+        {/* {activeTab === 'defects' && ( */}
           <>
             {/* Header Image Upload */}
-            <div className="header-image-section mb-8">
+            {/* <div className="header-image-section mb-8">
               <h3 className="text-xl font-semibold mb-2">Report Header Image</h3>
               <p className="text-sm text-muted-foreground mb-4">Upload a custom image to use as the header for this inspection report.</p>
               
@@ -3414,10 +3414,10 @@ export default function InspectionEditPage() {
                   getProxiedSrc={getProxiedSrc}
                 />
               </div>
-            </div>
+            </div> */}
             
             {/* Report Settings */}
-            <div className="mb-8">
+            {/* <div className="mb-8">
               <h3 className="text-xl font-semibold mb-2">Report Settings</h3>
               <p className="text-sm text-muted-foreground mb-4">Configure how this inspection report is displayed.</p>
               
@@ -3439,12 +3439,12 @@ export default function InspectionEditPage() {
                   </div>
                 </label>
               </div>
-            </div>
+            </div> */}
             
-            <div className="border-t my-6"></div>
+            {/* <div className="border-t my-6"></div> */}
             
             {/* Defects Section Header */}
-            <div className="flex items-center justify-between mb-4">
+            {/* <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold">Manage Defects</h3>
               <Button
                 onClick={() => {
@@ -3457,9 +3457,9 @@ export default function InspectionEditPage() {
                 <Plus className="h-4 w-4 mr-2" />
                 Create Defect
               </Button>
-            </div>
+            </div> */}
             
-            {loading ? (
+            {/* {loading ? (
               <div className="loading-container flex flex-col items-center justify-center py-12">
                 <div className="loading-spinner border-4 border-t-4 border-gray-200 border-t-primary rounded-full w-12 h-12 animate-spin mb-4"></div>
                 <p>Loading defects...</p>
@@ -3546,13 +3546,13 @@ export default function InspectionEditPage() {
                   );
                 })()}
               </>
-            )}
+            )} */}
           </>
-        )}
-        {activeTab === 'information' && (
+        {/* )} */}
+        {/* {activeTab === 'information' && (
           <InformationSections inspectionId={inspectionId} />
-        )}
-        {activeTab === 'details' && (
+        )} */}
+        {/* {activeTab === 'details' && ( */}
           <>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left Grid - 1/3 width on desktop */}
@@ -6400,7 +6400,7 @@ export default function InspectionEditPage() {
             </div>
           </div>
           </>
-        )}
+        {/* )} */}
       </div>
 
       {/* Task Dialog */}
