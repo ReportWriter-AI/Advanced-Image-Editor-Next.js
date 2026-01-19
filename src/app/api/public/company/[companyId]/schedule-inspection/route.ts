@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/db';
-import { createInspection } from '@/lib/inspection';
+import { createInspection, copyTemplatesForInspection } from '@/lib/inspection';
 import Inspection from '@/src/models/Inspection';
 import DiscountCode from '@/src/models/DiscountCode';
 import { createOrUpdateClient, createOrUpdateAgent } from '@/lib/client-agent-utils';
@@ -208,6 +208,16 @@ export async function POST(request: NextRequest, context: RouteParams) {
         companyObjectId,
         services
       );
+      
+      // Copy templates from services to InspectionTemplate
+      if (services && services.length > 0) {
+        try {
+          await copyTemplatesForInspection(inspection._id.toString(), services);
+        } catch (error) {
+          console.error('Failed to copy templates for inspection:', error);
+          // Don't fail inspection creation if template copying fails
+        }
+      }
       
       // Attach active automation actions to the inspection
       await attachAutomationActionsToInspection(
