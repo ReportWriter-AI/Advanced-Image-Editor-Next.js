@@ -114,9 +114,9 @@ export default function InspectionsPage() {
   };
 
   // Handle document click to view inspection report
-  const handleDocumentClick = (inspectionId: string) => {
-    router.push(`/inspection_report/${inspectionId}`);
-  };
+  // const handleDocumentClick = (inspectionId: string) => {
+  //   router.push(`/inspection_report/${inspectionId}`);
+  // };
 
   // Handle edit click to edit inspection defects
   const handleEditClick = (inspectionId: string) => {
@@ -301,7 +301,7 @@ export default function InspectionsPage() {
         <div className="flex items-center gap-2">
           {filter !== 'trash' ? (
             <>
-              <Button
+              {/* <Button
                 variant="ghost"
                 size="icon"
                 onClick={(e) => {
@@ -312,7 +312,7 @@ export default function InspectionsPage() {
                 title="View Document"
               >
                 <FileText className="h-4 w-4" />
-              </Button>
+              </Button> */}
               <Button
                 variant="ghost"
                 size="icon"

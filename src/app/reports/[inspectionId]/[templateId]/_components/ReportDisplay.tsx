@@ -1,8 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { axios } from "@/components/api/axios";
-import apiRoutes from "@/components/api/apiRoutes";
 import {
   Card,
   CardContent,
@@ -291,18 +289,21 @@ export function ReportDisplay({
   const [sampleError, setSampleError] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: [apiRoutes.inspectionTemplates.getById(inspectionId, templateId)],
-    queryFn: () =>
-      axios.get(apiRoutes.inspectionTemplates.getById(inspectionId, templateId)),
+    queryKey: [`public-report-template-${inspectionId}-${templateId}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/public/reports/${inspectionId}/templates/${templateId}`);
+      if (!response.ok) throw new Error('Failed to fetch template');
+      return response.json();
+    },
     enabled: !!inspectionId && !!templateId,
   });
 
   // Fetch defects for this template
   const { data: defectsData, isLoading: defectsLoading } = useQuery({
-    queryKey: ['defects', inspectionId, templateId],
+    queryKey: ['public-defects', inspectionId, templateId],
     queryFn: async () => {
       const response = await fetch(
-        `/api/defects/by-template?inspectionId=${inspectionId}&templateId=${templateId}`
+        `/api/public/reports/${inspectionId}/defects?templateId=${templateId}`
       );
       if (!response.ok) {
         throw new Error('Failed to fetch defects');
@@ -314,9 +315,9 @@ export function ReportDisplay({
 
   // Fetch inspection data for header
   const { data: inspectionData } = useQuery({
-    queryKey: ['inspection', inspectionId],
+    queryKey: ['public-inspection', inspectionId],
     queryFn: async () => {
-      const response = await fetch(`/api/inspections/${inspectionId}`);
+      const response = await fetch(`/api/public/reports/${inspectionId}`);
       if (!response.ok) throw new Error('Failed to fetch inspection');
       return response.json();
     },
@@ -326,7 +327,7 @@ export function ReportDisplay({
   const inspection = inspectionData;
 
   // Get template and defects (hooks must be called before any conditional returns)
-  const template = data?.data?.template;
+  const template = data?.template;
   const defects: Defect[] = defectsData || [];
   
   // Transform defects with section metadata - always call useMemo
@@ -559,7 +560,7 @@ export function ReportDisplay({
       {inspection?.headerImage && (
         <div className={styles.headerImageDisplay}>
           <img 
-            src={getProxiedSrc(inspection.headerImage)} 
+              src={getProxiedSrc(inspection.headerImage) ?? `/api/inspections/${inspectionId}/client-view/map-image`} 
             alt="Report Header" 
             className={styles.headerImage}
             onError={handleImgError}
