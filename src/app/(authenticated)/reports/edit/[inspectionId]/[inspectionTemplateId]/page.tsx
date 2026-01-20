@@ -388,6 +388,108 @@ export default function InspectionTemplateEditPage() {
       {isMobile ? (
         // Mobile: Vertical layout - sidebar on top, checklist below
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {/* Mobile Header Section */}
+          <div className="flex flex-col gap-3 border-b shrink-0 bg-background px-4 py-3">
+            <div className="flex flex-col gap-2">
+              <h1 className="text-lg font-bold">
+                {templateData?.data?.template?.name || 'Loading template...'}
+              </h1>
+              <h3 className="text-sm text-muted-foreground">
+                {formatClientNames(inspectionData?.clients)} - {formatLocationAddress(inspectionData?.location)}
+              </h3>
+              <div className="flex gap-2 flex-wrap">
+                <Link href={`/reports/${inspectionId}/${inspectionTemplateId}`}>
+                  <Button variant="outline" size="sm">Preview</Button>
+                </Link>
+                {validationData?.data?.isAlreadyPublished ? (
+                  <Button variant="outline" size="sm" disabled>
+                    <Check className="mr-2 h-4 w-4" />
+                    Published
+                  </Button>
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div>
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            onClick={handlePublish}
+                            disabled={
+                              !validationData?.data?.canPublish || 
+                              publishMutation.isPending
+                            }
+                          >
+                            {publishMutation.isPending ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Publishing...
+                              </>
+                            ) : (
+                              'Publish'
+                            )}
+                          </Button>
+                        </div>
+                      </TooltipTrigger>
+                      {!validationData?.data?.canPublish && (
+                        <TooltipContent>
+                          <p>
+                            {validationData?.data?.checkedStatusChecklists || 0} of{' '}
+                            {validationData?.data?.totalStatusChecklists || 0} status checklists completed
+                          </p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 items-center justify-between">
+              <div className="flex gap-2 flex-1">
+                <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm">
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Add Section
+                </Button>
+                <Popover open={settingsPopoverOpen} onOpenChange={setSettingsPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-1" align="end">
+                    <div className="flex flex-col">
+                      <button
+                        className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                        onClick={() => {
+                          setSettingsPopoverOpen(false);
+                          setTemplateSettingsModalOpen(true);
+                        }}
+                      >
+                        Settings
+                      </button>
+                      <button
+                        className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                        onClick={() => {
+                          setSettingsPopoverOpen(false);
+                          setRestoreSectionModalOpen(true);
+                        }}
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search checklists"
+                  className="w-full pl-9"
+                />
+              </div>
+            </div>
+          </div>
           <div className="border-b bg-sidebar text-sidebar-foreground overflow-y-auto max-h-[40vh] shrink-0">
             <InspectionTemplateSidebar
               inspectionId={inspectionId}
