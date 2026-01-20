@@ -72,7 +72,9 @@ import {
   useInspectionTemplateQuery,
   useInspectionTemplatePublishValidationQuery,
   usePublishInspectionMutation,
+  useSearchInspectionChecklistsQuery,
 } from "@/components/api/queries/inspectionTemplates";
+import { ChecklistSearchDropdown } from "./_components/ChecklistSearchDropdown";
 
 export default function InspectionTemplateEditPage() {
   const params = useParams();
@@ -99,7 +101,58 @@ export default function InspectionTemplateEditPage() {
   const [selectedSubsectionId, setSelectedSubsectionId] = useState<string | null>(null);
   const [selectedSectionForSubsection, setSelectedSectionForSubsection] = useState<InspectionTemplateSection | null>(null);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
+  const mobileSearchDropdownRef = useRef<HTMLDivElement>(null);
+  const desktopSearchInputRef = useRef<HTMLInputElement>(null);
+  const desktopSearchDropdownRef = useRef<HTMLDivElement>(null);
+
   const initialSelectionMadeRef = useRef(false);
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Search query hook
+  const { data: searchResults, isLoading: isSearching } = useSearchInspectionChecklistsQuery(
+    inspectionId,
+    inspectionTemplateId,
+    debouncedSearchQuery,
+    showSearchDropdown
+  );
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const clickedOutsideMobile =
+        mobileSearchDropdownRef.current &&
+        !mobileSearchDropdownRef.current.contains(event.target as Node) &&
+        mobileSearchInputRef.current &&
+        !mobileSearchInputRef.current.contains(event.target as Node);
+
+      const clickedOutsideDesktop =
+        desktopSearchDropdownRef.current &&
+        !desktopSearchDropdownRef.current.contains(event.target as Node) &&
+        desktopSearchInputRef.current &&
+        !desktopSearchInputRef.current.contains(event.target as Node);
+
+      if (clickedOutsideMobile || clickedOutsideDesktop) {
+        setShowSearchDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const { data, isLoading, error } = useInspectionTemplateSectionsQuery(inspectionId, inspectionTemplateId);
   const { data: inspectionData } = useInspectionQuery(inspectionId);
@@ -371,6 +424,47 @@ export default function InspectionTemplateEditPage() {
     setRestoreSubsectionModalOpen(true);
   };
 
+  // Search handlers
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    setShowSearchDropdown(value.length >= 3);
+    setSelectedSearchIndex(0);
+  };
+
+  const handleSearchResultSelect = (sectionId: string, subsectionId: string) => {
+    handleSubsectionSelect(sectionId, subsectionId);
+    setShowSearchDropdown(false);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSearchDropdown || !searchResults?.data?.results) return;
+
+    const results = searchResults.data.results;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setSelectedSearchIndex((prev) => (prev + 1) % results.length);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setSelectedSearchIndex((prev) => (prev - 1 + results.length) % results.length);
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (results[selectedSearchIndex]) {
+          const result = results[selectedSearchIndex];
+          handleSearchResultSelect(result.sectionId, result.subsectionId);
+        }
+        break;
+      case "Escape":
+        e.preventDefault();
+        setShowSearchDropdown(false);
+        break;
+    }
+  };
+
   const reorderSectionsDisabled =
     reorderSectionsMutation.isPending || isLoading || !!editingSection || !!deletingSectionId;
 
@@ -480,13 +574,27 @@ export default function InspectionTemplateEditPage() {
                   </PopoverContent>
                 </Popover>
               </div>
-              <div className="relative flex-1">
+              <div className="relative flex-1" ref={mobileSearchDropdownRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  ref={mobileSearchInputRef}
                   type="text"
                   placeholder="Search checklists"
                   className="w-full pl-9"
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  onKeyDown={handleSearchKeyDown}
+                  onFocus={() => searchQuery.length >= 3 && setShowSearchDropdown(true)}
                 />
+                {showSearchDropdown && (
+                  <ChecklistSearchDropdown
+                    results={searchResults?.data?.results || []}
+                    isLoading={isSearching}
+                    onSelect={handleSearchResultSelect}
+                    searchQuery={searchQuery}
+                    selectedIndex={selectedSearchIndex}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -683,13 +791,27 @@ export default function InspectionTemplateEditPage() {
                             </PopoverContent>
                           </Popover>
                         </div>
-                        <div className="relative w-64">
+                        <div className="relative w-64" ref={desktopSearchDropdownRef}>
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                           <Input
+                            ref={desktopSearchInputRef}
                             type="text"
                             placeholder="Search checklists"
                             className="w-64 pl-9"
+                            value={searchQuery}
+                            onChange={handleSearchChange}
+                            onKeyDown={handleSearchKeyDown}
+                            onFocus={() => searchQuery.length >= 3 && setShowSearchDropdown(true)}
                           />
+                          {showSearchDropdown && (
+                            <ChecklistSearchDropdown
+                              results={searchResults?.data?.results || []}
+                              isLoading={isSearching}
+                              onSelect={handleSearchResultSelect}
+                              searchQuery={searchQuery}
+                              selectedIndex={selectedSearchIndex}
+                            />
+                          )}
                         </div>
                       </div>
                     </div>

@@ -36,6 +36,16 @@ export interface CompletionStatus {
   };
 }
 
+export interface ChecklistSearchResult {
+  sectionId: string;
+  sectionName: string;
+  subsectionId: string;
+  subsectionName: string;
+  checklistId: string;
+  checklistName: string;
+  matchedIn: 'name' | 'comment';
+}
+
 export const useInspectionTemplatesQuery = (inspectionId: string) => 
   useQuery({
     queryKey: [apiRoutes.inspectionTemplates.get(inspectionId)],
@@ -65,6 +75,22 @@ export const useInspectionTemplateCompletionStatusQuery = (inspectionId: string,
     queryFn: () => axios.get(apiRoutes.inspectionTemplates.completionStatus(inspectionId, templateId)),
     enabled: !!inspectionId && !!templateId,
     refetchOnMount: true,
+    staleTime: 0,
+  })
+
+export const useSearchInspectionChecklistsQuery = (
+  inspectionId: string,
+  templateId: string,
+  searchQuery: string,
+  enabled: boolean = true
+) => 
+  useQuery({
+    queryKey: [apiRoutes.inspectionTemplates.searchChecklists(inspectionId, templateId), searchQuery],
+    queryFn: async () => {
+      const url = `${apiRoutes.inspectionTemplates.searchChecklists(inspectionId, templateId)}?query=${encodeURIComponent(searchQuery)}`;
+      return axios.get(url);
+    },
+    enabled: !!inspectionId && !!templateId && searchQuery.length >= 3 && enabled,
     staleTime: 0,
   })
 
