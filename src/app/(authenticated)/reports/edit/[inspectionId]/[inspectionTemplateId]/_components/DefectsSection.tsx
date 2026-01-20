@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Plus, Loader2, Search } from 'lucide-react';
@@ -28,13 +28,34 @@ export function DefectsSection({
   sectionName,
 }: DefectsSectionProps) {
   // TanStack Query hooks
-  const { data: defects = [], isLoading, refetch } = useDefectsBySubsectionQuery({
-    inspectionId,
-    templateId,
-    sectionId,
-    subsectionId,
-  });
-  const updateDefectMutation = useUpdateDefectMutation();
+  const [loading, setLoading] = useState(false);
+
+  const fetchDefects = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/defects/by-subsection?inspectionId=${inspectionId}&templateId=${templateId}&sectionId=${sectionId}&subsectionId=${subsectionId}`);
+      if (response.ok) {
+        const data = await response.json();
+
+        const safeData = Array.isArray(data) ? data : [];
+        setDefects(safeData);
+      } else {
+        console.error('Failed to fetch defects');
+        setDefects([]);
+      }
+    } catch (error) {
+      console.error('Error fetching defects:', error);
+      setDefects([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDefects();
+  }, [inspectionId, templateId, sectionId, subsectionId]);
+
+
   const deleteDefectMutation = useDeleteDefectMutation();
   const { data: dropdownsData } = useReusableDropdownsQuery();
 
@@ -47,6 +68,10 @@ export function DefectsSection({
   const [editedValues, setEditedValues] = useState<Partial<Defect>>({});
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const editedValuesRef = useRef<Partial<Defect>>({});
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [defects, setDefects] = useState<Defect[]>([]);
 
   const handleCreateDefect = () => {
     setEditorMode('create');
@@ -62,7 +87,6 @@ export function DefectsSection({
 
   const handleImageEditorSave = async (result: any) => {
     console.log('📥 Image editor save result:', result);
-    await refetch();
     setImageEditorOpen(false);
     setEditorProps({}); // Clear editor props to ensure fresh data on next open
   };
@@ -96,24 +120,39 @@ export function DefectsSection({
 
   const startEditing = (defect: Defect) => {
     setEditingId(defect._id);
-    setEditedValues({ ...defect });
+    const initialValues = { ...defect };
+    setEditedValues(initialValues);
+    editedValuesRef.current = initialValues;
+    setLastSaved(null);
   };
 
   const cancelEditing = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
     setEditingId(null);
     setEditedValues({});
+    editedValuesRef.current = {};
+    setLastSaved(null);
   };
 
-  const getDisplayDefect = (defect: Defect): Defect => {
-    if (editingId === defect._id) {
-      const merged = { ...defect, ...(editedValues as Partial<Defect>) } as Defect;
-      if (editedValues.additional_images !== undefined) {
-        merged.additional_images = editedValues.additional_images as any;
+  const handleFieldChange = (field: keyof Defect, value: string) => {
+    setEditedValues(prev => {
+      let parsed: any = value;
+      if (field === 'material_total_cost' || field === 'labor_rate' || field === 'hours_required') {
+        const num = parseFloat(value);
+        parsed = isNaN(num) ? 0 : num;
       }
-      return merged;
-    }
-    return defect;
+      const updated = { ...prev, [field]: parsed };
+      // Sync ref immediately with the updated value
+      editedValuesRef.current = updated;
+      return updated;
+    });
+
+    triggerAutoSave();
   };
+
+
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -130,21 +169,11 @@ export function DefectsSection({
     return baseCost * imageCount;
   };
 
-  const handleUpdateDefect = async (defectId: string, updates: Partial<Defect>) => {
-    updateDefectMutation.mutate(
-      { 
-        defectId, 
-        updates: {
-          ...updates,
-          inspection_id: inspectionId, // Required by PATCH endpoint
-        }
-      },
-      {
-        onSuccess: () => {
-          setLastSaved(new Date().toLocaleTimeString());
-        }
-      }
-    );
+  const handleUpdateDefect = (defectId: string, updates: Partial<Defect>) => {
+    setDefects(prev => prev.map(d => d._id === defectId ? { ...d, ...updates } : d));
+    if (editingId === defectId) {
+      setEditedValues(prev => ({ ...prev, ...updates }));
+    }
   };
 
   const handleAnnotateMainImage = (defect: Defect) => {
@@ -172,23 +201,87 @@ export function DefectsSection({
     setImageEditorOpen(true);
   };
 
-  const handleUpdateLocationForImage = async (imageIndex: number, newLocation: string) => {
+  const handleUpdateLocationForImage = async (index: number, newLocation: string) => {
+
     if (!editingId) return;
-    const defect = defects.find((d: Defect) => d._id === editingId);
+    const defect = defects.find(d => d._id === editingId);
     if (!defect || !defect.additional_images) return;
 
-    const updatedImages = [...defect.additional_images];
-    updatedImages[imageIndex] = { ...updatedImages[imageIndex], location: newLocation };
-    await handleUpdateDefect(editingId, { additional_images: updatedImages });
+    setEditedValues(prev => {
+      const currentImages = (prev.additional_images as any) || defect.additional_images || [];
+      const updatedImages = currentImages.map((img: any, i: number) =>
+        i === index ? { ...img, location: newLocation } : img
+      );
+
+      return {
+        ...prev,
+        additional_images: updatedImages,
+      };
+    });
+
+    const updatedImages = defect.additional_images.map((img, i) =>
+      i === index ? { ...img, location: newLocation } : img
+    );
+
+    setDefects(prev =>
+      prev.map(d =>
+        d._id === editingId ? { ...d, additional_images: updatedImages } : d
+      )
+    );
+
+    try {
+      const response = await fetch(`/api/defects/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inspection_id: defect.inspection_id,
+          additional_images: updatedImages,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to update location on server');
+      }
+    } catch (error) {
+      console.error('Error updating location:', error);
+    }
   };
 
-  const handleRemoveLocationPhoto = async (imageIndex: number) => {
+  const handleRemoveLocationPhoto = async (index: number) => {
     if (!editingId) return;
-    const defect = defects.find((d: Defect) => d._id === editingId);
+    const defect = defects.find(d => d._id === editingId);
     if (!defect || !defect.additional_images) return;
 
-    const updatedImages = defect.additional_images.filter((_: any, idx: number) => idx !== imageIndex);
-    await handleUpdateDefect(editingId, { additional_images: updatedImages });
+    const updatedImages = defect.additional_images.filter((_, i) => i !== index);
+
+    try {
+      const response = await fetch(`/api/defects/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inspection_id: defect.inspection_id,
+          additional_images: updatedImages,
+          material_total_cost: (defect.base_cost || defect.material_total_cost) * (1 + updatedImages.length),
+        }),
+      });
+
+      if (response.ok) {
+        setDefects(prev =>
+          prev.map(d =>
+            d._id === editingId
+              ? { ...d, additional_images: updatedImages, material_total_cost: (d.base_cost || d.material_total_cost) * (1 + updatedImages.length) }
+              : d
+          )
+        );
+        setEditedValues(prev => ({
+          ...prev,
+          additional_images: updatedImages,
+        }));
+      }
+    } catch (error) {
+      console.error('Error removing location photo:', error);
+      alert('Failed to remove photo');
+    }
   };
 
   const getProxiedSrc = (url?: string | null): string => {
@@ -211,6 +304,93 @@ export function DefectsSection({
   }, [dropdownsData]);
 
   const filteredDefects = filterDefects(defects, searchQuery);
+
+  const triggerAutoSave = useCallback(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      performAutoSave();
+    }, 1000);
+  }, [editingId, defects]);
+
+  const performAutoSave = async () => {
+    if (!editingId) return;
+    const index = defects.findIndex(d => d._id === editingId);
+    if (index === -1) return;
+
+    const updated: Defect = { ...defects[index], ...(editedValuesRef.current as Defect) };
+
+    setAutoSaving(true);
+
+    try {
+      const response = await fetch(`/api/defects/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inspection_id: updated.inspection_id,
+          defect_description: updated.defect_description,
+          materials: updated.materials,
+          material_total_cost: updated.material_total_cost,
+          location: updated.location,
+          section: updated.section,
+          subsection: updated.subsection,
+          labor_type: updated.labor_type,
+          labor_rate: updated.labor_rate,
+          hours_required: updated.hours_required,
+          recommendation: updated.recommendation,
+          additional_images: updated.additional_images,
+          base_cost: updated.base_cost,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Auto-save error:", errorData.error);
+        return;
+      }
+
+      const result = await response.json();
+
+      setDefects(prev =>
+        prev.map(d => (d._id === editingId ? updated : d))
+      );
+
+      const now = new Date();
+      setLastSaved(now.toLocaleTimeString());
+
+    } catch (err) {
+      console.error("Auto-save error:", err);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    editedValuesRef.current = editedValues;
+  }, [editedValues]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  const getDisplayDefect = (defect: Defect): Defect => {
+    if (editingId === defect._id) {
+      const merged = { ...defect, ...(editedValues as Partial<Defect>) } as Defect;
+
+      if (editedValues.additional_images !== undefined) {
+        merged.additional_images = editedValues.additional_images as any;
+      }
+
+      return merged;
+    }
+    return defect;
+  };
 
   if (!subsectionId) {
     return null;
@@ -236,7 +416,7 @@ export function DefectsSection({
             </Button>
           </div>
 
-          {isLoading ? (
+          {loading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
               <p>Loading defects...</p>
@@ -283,12 +463,11 @@ export function DefectsSection({
                         key={defect._id}
                         defect={defect}
                         index={index}
-                        displayDefect={displayDefect}
                         isEditing={isEditing}
                         editingId={editingId}
                         editedValues={editedValues}
                         deleting={deleteDefectMutation.isPending ? defect._id : null}
-                        autoSaving={updateDefectMutation.isPending}
+                        autoSaving={autoSaving}
                         lastSaved={lastSaved}
                         playingVideoId={playingVideoId}
                         inspectionId={inspectionId}
@@ -297,16 +476,7 @@ export function DefectsSection({
                         onStartEditing={startEditing}
                         onCancelEditing={cancelEditing}
                         onDelete={handleDeleteDefect}
-                        onFieldChange={(field, value) => {
-                          setEditedValues(prev => {
-                            let parsed: any = value;
-                            if (field === 'material_total_cost' || field === 'labor_rate' || field === 'hours_required') {
-                              const num = parseFloat(value);
-                              parsed = isNaN(num) ? 0 : num;
-                            }
-                            return { ...prev, [field]: parsed };
-                          });
-                        }}
+                        onFieldChange={handleFieldChange}
                         onAnnotateMainImage={handleAnnotateMainImage}
                         onAnnotateAdditionalImage={handleAnnotateAdditionalImage}
                         onUpdateLocationForImage={handleUpdateLocationForImage}
@@ -314,6 +484,7 @@ export function DefectsSection({
                         onSetPlayingVideoId={setPlayingVideoId}
                         onUpdateDefect={handleUpdateDefect}
                         getProxiedSrc={getProxiedSrc}
+                        displayDefect={displayDefect}
                         handleImgError={handleImgError}
                         formatCurrency={formatCurrency}
                         calculateTotalCost={calculateTotalCost}
