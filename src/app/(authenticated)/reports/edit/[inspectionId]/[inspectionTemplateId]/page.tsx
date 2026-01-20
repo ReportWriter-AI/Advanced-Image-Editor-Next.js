@@ -592,7 +592,7 @@ export default function InspectionTemplateEditPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex h-28 justify-between items-center border-b shrink-0 bg-background px-4">
+                    <div className="flex min-h-28 justify-between items-center border-b shrink-0 bg-background px-4 py-2">
                       <div className="flex flex-col gap-2">
                         <h1 className="text-xl md:text-2xl font-bold truncate">
                           {templateData?.data?.template?.name || 'Loading template...'}
