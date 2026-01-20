@@ -152,11 +152,11 @@ const data = {
 						url: "/scheduling-options",
 						icon: Settings,
 					},
-					{
-						title: "Sections",
-						url: "/sections",
-						icon: ListChecks,
-					},
+					// {
+					// 	title: "Sections",
+					// 	url: "/sections",
+					// 	icon: ListChecks,
+					// },
 					{
 						title: "Drop-Downs",
 						url: "/drop-downs",
