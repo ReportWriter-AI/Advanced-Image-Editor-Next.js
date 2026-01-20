@@ -67,6 +67,7 @@ interface ChecklistContentProps {
   sectionId: string;
   subsectionId: string | null;
   subsectionName?: string;
+  sectionName?: string;
 }
 
 interface SortableChecklistItemProps {
@@ -645,6 +646,7 @@ export function ChecklistContent({
   sectionId,
   subsectionId,
   subsectionName,
+  sectionName,
 }: ChecklistContentProps) {
   const [createStatusFormOpen, setCreateStatusFormOpen] = useState(false);
   const [createInformationFormOpen, setCreateInformationFormOpen] = useState(false);
@@ -1093,6 +1095,7 @@ export function ChecklistContent({
               sectionId={sectionId}
               subsectionId={subsectionId || ""}
               subsectionName={subsectionName}
+              sectionName={sectionName}
             />
           </>
         )}

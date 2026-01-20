@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Plus, Loader2, Search } from 'lucide-react';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import ImageEditorModal from '@/components/ImageEditorModal';
 import DefectCard from '@/src/app/(authenticated)/inspections/[id]/edit/_components/DefectCard';
 import { useDefectsBySubsectionQuery, useUpdateDefectMutation, useDeleteDefectMutation, type Defect } from '@/components/api/queries/defects';
+import { useReusableDropdownsQuery } from '@/components/api/queries/reusableDropdowns';
 
 interface DefectsSectionProps {
   inspectionId: string;
@@ -15,6 +16,7 @@ interface DefectsSectionProps {
   sectionId: string;
   subsectionId: string;
   subsectionName?: string;
+  sectionName?: string;
 }
 
 export function DefectsSection({
@@ -23,6 +25,7 @@ export function DefectsSection({
   sectionId,
   subsectionId,
   subsectionName,
+  sectionName,
 }: DefectsSectionProps) {
   // TanStack Query hooks
   const { data: defects = [], isLoading, refetch } = useDefectsBySubsectionQuery({
@@ -33,6 +36,7 @@ export function DefectsSection({
   });
   const updateDefectMutation = useUpdateDefectMutation();
   const deleteDefectMutation = useDeleteDefectMutation();
+  const { data: dropdownsData } = useReusableDropdownsQuery();
 
   // Local UI state
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,6 +54,8 @@ export function DefectsSection({
       templateId,
       sectionId,
       subsectionId,
+      sectionName,
+      subsectionName,
     });
     setImageEditorOpen(true);
   };
@@ -199,9 +205,10 @@ export function DefectsSection({
     }
   };
 
-  const allLocationOptions: string[] = Array.from(
-    new Set(defects.map((d: Defect) => d.location).filter(Boolean))
-  );
+  const allLocationOptions = useMemo(() => {
+    if (!dropdownsData?.data?.location) return [];
+    return dropdownsData.data.location.map((item: { id: string; value: string }) => item.value);
+  }, [dropdownsData]);
 
   const filteredDefects = filterDefects(defects, searchQuery);
 

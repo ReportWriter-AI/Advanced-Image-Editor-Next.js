@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import LocationSearch from '@/components/LocationSearch';
 import FileUpload from '@/components/FileUpload';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { CreatableConcatenatedInput } from '@/components/ui/creatable-concatenated-input';
 
 const ThreeSixtyViewer = dynamic(() => import('@/components/ThreeSixtyViewer'), { 
   ssr: false,
@@ -124,6 +124,7 @@ export default function DefectCard({
   formatCurrency,
   calculateTotalCost,
 }: DefectCardProps) {
+
   const [bulkAddOpen, setBulkAddOpen] = useState<boolean>(false);
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
@@ -263,19 +264,19 @@ export default function DefectCard({
           <div className="detail-row">
             <strong className="block text-sm font-semibold mb-1">Location:</strong>
             {isEditing ? (
-              <LocationSearch
-                options={allLocationOptions}
+              <CreatableConcatenatedInput
                 value={editedValues.location ?? displayDefect.location ?? ''}
-                onChangeAction={(val) => onFieldChange('location', val)}
-                placeholder="Select location…"
-                width={220}
-                allowCustom={false}
+                onChange={(val) => onFieldChange('location', val)}
+                label=""
+                placeholder="Search location..."
+                inputPlaceholder="Enter location"
+                options={allLocationOptions.map(loc => ({ value: loc, label: loc }))}
               />
             ) : (
               <span className="text-sm">{displayDefect.location || 'Not specified'}</span>
             )}
           </div>
-          <div className="detail-row">
+          {/* <div className="detail-row">
             <strong className="block text-sm font-semibold mb-1">Section:</strong>
             {isEditing ? (
               <Input
@@ -298,7 +299,7 @@ export default function DefectCard({
             ) : (
               <span className="text-sm">{displayDefect.subsection || 'Not specified'}</span>
             )}
-          </div>
+          </div> */}
           <div className="detail-row">
             <strong className="block text-sm font-semibold mb-1">Description:</strong>
             {isEditing ? (
@@ -428,17 +429,17 @@ export default function DefectCard({
                           <img src={item.preview} alt={`bulk-${i}`} className="w-20 h-20 object-cover rounded-md shadow-sm" />
                           <div className="flex-1 min-w-[260px]">
                             <label className="block text-xs mb-1 font-medium">Location</label>
-                            <LocationSearch
-                              options={allLocationOptions}
+                            <CreatableConcatenatedInput
                               value={item.location}
-                              onChangeAction={(val) => setBulkItems((prev) => {
+                              onChange={(val) => setBulkItems((prev) => {
                                 const copy = [...prev];
                                 copy[i] = { ...copy[i], location: val };
                                 return copy;
                               })}
-                              placeholder="Type to search…"
-                              width="100%"
-                              allowCustom={false}
+                              label=""
+                              placeholder="Search location..."
+                              inputPlaceholder="Enter location"
+                              options={allLocationOptions.map(loc => ({ value: loc, label: loc }))}
                             />
                             <label className="inline-flex items-center gap-2 mt-2 text-xs">
                               <input type="checkbox" checked={item.isThreeSixty} onChange={(e) => setBulkItems((prev) => {
@@ -488,16 +489,16 @@ export default function DefectCard({
                         <label className="block text-xs mb-1 font-medium">
                           Location:
                         </label>
-                        <LocationSearch
+                        <CreatableConcatenatedInput
                           key={`location-${displayDefect._id}-${idx}-${img.url}`}
-                          options={allLocationOptions}
                           value={locationValue}
-                          onChangeAction={(val) => {
+                          onChange={(val) => {
                             onUpdateLocationForImage(idx, val);
                           }}
-                          placeholder="Type to search…"
-                          width="100%"
-                          allowCustom={false}
+                          label=""
+                          placeholder="Search location..."
+                          inputPlaceholder="Enter location"
+                          options={allLocationOptions.map(loc => ({ value: loc, label: loc }))}
                         />
                       </div>
                       <button

@@ -134,6 +134,13 @@ export default function InspectionTemplateEditPage() {
     return subsection?.name;
   })();
 
+  const selectedSectionName = (() => {
+    if (!selectedSectionId || !data?.data?.sections) return undefined;
+    const sectionsArray = Array.isArray(data.data.sections) ? data.data.sections : [];
+    const section = sectionsArray.find((s: InspectionTemplateSection) => s._id === selectedSectionId);
+    return section?.name;
+  })();
+
   // Auto-select first subsection of first section on initial load
   useEffect(() => {
     if (initialSelectionMadeRef.current) return;
@@ -429,6 +436,7 @@ export default function InspectionTemplateEditPage() {
                 sectionId={selectedSectionId || ""}
                 subsectionId={selectedSubsectionId}
                 subsectionName={selectedSubsectionName}
+                sectionName={selectedSectionName}
               />
             )}
           </div>
@@ -589,6 +597,7 @@ export default function InspectionTemplateEditPage() {
                       sectionId={selectedSectionId || ""}
                       subsectionId={selectedSubsectionId}
                       subsectionName={selectedSubsectionName}
+                      sectionName={selectedSectionName}
                     />
                   </>
                 )}

@@ -5,6 +5,7 @@ import ImageEditor from './ImageEditor';
 import { toast } from 'sonner';
 import { useSpeechToText } from '@/src/lib/useSpeechToText';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CreatableConcatenatedInput } from '@/components/ui/creatable-concatenated-input';
 
 // Hardcoded dropdown data
 const SECTIONS = [
@@ -71,6 +72,8 @@ interface ImageEditorModalProps {
   templateId?: string;
   sectionId?: string;
   subsectionId?: string;
+  sectionName?: string;
+  subsectionName?: string;
   onSave?: (result: any) => void;
   preloadedAnnotations?: any[];
   originalImageUrl?: string;
@@ -88,6 +91,8 @@ export default function ImageEditorModal({
   templateId,
   sectionId,
   subsectionId,
+  sectionName,
+  subsectionName,
   onSave,
   preloadedAnnotations: propAnnotations,
   originalImageUrl: propOriginalImageUrl,
@@ -124,8 +129,8 @@ export default function ImageEditorModal({
   const [showDrawingDropdown, setShowDrawingDropdown] = useState(false);
   const [showCircleDropdown, setShowCircleDropdown] = useState(false);
   const [showSquareDropdown, setShowSquareDropdown] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<string>('');
-  const [selectedSubLocation, setSelectedSubLocation] = useState<string>('');
+  const [selectedLocation, setSelectedLocation] = useState<string>(sectionName || '');
+  const [selectedSubLocation, setSelectedSubLocation] = useState<string>(subsectionName || '');
   const [selectedLocation2, setSelectedLocation2] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const drawingDropdownRef = useRef<HTMLDivElement>(null);
@@ -274,8 +279,8 @@ export default function ImageEditorModal({
       setPreloadedAnnotations(undefined);
       setCurrentAnnotations([]);
       setDescription('');
-      setSelectedLocation('');
-      setSelectedSubLocation('');
+      setSelectedLocation(sectionName || '');
+      setSelectedSubLocation(subsectionName || '');
       setSelectedLocation2('');
       setVideoFile(null);
       setVideoSrc(null);
@@ -1053,9 +1058,9 @@ export default function ImageEditorModal({
               {/* Submit Section */}
               {(!isAnnotationMode) || isAdditionalLocationMode || isDefectMainMode ? (
                 <div className="submit-section">
-                  <div className="submit-controls flex flex-wrap gap-4 items-center">
-                    {/* Section and Subsection - Hide in additional location mode and defect-main annotate mode */}
-                    {!isAdditionalLocationMode && !isDefectMainMode && !isEditAdditionalMode && (
+                  <div className="submit-controls flex-col flex-wrap gap-4 items-center">
+                    {/* Section and Subsection - Hide in additional location mode, defect-main annotate mode, or when provided via props */}
+                    {!isAdditionalLocationMode && !isDefectMainMode && !isEditAdditionalMode && !sectionName && (
                       <>
                         {/* Section Select */}
                         <div className="w-[300px]">
@@ -1110,24 +1115,14 @@ export default function ImageEditorModal({
                     {/* Location Select - Hide in defect-main annotate mode */}
                     {!isDefectMainMode && (
                       <div className="w-[300px]">
-                        <Select
+                        <CreatableConcatenatedInput
                           value={selectedLocation2}
-                          onValueChange={setSelectedLocation2}
-                        >
-                          <SelectTrigger className="h-[60px] bg-gradient-to-br from-[rgb(75,108,183)] to-[rgb(106,17,203)] text-white border-white/10">
-                            <div className="flex items-center gap-2">
-                              <i className="fas fa-map-marker-alt"></i>
-                              <SelectValue placeholder="Location" />
-                            </div>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {LOCATIONS.map((location) => (
-                              <SelectItem key={location} value={location}>
-                                {location}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          onChange={setSelectedLocation2}
+                          label="Location"
+                          placeholder="Search location..."
+                          inputPlaceholder="Enter location"
+                          options={LOCATIONS.map(loc => ({ value: loc, label: loc }))}
+                        />
                       </div>
                     )}
 
