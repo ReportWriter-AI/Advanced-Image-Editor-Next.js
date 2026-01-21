@@ -51,6 +51,7 @@ import {
 } from "@/components/api/queries/templateChecklists";
 import { ChecklistItemForm } from "./ChecklistItemForm";
 import { cn } from "@/lib/utils";
+import { getChecklistFieldIcon } from "@/lib/checklist-utils";
 
 interface ChecklistContentProps {
   templateId: string;
@@ -97,24 +98,13 @@ function SortableChecklistItem({
     <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
       <div className="flex items-start justify-between rounded-lg border p-4 hover:bg-muted/30">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div
-            {...attributes}
-            role="button"
-            tabIndex={reorderDisabled ? -1 : 0}
-            aria-disabled={reorderDisabled}
-            className={cn(
-              "drag-handle flex items-center justify-center p-1 rounded hover:bg-muted cursor-grab active:cursor-grabbing",
-              reorderDisabled && "cursor-not-allowed opacity-40"
-            )}
-            {...(!reorderDisabled ? listeners : {})}
-          >
-            <GripVertical className="h-4 w-4" />
-          </div>
           <div className="flex-1 space-y-1">
             <div className="font-medium">{checklist.name}</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Field type icon */}
+          {checklist.field && getChecklistFieldIcon(checklist.field)}
           <Button
             variant="outline"
             size="icon"
@@ -133,6 +123,19 @@ function SortableChecklistItem({
           >
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
+          <div
+            {...attributes}
+            role="button"
+            tabIndex={reorderDisabled ? -1 : 0}
+            aria-disabled={reorderDisabled}
+            className={cn(
+              "drag-handle flex items-center justify-center p-1 rounded hover:bg-muted cursor-grab active:cursor-grabbing",
+              reorderDisabled && "cursor-not-allowed opacity-40"
+            )}
+            {...(!reorderDisabled ? listeners : {})}
+          >
+            <GripVertical className="h-4 w-4" />
+          </div>
         </div>
       </div>
     </div>

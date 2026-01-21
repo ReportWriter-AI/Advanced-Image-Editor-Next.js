@@ -60,6 +60,7 @@ import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDrop
 import { ChecklistImageUpload, ChecklistImage } from "./ChecklistImageUpload";
 import { cn } from "@/lib/utils";
 import { DefectsSection } from "./DefectsSection";
+import { getChecklistFieldIcon } from "@/lib/checklist-utils";
 
 interface ChecklistContentProps {
   inspectionId: string;
@@ -538,21 +539,8 @@ function SortableChecklistItem({
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="icon"
-              {...attributes}
-              role="button"
-              tabIndex={reorderDisabled ? -1 : 0}
-              aria-disabled={reorderDisabled}
-              className={cn(
-                reorderDisabled && "cursor-not-allowed opacity-40"
-              )}
-              title="Drag to reorder"
-              {...(!reorderDisabled ? listeners : {})}
-            >
-              <GripVertical className="h-4 w-4" />
-            </Button>
+            {/* Field type icon */}
+            {checklist.field && getChecklistFieldIcon(checklist.field)}
             <Button
               variant="outline"
               size="icon"
@@ -570,6 +558,21 @@ function SortableChecklistItem({
               title="Delete checklist"
             >
               <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              {...attributes}
+              role="button"
+              tabIndex={reorderDisabled ? -1 : 0}
+              aria-disabled={reorderDisabled}
+              className={cn(
+                reorderDisabled && "cursor-not-allowed opacity-40"
+              )}
+              title="Drag to reorder"
+              {...(!reorderDisabled ? listeners : {})}
+            >
+              <GripVertical className="h-4 w-4" />
             </Button>
           </div>
         </div>
