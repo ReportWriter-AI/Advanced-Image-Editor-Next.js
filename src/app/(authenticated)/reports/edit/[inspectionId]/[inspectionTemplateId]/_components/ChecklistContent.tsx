@@ -577,6 +577,17 @@ function SortableChecklistItem({
         {/* Expanded view - all fields */}
         {isExpanded && (
           <div className="mt-3 space-y-3">
+            {/* Field input for status and information with field - appears below location/comment */}
+            {isWithField && onAnswerChange && (
+              <div>
+                <ChecklistFieldInput
+                  checklist={checklist}
+                  onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
+                  disabled={disabled}
+                  hideTitleAndCheckbox={true}
+                />
+              </div>
+            )}
             {/* Location field for status and information checklists */}
             {(checklist.type === 'status' || checklist.type === 'information') && (
               <div className="space-y-2">
@@ -604,18 +615,6 @@ function SortableChecklistItem({
                 placeholder="Enter comment..."
               />
             </div>
-
-            {/* Field input for status and information with field - appears below location/comment */}
-            {isWithField && onAnswerChange && (
-              <div>
-                <ChecklistFieldInput
-                  checklist={checklist}
-                  onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
-                  disabled={disabled}
-                  hideTitleAndCheckbox={true}
-                />
-              </div>
-            )}
 
             {/* Image upload section - status and information checklists */}
             {(checklist.type === 'status' || checklist.type === 'information') && (
@@ -778,47 +777,6 @@ export function ChecklistContent({
     [updateAnswerMutation]
   );
 
-  const handleToggleAllStatusDefaultChecked = useCallback(
-    async (checked: boolean) => {
-      try {
-        const updatePromises = statusChecklists.map((checklist) =>
-          updateAnswerMutation.mutateAsync({
-            checklistId: checklist._id || "",
-            answerData: { defaultChecked: checked },
-          })
-        );
-        await Promise.all(updatePromises);
-      } catch (error) {
-        console.error("Toggle all status defaultChecked error:", error);
-      }
-    },
-    [statusChecklists, updateAnswerMutation]
-  );
-
-  const handleToggleAllInformationDefaultChecked = useCallback(
-    async (checked: boolean) => {
-      try {
-        const updatePromises = informationChecklists.map((checklist) =>
-          updateAnswerMutation.mutateAsync({
-            checklistId: checklist._id || "",
-            answerData: { defaultChecked: checked },
-          })
-        );
-        await Promise.all(updatePromises);
-      } catch (error) {
-        console.error("Toggle all information defaultChecked error:", error);
-      }
-    },
-    [informationChecklists, updateAnswerMutation]
-  );
-
-  const allStatusChecked = useMemo(() => {
-    return statusChecklists.length > 0 && statusChecklists.every((c) => c.defaultChecked);
-  }, [statusChecklists]);
-
-  const allInformationChecked = useMemo(() => {
-    return informationChecklists.length > 0 && informationChecklists.every((c) => c.defaultChecked);
-  }, [informationChecklists]);
 
   const isReorderDisabled = 
     createChecklistMutation.isPending ||
