@@ -559,7 +559,7 @@ export function ReportDisplay({
 
         <div className={styles.headerImageDisplay}>
           <img 
-            src={inspection?.headerImage ? getProxiedSrc(inspection.headerImage) : `http://localhost:3000/api/inspections/${inspectionId}/client-view/map-image`} 
+            src={inspection?.headerImage ? getProxiedSrc(inspection.headerImage) : `/api/inspections/${inspectionId}/client-view/map-image`} 
             alt="Report Header" 
             className={styles.headerImage}
             onError={handleImgError}
