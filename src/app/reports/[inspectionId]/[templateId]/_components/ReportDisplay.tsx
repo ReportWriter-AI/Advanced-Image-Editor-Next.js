@@ -12,7 +12,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InspectionTemplateChecklist } from "@/components/api/queries/inspectionTemplateChecklists";
 import ThreeSixtyViewer from "@/components/ThreeSixtyViewer";
 import styles from "@/src/app/user-report/user-report.module.css";
@@ -546,7 +545,7 @@ export function ReportDisplay({
       <Card>
         <CardContent className="p-4">
           <p className="text-sm text-muted-foreground">
-            No checklists with defaultChecked enabled found.
+            No Information Is Added For This Report
           </p>
         </CardContent>
       </Card>
@@ -709,9 +708,6 @@ export function ReportDisplay({
               const hasStatusData = data.status.length > 0;
               const hasInfoData = data.information.length > 0;
 
-              // Determine default tab value
-              const defaultTab = hasStatusData ? "status" : "information";
-
               return (
                 <div key={`${sectionName}-${subsectionName}`} className="space-y-3">
                   {/* Title outside card */}
@@ -720,62 +716,21 @@ export function ReportDisplay({
                   </h2>
                   
                   <Card>
-                    <CardContent className="pt-6">
-                      {/* Show tabs only when both have data, otherwise show single tab */}
-                      {hasStatusData && hasInfoData ? (
-                        <Tabs defaultValue={defaultTab} className="w-full">
-                          <TabsList className="grid w-full grid-cols-2 mb-8 h-12 bg-gray-100 p-1 rounded-lg border border-gray-200">
-                            <TabsTrigger 
-                              value="status"
-                              className="rounded-md data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm data-[state=active]:font-semibold text-gray-600 font-medium transition-all duration-200 hover:text-gray-900"
-                            >
-                              Status
-                            </TabsTrigger>
-                            <TabsTrigger 
-                              value="information"
-                              className="rounded-md data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm data-[state=active]:font-semibold text-gray-600 font-medium transition-all duration-200 hover:text-gray-900"
-                            >
-                              General Information
-                            </TabsTrigger>
-                          </TabsList>
-                          <TabsContent value="status" className="space-y-6 mt-0">
-                            {renderSubsectionData(data.status, "status")}
-                          </TabsContent>
-                          <TabsContent value="information" className="space-y-6 mt-0">
-                            {renderSubsectionData(data.information, "information")}
-                          </TabsContent>
-                        </Tabs>
-                      ) : (
-                        <Tabs defaultValue={defaultTab} className="w-full">
-                          <TabsList className="grid w-full grid-cols-1 mb-8 h-12 bg-gray-100 p-1 rounded-lg border border-gray-200">
-                            {hasStatusData && (
-                              <TabsTrigger 
-                                value="status"
-                                className="rounded-md data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm data-[state=active]:font-semibold text-gray-600 font-medium transition-all duration-200 hover:text-gray-900"
-                              >
-                                Status
-                              </TabsTrigger>
-                            )}
-                            {hasInfoData && (
-                              <TabsTrigger 
-                                value="information"
-                                className="rounded-md data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm data-[state=active]:font-semibold text-gray-600 font-medium transition-all duration-200 hover:text-gray-900"
-                              >
-                                General Information
-                              </TabsTrigger>
-                            )}
-                          </TabsList>
-                          {hasStatusData && (
-                            <TabsContent value="status" className="space-y-6 mt-0">
-                              {renderSubsectionData(data.status, "status")}
-                            </TabsContent>
-                          )}
-                          {hasInfoData && (
-                            <TabsContent value="information" className="space-y-6 mt-0">
-                              {renderSubsectionData(data.information, "information")}
-                            </TabsContent>
-                          )}
-                        </Tabs>
+                    <CardContent className="pt-6 space-y-8">
+                      {/* Status Checklists */}
+                      {hasStatusData && (
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2">Status</h3>
+                          {renderSubsectionData(data.status, "status")}
+                        </div>
+                      )}
+                      
+                      {/* Information Checklists */}
+                      {hasInfoData && (
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2">Information</h3>
+                          {renderSubsectionData(data.information, "information")}
+                        </div>
                       )}
                     </CardContent>
                   </Card>
