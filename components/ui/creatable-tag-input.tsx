@@ -1,10 +1,24 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import CreatableSelect from "react-select/creatable";
-import { X } from "lucide-react";
+import { X, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +30,81 @@ export interface CreatableTagInputProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+}
+
+interface SortableTagItemProps {
+  id: string;
+  item: string;
+  index: number;
+  onRemove: (index: number) => void;
+  disabled?: boolean;
+}
+
+function SortableTagItem({
+  id,
+  item,
+  index,
+  onRemove,
+  disabled = false,
+}: SortableTagItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id, disabled });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center gap-2 rounded-md border bg-background px-3 py-2 transition-all",
+        "hover:bg-accent",
+        isDragging && "shadow-lg z-50 scale-105",
+        isOver && !isDragging && "border-primary border-2",
+        disabled && "opacity-50 cursor-not-allowed"
+      )}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        disabled={disabled}
+        className={cn(
+          "cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors",
+          "touch-none",
+          disabled && "cursor-not-allowed"
+        )}
+        aria-label={`Drag to reorder ${item}`}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="flex-1 text-sm">{item}</span>
+      <button
+        type="button"
+        onClick={() => onRemove(index)}
+        disabled={disabled}
+        className={cn(
+          "rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors",
+          "text-muted-foreground hover:text-foreground",
+          disabled && "cursor-not-allowed opacity-50"
+        )}
+        aria-label={`Remove ${item}`}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
 }
 
 export function CreatableTagInput({
@@ -30,6 +119,14 @@ export function CreatableTagInput({
   const [selectKey, setSelectKey] = useState(0);
   const [shouldFocus, setShouldFocus] = useState(false);
   const selectRef = useRef<any>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   const options = useMemo(
     () => value.map((item) => ({ value: item, label: item })),
@@ -96,9 +193,29 @@ export function CreatableTagInput({
     }
   };
 
-  const handleRemove = (indexToRemove: number) => {
-    onChange(value.filter((_, index) => index !== indexToRemove));
-  };
+  const handleRemove = useCallback(
+    (indexToRemove: number) => {
+      onChange(value.filter((_, index) => index !== indexToRemove));
+    },
+    [value, onChange]
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (disabled) return;
+
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const oldIndex = value.findIndex((_, index) => String(index) === active.id);
+      const newIndex = value.findIndex((_, index) => String(index) === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        onChange(arrayMove(value, oldIndex, newIndex));
+      }
+    },
+    [value, onChange, disabled]
+  );
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -120,26 +237,29 @@ export function CreatableTagInput({
         <p className="text-sm text-muted-foreground">{helperText}</p>
       )}
       {value.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {value.map((item, index) => (
-            <Badge
-              key={index}
-              variant="secondary"
-              className="flex items-center gap-1.5 px-3 py-1"
-            >
-              <span>{item}</span>
-              <button
-                type="button"
-                onClick={() => handleRemove(index)}
-                disabled={disabled}
-                className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
-                aria-label={`Remove ${item}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={value.map((_, index) => String(index))}
+            strategy={rectSortingStrategy}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+              {value.map((item, index) => (
+                <SortableTagItem
+                  key={`${item}-${index}`}
+                  id={String(index)}
+                  item={item}
+                  index={index}
+                  onRemove={handleRemove}
+                  disabled={disabled}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
     </div>
   );

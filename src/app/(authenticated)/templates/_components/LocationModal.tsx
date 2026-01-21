@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -33,7 +33,23 @@ export function LocationModal({ open, onOpenChange }: LocationModalProps) {
     return dropdownsData.data.location;
   }, [dropdownsData]);
 
+  // Optimistic state for immediate UI updates
+  const [optimisticLocationValues, setOptimisticLocationValues] = useState<string[]>([]);
+
+  // Sync optimistic state with query data (only when not pending mutation)
+  useEffect(() => {
+    if (locationValues.length > 0 && !updateMutation.isPending) {
+      setOptimisticLocationValues(locationValues);
+    } else if (locationValues.length === 0 && !updateMutation.isPending) {
+      // Handle case when locations are cleared
+      setOptimisticLocationValues([]);
+    }
+  }, [locationValues, updateMutation.isPending]);
+
   const handleLocationChange = (newValues: string[]) => {
+    // Immediately update optimistic state for instant UI feedback
+    setOptimisticLocationValues(newValues);
+
     // Convert string[] back to Array<{id, value}>
     const updatedLocations = newValues.map((value: string) => {
       // Try to find existing location with this value to preserve ID
@@ -56,7 +72,7 @@ export function LocationModal({ open, onOpenChange }: LocationModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Locations</DialogTitle>
           <DialogDescription>
@@ -76,7 +92,7 @@ export function LocationModal({ open, onOpenChange }: LocationModalProps) {
             </div>
           ) : (
             <CreatableTagInput
-              value={locationValues}
+              value={optimisticLocationValues.length > 0 ? optimisticLocationValues : locationValues}
               onChange={handleLocationChange}
               label="Locations"
               placeholder="Add a location..."
