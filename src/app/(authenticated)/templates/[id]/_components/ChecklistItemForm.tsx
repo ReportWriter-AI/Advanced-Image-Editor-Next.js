@@ -43,8 +43,11 @@ const statusChecklistSchema = z.object({
 
 const informationChecklistSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
+  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text']),
+  location: z.string().optional(),
   comment: z.string().optional(),
   defaultChecked: z.boolean(),
+  answerChoices: z.array(z.string()).optional(),
 });
 
 type StatusChecklistFormValues = z.infer<typeof statusChecklistSchema>;
@@ -95,21 +98,28 @@ export function ChecklistItemForm({
     resolver: zodResolver(informationChecklistSchema),
     defaultValues: {
       name: "",
+      field: "checkbox",
+      location: "",
       comment: "",
       defaultChecked: false,
+      answerChoices: [],
     },
   });
 
-  const selectedField = type === 'status' ? statusForm.watch("field") : null;
+  const selectedField = type === 'status' ? statusForm.watch("field") : informationForm.watch("field");
   const needsAnswerChoices = selectedField === 'multipleAnswers' || selectedField === 'number' || selectedField === 'numberRange';
 
   // Reset answerChoices when field type changes to one that doesn't need them
   useEffect(() => {
-    if (type === 'status' && selectedField && !needsAnswerChoices) {
+    if (selectedField && !needsAnswerChoices) {
       setAnswerChoices([]);
-      statusForm.setValue("answerChoices", []);
+      if (type === 'status') {
+        statusForm.setValue("answerChoices", []);
+      } else {
+        informationForm.setValue("answerChoices", []);
+      }
     }
-  }, [selectedField, needsAnswerChoices, type, statusForm]);
+  }, [selectedField, needsAnswerChoices, type, statusForm, informationForm]);
 
   useEffect(() => {
     if (open) {
@@ -127,9 +137,13 @@ export function ChecklistItemForm({
         } else {
           informationForm.reset({
             name: initialValues.name || "",
+            field: initialValues.field || "checkbox",
+            location: initialValues.location || "",
             comment: initialValues.comment || "",
             defaultChecked: initialValues.defaultChecked ?? false,
+            answerChoices: initialValues.answerChoices || [],
           });
+          setAnswerChoices(initialValues.answerChoices || []);
         }
       } else {
         if (type === 'status') {
@@ -145,9 +159,13 @@ export function ChecklistItemForm({
         } else {
           informationForm.reset({
             name: "",
+            field: "checkbox",
+            location: "",
             comment: "",
             defaultChecked: false,
+            answerChoices: [],
           });
+          setAnswerChoices([]);
         }
       }
     }
@@ -161,7 +179,10 @@ export function ChecklistItemForm({
   };
 
   const handleInformationSubmit = async (values: InformationChecklistFormValues) => {
-    await onSubmit(values);
+    await onSubmit({
+      ...values,
+      answerChoices: needsAnswerChoices ? answerChoices : undefined,
+    });
   };
 
   const fieldOptions = [
@@ -375,6 +396,87 @@ export function ChecklistItemForm({
                   {informationForm.formState.errors.name.message}
                 </p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="field">Field *</Label>
+              <Controller
+                control={informationForm.control}
+                name="field"
+                render={({ field, fieldState }) => (
+                  <div>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="field" className={fieldState.error ? "border-red-600" : ""}>
+                        <SelectValue placeholder="Select field type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {fieldOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldState.error.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
+
+            {needsAnswerChoices && (
+              <CreatableTagInput
+                value={answerChoices}
+                onChange={setAnswerChoices}
+                label={
+                  selectedField === 'multipleAnswers' 
+                    ? 'Answer Choices'
+                    : selectedField === 'number' || selectedField === 'numberRange'
+                    ? 'Unit Types'
+                    : undefined
+                }
+                helperText={
+                  selectedField === 'multipleAnswers'
+                    ? 'Add multiple answer options for this checklist item.'
+                    : selectedField === 'number' || selectedField === 'numberRange'
+                    ? 'Add unit types (e.g., inches, feet, meters) for this checklist item.'
+                    : undefined
+                }
+                placeholder={`Add ${selectedField === 'multipleAnswers' ? 'answer choice' : 'unit type'}...`}
+                disabled={isSubmitting}
+              />
+            )}
+
+            <div className="space-y-2">
+              <Controller
+                control={informationForm.control}
+                name="location"
+                render={({ field, fieldState }) => (
+                  <div>
+                    <CreatableConcatenatedInput
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      label="Location"
+                      placeholder="Search location..."
+                      inputPlaceholder="Enter location"
+                      options={locationOptions}
+                      disabled={isSubmitting}
+                    />
+                    {fieldState.error && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {fieldState.error.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
             </div>
 
             <div className="space-y-2">

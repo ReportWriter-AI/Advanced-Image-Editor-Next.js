@@ -1062,19 +1062,31 @@ export async function copyTemplatesForInspection(
     return [];
   }
 
-  // Fetch all templates
+  // Fetch all templates, excluding soft-deleted ones
   const templateIdsArray = Array.from(uniqueTemplateIds).map(id => new mongoose.Types.ObjectId(id));
-  const templates = await Template.find({ _id: { $in: templateIdsArray } }).lean();
+  const templates = await Template.find({ 
+    _id: { $in: templateIdsArray },
+    deletedAt: null // Exclude soft-deleted templates
+  }).lean();
 
   // Create InspectionTemplate copies
   const createdTemplateIds: mongoose.Types.ObjectId[] = [];
 
   for (const template of templates) {
     try {
+      // Filter out deleted sections and subsections before deep copy
+      const activeSections = (template.sections || [])
+        .filter((section: any) => !section.deletedAt) // Exclude deleted sections
+        .map((section: any) => ({
+          ...section,
+          subsections: (section.subsections || [])
+            .filter((subsection: any) => !subsection.deletedAt) // Exclude deleted subsections
+        }));
+
       // Deep copy template data, excluding _id, company, createdBy, timestamps
       const templateData: any = {
         name: template.name,
-        sections: JSON.parse(JSON.stringify(template.sections || [])), // Deep copy sections
+        sections: JSON.parse(JSON.stringify(activeSections)), // Deep copy only active sections/subsections
         orderIndex: template.orderIndex || 0,
         reportDescription: template.reportDescription,
         deletedAt: template.deletedAt || null,

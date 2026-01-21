@@ -72,8 +72,8 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Checklist name is required' }, { status: 400 });
     }
 
-    // Validate field for status type
-    if (existingChecklist.type === 'status' && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text'].includes(field)) {
+    // Validate field for status and information types
+    if ((existingChecklist.type === 'status' || existingChecklist.type === 'information') && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text'].includes(field)) {
       return NextResponse.json({ error: 'Invalid field type' }, { status: 400 });
     }
 
@@ -81,8 +81,8 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       _id: existingChecklist._id || new mongoose.Types.ObjectId(checklistId),
       type: existingChecklist.type,
       name: name.trim(),
-      field: existingChecklist.type === 'status' ? (field || existingChecklist.field) : undefined,
-      location: existingChecklist.type === 'status' ? (location?.trim() || undefined) : undefined,
+      field: (existingChecklist.type === 'status' || existingChecklist.type === 'information') ? (field || existingChecklist.field) : undefined,
+      location: (existingChecklist.type === 'status' || existingChecklist.type === 'information') ? (location?.trim() || undefined) : undefined,
       comment: comment !== undefined ? (comment || undefined) : existingChecklist.comment,
       defaultChecked: defaultChecked !== undefined ? defaultChecked : existingChecklist.defaultChecked,
       answerChoices: answerChoices !== undefined ? (answerChoices && Array.isArray(answerChoices) ? answerChoices : undefined) : existingChecklist.answerChoices,

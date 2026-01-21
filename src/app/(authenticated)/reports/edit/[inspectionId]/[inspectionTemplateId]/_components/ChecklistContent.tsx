@@ -500,7 +500,7 @@ function SortableChecklistItem({
     transition,
   };
 
-  const isStatusWithField = checklist.type === 'status' && checklist.field;
+  const isWithField = (checklist.type === 'status' || checklist.type === 'information') && checklist.field;
 
   // Handler for checkbox that toggles both expanded state and checked value
   const handleCheckboxChange = (checked: boolean | string) => {
@@ -577,8 +577,8 @@ function SortableChecklistItem({
         {/* Expanded view - all fields */}
         {isExpanded && (
           <div className="mt-3 space-y-3">
-            {/* Location field for status checklists */}
-            {checklist.type === 'status' && (
+            {/* Location field for status and information checklists */}
+            {(checklist.type === 'status' || checklist.type === 'information') && (
               <div className="space-y-2">
                 <CreatableConcatenatedInput
                   value={locationValue}
@@ -605,8 +605,8 @@ function SortableChecklistItem({
               />
             </div>
 
-            {/* Field input for status with field - appears below location/comment */}
-            {isStatusWithField && onAnswerChange && (
+            {/* Field input for status and information with field - appears below location/comment */}
+            {isWithField && onAnswerChange && (
               <div>
                 <ChecklistFieldInput
                   checklist={checklist}
@@ -617,8 +617,8 @@ function SortableChecklistItem({
               </div>
             )}
 
-            {/* Image upload section - status checklist */}
-            {checklist.type === 'status' && (
+            {/* Image upload section - status and information checklists */}
+            {(checklist.type === 'status' || checklist.type === 'information') && (
               <ChecklistImageUpload
                 checklistId={checklist._id || ""}
                 images={checklistImages}

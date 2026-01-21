@@ -120,12 +120,12 @@ export async function POST(request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Checklist name is required' }, { status: 400 });
     }
 
-    // Validate field for status type
-    if (type === 'status' && !field) {
-      return NextResponse.json({ error: 'Field is required for status checklist items' }, { status: 400 });
+    // Validate field for status and information types
+    if ((type === 'status' || type === 'information') && !field) {
+      return NextResponse.json({ error: 'Field is required for status and information checklist items' }, { status: 400 });
     }
 
-    if (type === 'status' && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text'].includes(field)) {
+    if ((type === 'status' || type === 'information') && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text'].includes(field)) {
       return NextResponse.json({ error: 'Invalid field type' }, { status: 400 });
     }
 
@@ -140,8 +140,8 @@ export async function POST(request: NextRequest, context: RouteParams) {
     const newChecklist = {
       type,
       name: name.trim(),
-      field: type === 'status' ? field : undefined,
-      location: type === 'status' ? (location?.trim() || undefined) : undefined,
+      field: (type === 'status' || type === 'information') ? field : undefined,
+      location: (type === 'status' || type === 'information') ? (location?.trim() || undefined) : undefined,
       comment: comment || undefined,
       defaultChecked: defaultChecked ?? false,
       answerChoices: answerChoices && Array.isArray(answerChoices) ? answerChoices : undefined,

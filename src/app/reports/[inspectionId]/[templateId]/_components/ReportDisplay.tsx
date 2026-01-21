@@ -890,7 +890,7 @@ function renderSubsectionData(checklists: ChecklistWithAnswers[], type: "status"
               {checklist.comment}
             </p>
           )}
-          {checklist.type === 'status' && checklist.media && renderMedia(checklist.media)}
+          {(checklist.type === 'status' || checklist.type === 'information') && checklist.media && renderMedia(checklist.media)}
         </div>
       ))}
     </div>
