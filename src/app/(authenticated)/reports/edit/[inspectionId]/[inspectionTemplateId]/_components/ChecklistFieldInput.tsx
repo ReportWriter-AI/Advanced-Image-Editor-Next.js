@@ -332,7 +332,7 @@ export function ChecklistFieldInput({
           {checklist.comment && (
             <p className="text-sm text-muted-foreground">{checklist.comment}</p>
           )}
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 py-2">
             {checklist.answerChoices && checklist.answerChoices.length > 0 ? (
               checklist.answerChoices.map((choice, index) => (
                 <div key={index} className="flex items-center gap-2">
