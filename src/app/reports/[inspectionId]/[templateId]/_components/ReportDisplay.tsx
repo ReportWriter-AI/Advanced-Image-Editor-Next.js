@@ -556,10 +556,10 @@ export function ReportDisplay({
     <>
     <div className="space-y-6">
       {/* Header Image Display */}
-      {inspection?.headerImage && (
+
         <div className={styles.headerImageDisplay}>
           <img 
-              src={getProxiedSrc(inspection.headerImage) ?? `/api/inspections/${inspectionId}/client-view/map-image`} 
+            src={inspection?.headerImage ? getProxiedSrc(inspection.headerImage) : `http://localhost:3000/api/inspections/${inspectionId}/client-view/map-image`} 
             alt="Report Header" 
             className={styles.headerImage}
             onError={handleImgError}
@@ -583,10 +583,10 @@ export function ReportDisplay({
                 )}
               </div>
             )}
-            <h2 className={styles.reportTitle}>HOME INSPECTION REPORT</h2>
+            <h2 className={styles.reportTitle}>{template?.name || "HOME INSPECTION REPORT"}</h2>
           </div>
         </div>
-      )}
+
 
       {/* Navigation Toolbar */}
       <div className={styles.reportToolbar} role="tablist" aria-label="Report view">
