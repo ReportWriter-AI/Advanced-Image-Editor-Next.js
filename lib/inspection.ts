@@ -1074,19 +1074,29 @@ export async function copyTemplatesForInspection(
 
   for (const template of templates) {
     try {
-      // Filter out deleted sections and subsections before deep copy
+      // Filter out deleted sections and subsections, then map to preserve original IDs
       const activeSections = (template.sections || [])
         .filter((section: any) => !section.deletedAt) // Exclude deleted sections
         .map((section: any) => ({
           ...section,
+          originalSectionId: section._id, // Preserve original section ID
           subsections: (section.subsections || [])
             .filter((subsection: any) => !subsection.deletedAt) // Exclude deleted subsections
+            .map((subsection: any) => ({
+              ...subsection,
+              originalSubsectionId: subsection._id, // Preserve original subsection ID
+              checklists: (subsection.checklists || []).map((checklist: any) => ({
+                ...checklist,
+                originalChecklistId: checklist._id, // Preserve original checklist ID
+              })),
+            })),
         }));
 
-      // Deep copy template data, excluding _id, company, createdBy, timestamps
+      // Deep copy template data, preserving original IDs
       const templateData: any = {
         name: template.name,
-        sections: JSON.parse(JSON.stringify(activeSections)), // Deep copy only active sections/subsections
+        originalTemplateId: template._id, // Preserve original template ID
+        sections: activeSections, // Use mapped sections with preserved IDs
         orderIndex: template.orderIndex || 0,
         reportDescription: template.reportDescription,
         deletedAt: template.deletedAt || null,

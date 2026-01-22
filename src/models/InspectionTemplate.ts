@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IInspectionTemplateChecklist {
   _id?: mongoose.Types.ObjectId;
+  originalChecklistId?: mongoose.Types.ObjectId;
   type: 'status' | 'information' | 'defects';
   name: string;
   field?: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'signature' | 'text';
@@ -25,6 +26,7 @@ export interface IInspectionTemplateChecklist {
 
 export interface IInspectionTemplateSubsection {
   _id?: mongoose.Types.ObjectId;
+  originalSubsectionId?: mongoose.Types.ObjectId;
   name: string;
   informationalOnly: boolean;
   includeInEveryReport: boolean;
@@ -36,6 +38,7 @@ export interface IInspectionTemplateSubsection {
 
 export interface IInspectionTemplateSection {
   _id?: mongoose.Types.ObjectId;
+  originalSectionId?: mongoose.Types.ObjectId;
   name: string;
   excludeFromSummaryView: boolean;
   includeInEveryReport: boolean;
@@ -50,6 +53,7 @@ export interface IInspectionTemplateSection {
 
 export interface IInspectionTemplate extends Document {
   name: string;
+  originalTemplateId?: mongoose.Types.ObjectId;
   sections: IInspectionTemplateSection[];
   orderIndex: number;
   reportDescription?: string;
@@ -60,6 +64,10 @@ export interface IInspectionTemplate extends Document {
 
 const InspectionTemplateChecklistSchema = new Schema<IInspectionTemplateChecklist>(
   {
+    originalChecklistId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     type: {
       type: String,
       enum: ['status', 'information', 'defects'],
@@ -153,6 +161,10 @@ const InspectionTemplateChecklistSchema = new Schema<IInspectionTemplateChecklis
 
 const InspectionTemplateSubsectionSchema = new Schema<IInspectionTemplateSubsection>(
   {
+    originalSubsectionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     name: {
       type: String,
       required: [true, 'Subsection name is required'],
@@ -187,6 +199,10 @@ const InspectionTemplateSubsectionSchema = new Schema<IInspectionTemplateSubsect
 
 const InspectionTemplateSectionSchema = new Schema<IInspectionTemplateSection>(
   {
+    originalSectionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     name: {
       type: String,
       required: [true, 'Section name is required'],
@@ -237,6 +253,10 @@ const InspectionTemplateSchema = new Schema<IInspectionTemplate>(
       type: String,
       required: [true, 'Template name is required'],
       trim: true,
+    },
+    originalTemplateId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
     },
     sections: {
       type: [InspectionTemplateSectionSchema],
