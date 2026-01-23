@@ -7,7 +7,7 @@ export interface TemplateChecklist {
   _id?: string;
   type: 'status' | 'information' | 'defects';
   name: string;
-  field?: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'signature' | 'text';
+  field?: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'text';
   location?: string;
   comment?: string;
   defaultChecked?: boolean;

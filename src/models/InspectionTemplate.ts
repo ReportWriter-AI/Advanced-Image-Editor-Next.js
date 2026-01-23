@@ -5,7 +5,7 @@ export interface IInspectionTemplateChecklist {
   originalChecklistId?: mongoose.Types.ObjectId;
   type: 'status' | 'information' | 'defects';
   name: string;
-  field?: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'signature' | 'text';
+  field?: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'text';
   location?: string;
   comment?: string;
   defaultChecked?: boolean;
@@ -80,7 +80,7 @@ const InspectionTemplateChecklistSchema = new Schema<IInspectionTemplateChecklis
     },
     field: {
       type: String,
-      enum: ['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text'],
+      enum: ['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'text'],
     },
     location: {
       type: String,

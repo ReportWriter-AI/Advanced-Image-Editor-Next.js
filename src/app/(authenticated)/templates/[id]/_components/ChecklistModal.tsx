@@ -153,7 +153,6 @@ export function ChecklistModal({
       date: 'Date',
       number: 'Number',
       numberRange: 'Number Range',
-      signature: 'Signature',
       text: 'Text',
     };
     return field ? fieldMap[field] || field : '—';

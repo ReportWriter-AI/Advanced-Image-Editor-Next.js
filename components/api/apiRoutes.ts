@@ -8,6 +8,8 @@ export default {
 		reorder: '/templates/reorder',
 		deleted: '/templates/deleted',
 		restore: '/templates/:id/restore',
+		import: '/templates/import',
+		export: '/templates/export',
 	},
 	// Template Sections
 	templateSections: {
@@ -110,5 +112,9 @@ export default {
 		get: (inspectionId: string) => `/inspections/${inspectionId}`,
 		update: (inspectionId: string) => `/inspections/${inspectionId}`,
 		publish: (inspectionId: string) => `/inspections/${inspectionId}/publish`,
+	},
+	// Defect Narratives
+	defectNarratives: {
+		get: '/defect-narratives',
 	},
 }

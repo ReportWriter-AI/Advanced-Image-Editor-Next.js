@@ -102,3 +102,122 @@ export const useTemplatesQuery =  () =>
 			},
 		})
 	}
+
+	interface ExcelRow {
+		sectionName: string;
+		itemName: string;
+		commentName: string;
+		commentText: string;
+		commentType: string;
+		multipleChoiceOptions: string;
+		unitTypeOptions: string;
+		order: string | number;
+		answerType: string;
+		defaultValue: string;
+		defaultValue2: string;
+		defaultUnitType: string;
+		defaultLocation: string;
+	}
+
+	export const useImportTemplateMutation = () => {
+		const queryClient = useQueryClient()
+		return useMutation({
+			mutationFn: (payload: { templateName: string; data: ExcelRow[]; source: string; useNarrative: boolean }) =>
+				axios.post(apiRoutes.templates.import, payload),
+			onSuccess: (response) => {
+				queryClient.invalidateQueries({ queryKey: [apiRoutes.templates.get] });
+				toast.success(response.data?.message || 'Template imported successfully');
+			},
+			onError: (error: any) => {
+				const errorData = error.response?.data || {};
+				const errorMessage = errorData.error || 'Failed to import template';
+				const errorDetails = errorData.details;
+				
+				if (errorDetails && Array.isArray(errorDetails)) {
+					// Show validation errors
+					const errorList = errorDetails.slice(0, 5).join('\n');
+					const moreErrors = errorDetails.length > 5 ? `\n... and ${errorDetails.length - 5} more errors` : '';
+					toast.error(`${errorMessage}\n${errorList}${moreErrors}`, {
+						duration: 10000,
+					});
+				} else {
+					toast.error(errorMessage);
+				}
+				return Promise.reject(error);
+			},
+		})
+	}
+
+	export const useExportTemplatesMutation = () => {
+		return useMutation({
+			mutationFn: async (payload: { templateIds: string[] }) => {
+				const response = await axios.post(apiRoutes.templates.export, payload, {
+					responseType: 'blob',
+				});
+				return response;
+			},
+			onSuccess: (response, variables) => {
+				// Get filename from Content-Disposition header (axios normalizes to lowercase)
+				const contentDisposition = response.headers['content-disposition'] || response.headers['Content-Disposition'];
+				let filename = 'templates-export.xlsx';
+				
+				if (contentDisposition) {
+					// Try RFC 5987 format first (filename*=UTF-8''...)
+					let filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+					if (filenameMatch) {
+						try {
+							filename = decodeURIComponent(filenameMatch[1]);
+						} catch {
+							// If decoding fails, fall back to standard format
+							filenameMatch = null;
+						}
+					}
+					
+					// Fallback to standard format (filename="..." or filename=...)
+					if (!filenameMatch) {
+						filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+						if (filenameMatch) {
+							filename = filenameMatch[1].trim();
+						}
+					}
+				}
+				
+				// Ensure .xlsx extension is always present
+				if (!filename.toLowerCase().endsWith('.xlsx')) {
+					const nameWithoutExt = filename.replace(/\.[^.]*$/, '');
+					filename = `${nameWithoutExt}.xlsx`;
+				}
+				
+				// Create download link
+				const url = window.URL.createObjectURL(response.data);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				document.body.appendChild(a);
+				a.click();
+				window.URL.revokeObjectURL(url);
+				document.body.removeChild(a);
+				
+				toast.success(`Successfully exported ${variables.templateIds.length} template(s)`);
+			},
+			onError: (error: any) => {
+				const errorMessage = error.response?.data?.error || 'Failed to export templates';
+				// If error response is a blob, try to parse it as JSON
+				if (error.response?.data instanceof Blob) {
+					error.response.data.text().then((text: string) => {
+						try {
+							const errorData = JSON.parse(text);
+							toast.error(errorData.error || errorMessage);
+						} catch {
+							toast.error(errorMessage);
+						}
+					}).catch(() => {
+						toast.error(errorMessage);
+					});
+				} else {
+					toast.error(errorMessage);
+				}
+				return Promise.reject(error);
+			},
+		})
+	}

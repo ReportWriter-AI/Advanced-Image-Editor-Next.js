@@ -34,7 +34,7 @@ import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDrop
 
 const statusChecklistSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text']),
+  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'text']),
   location: z.string().optional(),
   comment: z.string().optional(),
   defaultChecked: z.boolean(),
@@ -43,7 +43,7 @@ const statusChecklistSchema = z.object({
 
 const informationChecklistSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text']),
+  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'text']),
   location: z.string().optional(),
   comment: z.string().optional(),
   defaultChecked: z.boolean(),
@@ -209,7 +209,6 @@ export function ChecklistItemForm({
     { value: 'date', label: 'Date' },
     { value: 'number', label: 'Number' },
     { value: 'numberRange', label: 'Number Range' },
-    // { value: 'signature', label: 'Signature' },
     { value: 'text', label: 'Text' },
   ];
 

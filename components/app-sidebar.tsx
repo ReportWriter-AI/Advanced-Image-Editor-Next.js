@@ -25,6 +25,8 @@ import {
 	Contact,
 	ListChecks,
 	Zap,
+	ArrowLeftRight,
+	AlertTriangle,
 } from "lucide-react";
 
 import {
@@ -47,6 +49,16 @@ const data = {
 		{
 			title: "Main",
 			items: [
+				{
+					title: "Import or Export",
+					url: "/import-export",
+					icon: ArrowLeftRight,
+				},
+				{
+					title: "Defect Narratives",
+					url: "/defect-narratives",
+					icon: AlertTriangle,
+				},
 				{
 					title: "Dashboard",
 					url: "/",

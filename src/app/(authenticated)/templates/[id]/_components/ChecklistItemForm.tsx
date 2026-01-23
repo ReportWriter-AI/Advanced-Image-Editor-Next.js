@@ -39,7 +39,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const statusChecklistSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text']),
+  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'text']),
   location: z.string().optional(),
   comment: z.string().optional(),
   defaultChecked: z.boolean(),
@@ -48,7 +48,7 @@ const statusChecklistSchema = z.object({
 
 const informationChecklistSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'signature', 'text']),
+  field: z.enum(['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'text']),
   location: z.string().optional(),
   comment: z.string().optional(),
   defaultChecked: z.boolean(),
@@ -137,10 +137,17 @@ export function ChecklistItemForm({
   useEffect(() => {
     if (open) {
       if (initialValues) {
+        // Filter out 'signature' field type if it exists (legacy data)
+        const validFieldTypes: readonly ('checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'text')[] = ['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'text'];
+        const field: 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'text' = 
+          (initialValues.field && validFieldTypes.includes(initialValues.field as any)) 
+            ? (initialValues.field as 'checkbox' | 'multipleAnswers' | 'date' | 'number' | 'numberRange' | 'text')
+            : "checkbox";
+        
         if (type === 'status') {
           statusForm.reset({
             name: initialValues.name || "",
-            field: initialValues.field || "checkbox",
+            field: field,
             location: initialValues.location || "",
             comment: initialValues.comment || "",
             defaultChecked: initialValues.defaultChecked ?? false,
@@ -150,7 +157,7 @@ export function ChecklistItemForm({
         } else {
           informationForm.reset({
             name: initialValues.name || "",
-            field: initialValues.field || "checkbox",
+            field: field,
             location: initialValues.location || "",
             comment: initialValues.comment || "",
             defaultChecked: initialValues.defaultChecked ?? false,
@@ -280,7 +287,6 @@ export function ChecklistItemForm({
     { value: 'date', label: 'Date' },
     { value: 'number', label: 'Number' },
     { value: 'numberRange', label: 'Number Range' },
-    // { value: 'signature', label: 'Signature' },
     { value: 'text', label: 'Text' },
   ];
 
@@ -450,7 +456,7 @@ export function ChecklistItemForm({
             </div>
 
             {/* Default Answer Fields - Only show when editing existing checklist */}
-            {initialValues && (
+            {initialValues && initialValues.field !== 'checkbox' && (
               <div className="space-y-4 rounded-lg border p-4">
                 <Label className="text-base">Default Answer</Label>
                 <p className="text-sm text-muted-foreground">
@@ -791,7 +797,7 @@ export function ChecklistItemForm({
             </div>
 
             {/* Default Answer Fields - Only show when editing existing checklist */}
-            {initialValues && (
+            {initialValues && initialValues.field !== 'checkbox' && (
               <div className="space-y-4 rounded-lg border p-4">
                 <Label className="text-base">Default Answer</Label>
                 <p className="text-sm text-muted-foreground">
