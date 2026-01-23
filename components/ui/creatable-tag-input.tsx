@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 
 export interface CreatableTagInputProps {
@@ -30,6 +31,9 @@ export interface CreatableTagInputProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  showCheckboxes?: boolean;
+  selectedValues?: string[];
+  onSelectionChange?: (selected: string[]) => void;
 }
 
 interface SortableTagItemProps {
@@ -38,6 +42,9 @@ interface SortableTagItemProps {
   index: number;
   onRemove: (index: number) => void;
   disabled?: boolean;
+  showCheckbox?: boolean;
+  isChecked?: boolean;
+  onCheckboxChange?: (checked: boolean) => void;
 }
 
 function SortableTagItem({
@@ -46,6 +53,9 @@ function SortableTagItem({
   index,
   onRemove,
   disabled = false,
+  showCheckbox = false,
+  isChecked = false,
+  onCheckboxChange,
 }: SortableTagItemProps) {
   const {
     attributes,
@@ -63,6 +73,12 @@ function SortableTagItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const handleCheckboxChange = (checked: boolean) => {
+    if (onCheckboxChange && !disabled) {
+      onCheckboxChange(checked);
+    }
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -72,9 +88,18 @@ function SortableTagItem({
         "hover:bg-accent",
         isDragging && "shadow-lg z-50 scale-105",
         isOver && !isDragging && "border-primary border-2",
-        disabled && "opacity-50 cursor-not-allowed"
+        disabled && "opacity-50 cursor-not-allowed",
+        showCheckbox && isChecked && "border-primary bg-primary/5"
       )}
     >
+      {showCheckbox && (
+        <Checkbox
+          checked={isChecked}
+          onCheckedChange={handleCheckboxChange}
+          disabled={disabled}
+          className="shrink-0"
+        />
+      )}
       <button
         type="button"
         {...attributes}
@@ -115,6 +140,9 @@ export function CreatableTagInput({
   placeholder = "Add item...",
   disabled = false,
   className,
+  showCheckboxes = false,
+  selectedValues = [],
+  onSelectionChange,
 }: CreatableTagInputProps) {
   const [selectKey, setSelectKey] = useState(0);
   const [shouldFocus, setShouldFocus] = useState(false);
@@ -217,6 +245,19 @@ export function CreatableTagInput({
     [value, onChange, disabled]
   );
 
+  const handleCheckboxChange = useCallback(
+    (item: string, checked: boolean) => {
+      if (!onSelectionChange) return;
+      
+      const newSelected = checked
+        ? [...selectedValues, item]
+        : selectedValues.filter((v) => v !== item);
+      
+      onSelectionChange(newSelected);
+    },
+    [selectedValues, onSelectionChange]
+  );
+
   return (
     <div className={cn("space-y-2", className)}>
       {label && <Label>{label}</Label>}
@@ -255,6 +296,9 @@ export function CreatableTagInput({
                   index={index}
                   onRemove={handleRemove}
                   disabled={disabled}
+                  showCheckbox={showCheckboxes}
+                  isChecked={selectedValues.includes(item)}
+                  onCheckboxChange={(checked) => handleCheckboxChange(item, checked)}
                 />
               ))}
             </div>

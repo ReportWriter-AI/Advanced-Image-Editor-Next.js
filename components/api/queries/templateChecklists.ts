@@ -13,6 +13,15 @@ export interface TemplateChecklist {
   defaultChecked?: boolean;
   answerChoices?: string[];
   orderIndex: number;
+  // Answer fields
+  textAnswer?: string; // For text field type
+  selectedAnswers?: string[]; // For multipleAnswers field type
+  dateAnswer?: Date | string; // For date field type
+  numberAnswer?: number; // For number field type
+  numberUnit?: string; // For number field type (unit selection)
+  rangeFrom?: number; // For numberRange field type
+  rangeTo?: number; // For numberRange field type
+  rangeUnit?: string; // For numberRange field type (unit selection)
 }
 
 export const useTemplateChecklistsQuery = (templateId: string, sectionId: string, subsectionId: string) => 

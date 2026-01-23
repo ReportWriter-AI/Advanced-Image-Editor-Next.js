@@ -1088,6 +1088,15 @@ export async function copyTemplatesForInspection(
               checklists: (subsection.checklists || []).map((checklist: any) => ({
                 ...checklist,
                 originalChecklistId: checklist._id, // Preserve original checklist ID
+                // Explicitly copy answer fields to ensure they are included
+                textAnswer: checklist.textAnswer,
+                selectedAnswers: checklist.selectedAnswers,
+                dateAnswer: checklist.dateAnswer,
+                numberAnswer: checklist.numberAnswer,
+                numberUnit: checklist.numberUnit,
+                rangeFrom: checklist.rangeFrom,
+                rangeTo: checklist.rangeTo,
+                rangeUnit: checklist.rangeUnit,
               })),
             })),
         }));

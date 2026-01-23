@@ -66,6 +66,14 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       defaultChecked,
       answerChoices,
       orderIndex,
+      textAnswer,
+      selectedAnswers,
+      dateAnswer,
+      numberAnswer,
+      numberUnit,
+      rangeFrom,
+      rangeTo,
+      rangeUnit,
     } = body;
 
     if (!name || !name.trim()) {
@@ -77,7 +85,7 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Invalid field type' }, { status: 400 });
     }
 
-    const updatedChecklist = {
+    const updatedChecklist: any = {
       _id: existingChecklist._id || new mongoose.Types.ObjectId(checklistId),
       type: existingChecklist.type,
       name: name.trim(),
@@ -88,6 +96,55 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       answerChoices: answerChoices !== undefined ? (answerChoices && Array.isArray(answerChoices) ? answerChoices : undefined) : existingChecklist.answerChoices,
       orderIndex: orderIndex !== undefined ? orderIndex : existingChecklist.orderIndex,
     };
+
+    // Add answer fields if provided
+    if (textAnswer !== undefined) {
+      updatedChecklist.textAnswer = textAnswer?.trim() || undefined;
+    } else if (existingChecklist.textAnswer !== undefined) {
+      updatedChecklist.textAnswer = existingChecklist.textAnswer;
+    }
+    
+    if (selectedAnswers !== undefined) {
+      updatedChecklist.selectedAnswers = Array.isArray(selectedAnswers) && selectedAnswers.length > 0 ? selectedAnswers : undefined;
+    } else if (existingChecklist.selectedAnswers !== undefined) {
+      updatedChecklist.selectedAnswers = existingChecklist.selectedAnswers;
+    }
+    
+    if (dateAnswer !== undefined) {
+      updatedChecklist.dateAnswer = dateAnswer ? new Date(dateAnswer) : undefined;
+    } else if (existingChecklist.dateAnswer !== undefined) {
+      updatedChecklist.dateAnswer = existingChecklist.dateAnswer;
+    }
+    
+    if (numberAnswer !== undefined) {
+      updatedChecklist.numberAnswer = numberAnswer !== null && numberAnswer !== '' ? Number(numberAnswer) : undefined;
+    } else if (existingChecklist.numberAnswer !== undefined) {
+      updatedChecklist.numberAnswer = existingChecklist.numberAnswer;
+    }
+    
+    if (numberUnit !== undefined) {
+      updatedChecklist.numberUnit = numberUnit?.trim() || undefined;
+    } else if (existingChecklist.numberUnit !== undefined) {
+      updatedChecklist.numberUnit = existingChecklist.numberUnit;
+    }
+    
+    if (rangeFrom !== undefined) {
+      updatedChecklist.rangeFrom = rangeFrom !== null && rangeFrom !== '' ? Number(rangeFrom) : undefined;
+    } else if (existingChecklist.rangeFrom !== undefined) {
+      updatedChecklist.rangeFrom = existingChecklist.rangeFrom;
+    }
+    
+    if (rangeTo !== undefined) {
+      updatedChecklist.rangeTo = rangeTo !== null && rangeTo !== '' ? Number(rangeTo) : undefined;
+    } else if (existingChecklist.rangeTo !== undefined) {
+      updatedChecklist.rangeTo = existingChecklist.rangeTo;
+    }
+    
+    if (rangeUnit !== undefined) {
+      updatedChecklist.rangeUnit = rangeUnit?.trim() || undefined;
+    } else if (existingChecklist.rangeUnit !== undefined) {
+      updatedChecklist.rangeUnit = existingChecklist.rangeUnit;
+    }
 
     // Update the checklist using arrayFilters
     await Template.updateOne(

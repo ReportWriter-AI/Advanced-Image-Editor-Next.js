@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CreatableTagInput } from "@/components/ui/creatable-tag-input";
 import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 // import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -31,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { TemplateChecklist } from "@/components/api/queries/templateChecklists";
 import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDropdowns";
+import { cn } from "@/lib/utils";
 
 const statusChecklistSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -71,6 +75,14 @@ export function ChecklistItemForm({
   isSubmitting = false,
 }: ChecklistItemFormProps) {
   const [answerChoices, setAnswerChoices] = useState<string[]>([]);
+  const [textAnswer, setTextAnswer] = useState<string>("");
+  const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
+  const [dateAnswer, setDateAnswer] = useState<Date | undefined>(undefined);
+  const [numberAnswer, setNumberAnswer] = useState<string>("");
+  const [numberUnit, setNumberUnit] = useState<string>("");
+  const [rangeFrom, setRangeFrom] = useState<string>("");
+  const [rangeTo, setRangeTo] = useState<string>("");
+  const [rangeUnit, setRangeUnit] = useState<string>("");
   const { data: dropdownsData } = useReusableDropdownsQuery();
 
   // Convert API format (Array<{id, value}>) to options format (Array<{value, label}>)
@@ -145,6 +157,15 @@ export function ChecklistItemForm({
           });
           setAnswerChoices(initialValues.answerChoices || []);
         }
+        // Set answer field values
+        setTextAnswer(initialValues.textAnswer || "");
+        setSelectedAnswers(initialValues.selectedAnswers || []);
+        setDateAnswer(initialValues.dateAnswer ? new Date(initialValues.dateAnswer) : undefined);
+        setNumberAnswer(initialValues.numberAnswer?.toString() || "");
+        setNumberUnit(initialValues.numberUnit || "");
+        setRangeFrom(initialValues.rangeFrom?.toString() || "");
+        setRangeTo(initialValues.rangeTo?.toString() || "");
+        setRangeUnit(initialValues.rangeUnit || "");
       } else {
         if (type === 'status') {
           statusForm.reset({
@@ -167,21 +188,88 @@ export function ChecklistItemForm({
           });
           setAnswerChoices([]);
         }
+        // Reset answer field values
+        setTextAnswer("");
+        setSelectedAnswers([]);
+        setDateAnswer(undefined);
+        setNumberAnswer("");
+        setNumberUnit("");
+        setRangeFrom("");
+        setRangeTo("");
+        setRangeUnit("");
       }
     }
   }, [open, initialValues, type, statusForm, informationForm]);
 
   const handleStatusSubmit = async (values: StatusChecklistFormValues) => {
+    const answerData: any = {};
+    
+    // Add answer fields based on field type
+    if (initialValues?.field === 'text' && textAnswer) {
+      answerData.textAnswer = textAnswer.trim() || undefined;
+    } else if (initialValues?.field === 'multipleAnswers' && selectedAnswers.length > 0) {
+      answerData.selectedAnswers = selectedAnswers;
+    } else if (initialValues?.field === 'date' && dateAnswer) {
+      answerData.dateAnswer = dateAnswer.toISOString();
+    } else if (initialValues?.field === 'number') {
+      if (numberAnswer) {
+        answerData.numberAnswer = parseFloat(numberAnswer) || undefined;
+      }
+      if (numberUnit) {
+        answerData.numberUnit = numberUnit;
+      }
+    } else if (initialValues?.field === 'numberRange') {
+      if (rangeFrom) {
+        answerData.rangeFrom = parseFloat(rangeFrom) || undefined;
+      }
+      if (rangeTo) {
+        answerData.rangeTo = parseFloat(rangeTo) || undefined;
+      }
+      if (rangeUnit) {
+        answerData.rangeUnit = rangeUnit;
+      }
+    }
+
     await onSubmit({
       ...values,
       answerChoices: needsAnswerChoices ? answerChoices : undefined,
+      ...answerData,
     });
   };
 
   const handleInformationSubmit = async (values: InformationChecklistFormValues) => {
+    const answerData: any = {};
+    
+    // Add answer fields based on field type
+    if (initialValues?.field === 'text' && textAnswer) {
+      answerData.textAnswer = textAnswer.trim() || undefined;
+    } else if (initialValues?.field === 'multipleAnswers' && selectedAnswers.length > 0) {
+      answerData.selectedAnswers = selectedAnswers;
+    } else if (initialValues?.field === 'date' && dateAnswer) {
+      answerData.dateAnswer = dateAnswer.toISOString();
+    } else if (initialValues?.field === 'number') {
+      if (numberAnswer) {
+        answerData.numberAnswer = parseFloat(numberAnswer) || undefined;
+      }
+      if (numberUnit) {
+        answerData.numberUnit = numberUnit;
+      }
+    } else if (initialValues?.field === 'numberRange') {
+      if (rangeFrom) {
+        answerData.rangeFrom = parseFloat(rangeFrom) || undefined;
+      }
+      if (rangeTo) {
+        answerData.rangeTo = parseFloat(rangeTo) || undefined;
+      }
+      if (rangeUnit) {
+        answerData.rangeUnit = rangeUnit;
+      }
+    }
+
     await onSubmit({
       ...values,
       answerChoices: needsAnswerChoices ? answerChoices : undefined,
+      ...answerData,
     });
   };
 
@@ -360,6 +448,175 @@ export function ChecklistItemForm({
               />
             </div>
 
+            {/* Default Answer Fields - Only show when editing existing checklist */}
+            {initialValues && (
+              <div className="space-y-4 rounded-lg border p-4">
+                <Label className="text-base">Default Answer</Label>
+                <p className="text-sm text-muted-foreground">
+                  Set default values for this checklist item
+                </p>
+
+                {/* Text Field */}
+                {initialValues.field === 'text' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="textAnswer">Default Text Answer</Label>
+                    <Input
+                      id="textAnswer"
+                      placeholder="Enter default text answer"
+                      value={textAnswer}
+                      onChange={(e) => setTextAnswer(e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                )}
+
+                {/* Multiple Answers Field */}
+                {initialValues.field === 'multipleAnswers' && answerChoices.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Default Selected Answers</Label>
+                    <CreatableTagInput
+                      value={answerChoices}
+                      onChange={() => {}} // Read-only for answer choices
+                      showCheckboxes={true}
+                      selectedValues={selectedAnswers}
+                      onSelectionChange={setSelectedAnswers}
+                      disabled={isSubmitting}
+                      placeholder=""
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Select default answers by checking the boxes above
+                    </p>
+                  </div>
+                )}
+
+                {/* Date Field */}
+                {initialValues.field === 'date' && (
+                  <div className="space-y-2">
+                    <Label>Default Date Answer</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !dateAnswer && "text-muted-foreground"
+                          )}
+                          disabled={isSubmitting}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dateAnswer ? format(dateAnswer, "PPP") : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={dateAnswer}
+                          onSelect={setDateAnswer}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+
+                {/* Number Field */}
+                {initialValues.field === 'number' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="numberAnswer">Default Number Answer</Label>
+                      <Input
+                        id="numberAnswer"
+                        type="number"
+                        placeholder="Enter default number"
+                        value={numberAnswer}
+                        onChange={(e) => setNumberAnswer(e.target.value)}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    {answerChoices.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Default Unit</Label>
+                        <div className="flex flex-wrap gap-3">
+                          {answerChoices.map((unit) => (
+                            <label
+                              key={unit}
+                              className="flex items-center gap-2 cursor-pointer"
+                            >
+                              <input
+                                type="radio"
+                                name={`number-unit-${initialValues._id}`}
+                                value={unit}
+                                checked={numberUnit === unit}
+                                onChange={() => setNumberUnit(unit)}
+                                disabled={isSubmitting}
+                                className="h-4 w-4"
+                              />
+                              <span className="text-sm">{unit}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Number Range Field */}
+                {initialValues.field === 'numberRange' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="rangeFrom">From</Label>
+                        <Input
+                          id="rangeFrom"
+                          type="number"
+                          placeholder="From"
+                          value={rangeFrom}
+                          onChange={(e) => setRangeFrom(e.target.value)}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="rangeTo">To</Label>
+                        <Input
+                          id="rangeTo"
+                          type="number"
+                          placeholder="To"
+                          value={rangeTo}
+                          onChange={(e) => setRangeTo(e.target.value)}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </div>
+                    {answerChoices.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Default Unit</Label>
+                        <div className="flex flex-wrap gap-3">
+                          {answerChoices.map((unit) => (
+                            <label
+                              key={unit}
+                              className="flex items-center gap-2 cursor-pointer"
+                            >
+                              <input
+                                type="radio"
+                                name={`range-unit-${initialValues._id}`}
+                                value={unit}
+                                checked={rangeUnit === unit}
+                                onChange={() => setRangeUnit(unit)}
+                                disabled={isSubmitting}
+                                className="h-4 w-4"
+                              />
+                              <span className="text-sm">{unit}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <DialogFooter>
               <Button
                 type="button"
@@ -531,6 +788,165 @@ export function ChecklistItemForm({
                 )}
               />
             </div>
+
+            {/* Default Answer Fields - Only show when editing existing checklist */}
+            {initialValues && (
+              <div className="space-y-4 rounded-lg border p-4">
+                <Label className="text-base">Default Answer</Label>
+                <p className="text-sm text-muted-foreground">
+                  Set default values for this checklist item
+                </p>
+
+                {/* Text Field */}
+                {initialValues.field === 'text' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="textAnswer">Default Text Answer</Label>
+                    <Input
+                      id="textAnswer"
+                      placeholder="Enter default text answer"
+                      value={textAnswer}
+                      onChange={(e) => setTextAnswer(e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                )}
+
+                {/* Multiple Answers Field */}
+                {initialValues.field === 'multipleAnswers' && answerChoices.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Default Selected Answers</Label>
+                    <CreatableTagInput
+                      value={answerChoices}
+                      onChange={() => {}} // Read-only for answer choices
+                      showCheckboxes={true}
+                      selectedValues={selectedAnswers}
+                      onSelectionChange={setSelectedAnswers}
+                      disabled={isSubmitting}
+                      placeholder=""
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Select default answers by checking the boxes above
+                    </p>
+                  </div>
+                )}
+
+                {/* Date Field */}
+                {initialValues.field === 'date' && (
+                  <div className="space-y-2">
+                    <Label>Default Date Answer</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !dateAnswer && "text-muted-foreground"
+                          )}
+                          disabled={isSubmitting}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dateAnswer ? format(dateAnswer, "PPP") : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={dateAnswer}
+                          onSelect={setDateAnswer}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+
+                {/* Number Field */}
+                {initialValues.field === 'number' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="numberAnswer">Default Number Answer</Label>
+                      <Input
+                        id="numberAnswer"
+                        type="number"
+                        placeholder="Enter default number"
+                        value={numberAnswer}
+                        onChange={(e) => setNumberAnswer(e.target.value)}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    {answerChoices.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Default Unit</Label>
+                        <RadioGroup
+                          value={numberUnit}
+                          onValueChange={setNumberUnit}
+                          disabled={isSubmitting}
+                        >
+                          {answerChoices.map((unit) => (
+                            <div key={unit} className="flex items-center space-x-2">
+                              <RadioGroupItem value={unit} id={`number-unit-${unit}`} />
+                              <Label htmlFor={`number-unit-${unit}`} className="font-normal cursor-pointer">
+                                {unit}
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Number Range Field */}
+                {initialValues.field === 'numberRange' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="rangeFrom">From</Label>
+                        <Input
+                          id="rangeFrom"
+                          type="number"
+                          placeholder="From"
+                          value={rangeFrom}
+                          onChange={(e) => setRangeFrom(e.target.value)}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="rangeTo">To</Label>
+                        <Input
+                          id="rangeTo"
+                          type="number"
+                          placeholder="To"
+                          value={rangeTo}
+                          onChange={(e) => setRangeTo(e.target.value)}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </div>
+                    {answerChoices.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Default Unit</Label>
+                        <RadioGroup
+                          value={rangeUnit}
+                          onValueChange={setRangeUnit}
+                          disabled={isSubmitting}
+                        >
+                          {answerChoices.map((unit) => (
+                            <div key={unit} className="flex items-center space-x-2">
+                              <RadioGroupItem value={unit} id={`range-unit-${unit}`} />
+                              <Label htmlFor={`range-unit-${unit}`} className="font-normal cursor-pointer">
+                                {unit}
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <DialogFooter>
               <Button
