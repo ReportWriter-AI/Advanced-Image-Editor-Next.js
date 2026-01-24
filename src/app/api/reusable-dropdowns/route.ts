@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
         location: [],
         serviceCategory: '',
         defaultDefectColor: '#FF8C00',
+        defaultAnnotationTool: 'arrow',
       });
     }
 
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
       location: locationArray,
       serviceCategory: dropdown.serviceCategory || '',
       defaultDefectColor: dropdown.defaultDefectColor || '#FF8C00',
+      defaultAnnotationTool: dropdown.defaultAnnotationTool || 'arrow',
     });
   } catch (error: any) {
     console.error('ReusableDropdown GET error:', error);
@@ -72,7 +74,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { foundation, role, referralSources, location, serviceCategory, defaultDefectColor } = body;
+    const { foundation, role, referralSources, location, serviceCategory, defaultDefectColor, defaultAnnotationTool } = body;
 
     // Validate that all fields are strings
     if (foundation !== undefined && typeof foundation !== 'string') {
@@ -103,6 +105,14 @@ export async function PUT(request: NextRequest) {
     }
     if (defaultDefectColor !== undefined && typeof defaultDefectColor !== 'string') {
       return NextResponse.json({ error: 'DefaultDefectColor must be a string' }, { status: 400 });
+    }
+    if (defaultAnnotationTool !== undefined) {
+      if (typeof defaultAnnotationTool !== 'string') {
+        return NextResponse.json({ error: 'DefaultAnnotationTool must be a string' }, { status: 400 });
+      }
+      if (!['arrow', 'circle', 'square'].includes(defaultAnnotationTool)) {
+        return NextResponse.json({ error: 'DefaultAnnotationTool must be one of: arrow, circle, square' }, { status: 400 });
+      }
     }
 
     // Get existing dropdown to preserve values for fields not being updated
@@ -175,6 +185,14 @@ export async function PUT(request: NextRequest) {
       updateData.defaultDefectColor = '#FF8C00';
     }
 
+    if (defaultAnnotationTool !== undefined) {
+      updateData.defaultAnnotationTool = defaultAnnotationTool;
+    } else if (existing) {
+      updateData.defaultAnnotationTool = existing.defaultAnnotationTool || 'arrow';
+    } else {
+      updateData.defaultAnnotationTool = 'arrow';
+    }
+
     // Set createdBy only on creation
     if (!existing) {
       updateData.createdBy = currentUser._id;
@@ -220,6 +238,7 @@ export async function PUT(request: NextRequest) {
       location: locationArray,
       serviceCategory: dropdown.serviceCategory || '',
       defaultDefectColor: dropdown.defaultDefectColor || '#FF8C00',
+      defaultAnnotationTool: dropdown.defaultAnnotationTool || 'arrow',
     });
   } catch (error: any) {
     console.error('ReusableDropdown PUT error:', error);

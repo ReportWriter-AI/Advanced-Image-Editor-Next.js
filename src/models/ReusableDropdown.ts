@@ -7,6 +7,7 @@ export interface IReusableDropdown extends Document {
   location: Array<{ id: string; value: string }>;
   serviceCategory: string;
   defaultDefectColor: string;
+  defaultAnnotationTool: string;
   company: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   updatedBy?: mongoose.Types.ObjectId;
@@ -53,6 +54,11 @@ const ReusableDropdownSchema = new Schema<IReusableDropdown>(
     defaultDefectColor: {
       type: String,
       default: '#FF8C00',
+      trim: true,
+    },
+    defaultAnnotationTool: {
+      type: String,
+      default: 'arrow',
       trim: true,
     },
     company: {

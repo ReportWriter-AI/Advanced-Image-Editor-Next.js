@@ -178,11 +178,11 @@ export default function ImageEditorModal({
     window.dispatchEvent(squareEvent);
   }, []);
 
-  // Fetch default defect color when modal opens
+  // Fetch default defect color and annotation tool when modal opens
   useEffect(() => {
     if (!isOpen) return;
     
-    const fetchDefaultColor = async () => {
+    const fetchDefaults = async () => {
       try {
         const response = await fetch('/api/reusable-dropdowns', {
           credentials: 'include',
@@ -192,17 +192,24 @@ export default function ImageEditorModal({
           const color = data.defaultDefectColor || '#FF8C00';
           setSelectedColor(color);
           dispatchColorToAllTools(color);
+          
+          // Set default annotation tool
+          const tool = data.defaultAnnotationTool || 'arrow';
+          if (tool === 'arrow' || tool === 'circle' || tool === 'square') {
+            setActiveMode(tool);
+          }
         }
       } catch (error) {
-        console.error('Failed to fetch default defect color:', error);
-        // Use fallback
+        console.error('Failed to fetch defaults:', error);
+        // Use fallbacks
         const fallbackColor = '#FF8C00';
         setSelectedColor(fallbackColor);
         dispatchColorToAllTools(fallbackColor);
+        setActiveMode('arrow');
       }
     };
     
-    fetchDefaultColor();
+    fetchDefaults();
   }, [isOpen, dispatchColorToAllTools]);
 
   // Close dropdowns when clicking outside
@@ -341,7 +348,7 @@ export default function ImageEditorModal({
     setIsThreeSixty(false);
     setCurrentAnnotations([]);
     setSelectedLocation2('');
-    setActiveMode('none');
+    // Keep activeMode selected so annotation tool remains active after submit
     setHasCropFrame(false);
     setOpenDropdown(null);
     setPreloadedAnnotations(undefined);

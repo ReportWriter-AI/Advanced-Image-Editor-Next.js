@@ -10,6 +10,7 @@ export interface ReusableDropdown {
   location: Array<{ id: string; value: string }>;
   serviceCategory: string;
   defaultDefectColor: string;
+  defaultAnnotationTool: string;
 }
 
 export const useReusableDropdownsQuery = () => 

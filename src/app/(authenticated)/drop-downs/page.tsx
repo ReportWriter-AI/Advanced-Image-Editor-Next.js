@@ -19,6 +19,7 @@ interface DropdownData {
   referralSources: string
   serviceCategory: string
   defaultDefectColor: string
+  defaultAnnotationTool: string
 }
 
 export default function ReusableDropdownsPage() {
@@ -27,6 +28,7 @@ export default function ReusableDropdownsPage() {
   const [referralSources, setReferralSources] = useState<string>("")
   const [serviceCategory, setServiceCategory] = useState<string>("")
   const [defaultDefectColor, setDefaultDefectColor] = useState<string>("")
+  const [defaultAnnotationTool, setDefaultAnnotationTool] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({
@@ -35,6 +37,7 @@ export default function ReusableDropdownsPage() {
     referralSources: { status: "idle" },
     serviceCategory: { status: "idle" },
     defaultDefectColor: { status: "idle" },
+    defaultAnnotationTool: { status: "idle" },
   })
   const initializedRef = useRef(false)
   const lastSavedRef = useRef<DropdownData>({
@@ -43,6 +46,7 @@ export default function ReusableDropdownsPage() {
     referralSources: "",
     serviceCategory: "",
     defaultDefectColor: "",
+    defaultAnnotationTool: "",
   })
   const saveTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
 
@@ -67,6 +71,7 @@ export default function ReusableDropdownsPage() {
       setReferralSources(data.referralSources || "")
       setServiceCategory(data.serviceCategory || "")
       setDefaultDefectColor(data.defaultDefectColor || "#FF8C00")
+      setDefaultAnnotationTool(data.defaultAnnotationTool || "arrow")
 
       lastSavedRef.current = {
         foundation: data.foundation || "",
@@ -74,6 +79,7 @@ export default function ReusableDropdownsPage() {
         referralSources: data.referralSources || "",
         serviceCategory: data.serviceCategory || "",
         defaultDefectColor: data.defaultDefectColor || "#FF8C00",
+        defaultAnnotationTool: data.defaultAnnotationTool || "arrow",
       }
 
       initializedRef.current = true
@@ -160,6 +166,8 @@ export default function ReusableDropdownsPage() {
         setServiceCategory(value)
       } else if (field === "defaultDefectColor") {
         setDefaultDefectColor(value)
+      } else if (field === "defaultAnnotationTool") {
+        setDefaultAnnotationTool(value)
       }
 
       // Clear existing timer for this field
@@ -328,6 +336,58 @@ export default function ReusableDropdownsPage() {
               </div>
               {saveStates.defaultDefectColor.status === "error" && saveStates.defaultDefectColor.message && (
                 <p className="text-sm text-destructive">{saveStates.defaultDefectColor.message}</p>
+              )}
+            </div>
+
+            {/* Default Annotation Tool Field */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Default Annotation Tool</Label>
+                {getStatusIcon(saveStates.defaultAnnotationTool)}
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleFieldChange("defaultAnnotationTool", "arrow")}
+                  className={`flex items-center justify-center w-14 h-14 rounded border-2 transition-all hover:scale-110 cursor-pointer ${
+                    defaultAnnotationTool === "arrow"
+                      ? "border-primary ring-2 ring-primary ring-offset-2 bg-primary/10"
+                      : "border-gray-300 hover:border-gray-400"
+                  }`}
+                  title="Arrow"
+                  aria-label="Select arrow tool"
+                >
+                  <i className="fas fa-arrow-right text-lg"></i>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFieldChange("defaultAnnotationTool", "circle")}
+                  className={`flex items-center justify-center w-14 h-14 rounded border-2 transition-all hover:scale-110 cursor-pointer ${
+                    defaultAnnotationTool === "circle"
+                      ? "border-primary ring-2 ring-primary ring-offset-2 bg-primary/10"
+                      : "border-gray-300 hover:border-gray-400"
+                  }`}
+                  title="Circle"
+                  aria-label="Select circle tool"
+                >
+                  <i className="far fa-circle thick-circle text-lg"></i>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFieldChange("defaultAnnotationTool", "square")}
+                  className={`flex items-center justify-center w-14 h-14 rounded border-2 transition-all hover:scale-110 cursor-pointer ${
+                    defaultAnnotationTool === "square"
+                      ? "border-primary ring-2 ring-primary ring-offset-2 bg-primary/10"
+                      : "border-gray-300 hover:border-gray-400"
+                  }`}
+                  title="Square"
+                  aria-label="Select square tool"
+                >
+                  <i className="far fa-square thick-square text-lg"></i>
+                </button>
+              </div>
+              {saveStates.defaultAnnotationTool.status === "error" && saveStates.defaultAnnotationTool.message && (
+                <p className="text-sm text-destructive">{saveStates.defaultAnnotationTool.message}</p>
               )}
             </div>
           </CardContent>

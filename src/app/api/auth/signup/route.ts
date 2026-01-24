@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
       location: [],
       serviceCategory: SERVICE_CATEGORIES.join(", "),
       defaultDefectColor: "#FF8C00",
+      defaultAnnotationTool: "arrow",
     });
 
     await sendVerificationEmail(email, emailVerificationToken);
