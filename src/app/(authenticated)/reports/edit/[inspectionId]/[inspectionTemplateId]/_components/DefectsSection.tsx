@@ -104,7 +104,41 @@ export function DefectsSection({
       return;
     }
 
-    deleteDefectMutation.mutate(defectId);
+    // Store the defect and its index for potential rollback
+    const defectToDelete = defects.find(d => d._id === defectId);
+    if (!defectToDelete) return;
+    const originalIndex = defects.findIndex(d => d._id === defectId);
+
+    // Optimistic update: immediately remove from UI
+    setDefects(prev => prev.filter(d => d._id !== defectId));
+
+    // If the defect was being edited, cancel editing
+    if (editingId === defectId) {
+      cancelEditing();
+    }
+
+    // Call the mutation with callbacks
+    deleteDefectMutation.mutate(defectId, {
+      onSuccess: () => {
+        // State is already updated, optionally refetch to ensure sync with server
+        fetchDefects();
+      },
+      onError: (error) => {
+        // Revert optimistic update on error
+        setDefects(prev => {
+          // Restore the defect in its original position
+          if (originalIndex === -1) {
+            // If we can't find the original position, just add it to the end
+            return [...prev, defectToDelete];
+          }
+          // Insert at original position
+          const newDefects = [...prev];
+          newDefects.splice(originalIndex, 0, defectToDelete);
+          return newDefects;
+        });
+        console.error('Failed to delete defect:', error);
+      },
+    });
   };
 
   const filterDefects = (defects: Defect[], query: string): Defect[] => {
@@ -177,10 +211,40 @@ export function DefectsSection({
     return baseCost * imageCount;
   };
 
-  const handleUpdateDefect = (defectId: string, updates: Partial<Defect>) => {
+  const handleUpdateDefect = async (defectId: string, updates: Partial<Defect>) => {
+    // Update local state immediately for UI feedback
     setDefects(prev => prev.map(d => d._id === defectId ? { ...d, ...updates } : d));
     if (editingId === defectId) {
       setEditedValues(prev => ({ ...prev, ...updates }));
+    }
+
+    // Get the defect to access inspection_id
+    const defect = defects.find(d => d._id === defectId);
+    if (!defect) {
+      console.error('Defect not found for update');
+      return;
+    }
+
+    // Persist changes to database
+    try {
+      const response = await fetch(`/api/defects/${defectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inspection_id: defect.inspection_id,
+          ...updates,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Failed to update defect on server:', errorData.error);
+      } else {
+        // Refetch defect data after successful update
+        await fetchDefects();
+      }
+    } catch (error) {
+      console.error('Error updating defect:', error);
     }
   };
 
