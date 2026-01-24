@@ -87,8 +87,16 @@ export function DefectsSection({
 
   const handleImageEditorSave = async (result: any) => {
     console.log('📥 Image editor save result:', result);
-    setImageEditorOpen(false);
-    setEditorProps({}); // Clear editor props to ensure fresh data on next open
+    
+    // Refresh defects list after save
+    await fetchDefects();
+    
+    // Only close modal if not in create mode
+    // In create mode, modal stays open and props are preserved for creating multiple defects
+    if (editorMode !== 'create') {
+      setImageEditorOpen(false);
+      setEditorProps({}); // Clear editor props to ensure fresh data on next open
+    }
   };
 
   const handleDeleteDefect = async (defectId: string) => {
