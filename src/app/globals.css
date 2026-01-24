@@ -2947,6 +2947,13 @@ body div.submit-section div.submit-controls div.location-button-container button
   color: white !important;
 }
 
+/* React Select Menu Z-Index Fix */
+/* Ensure dropdown menu appears above other content */
+.react-select__menu,
+.react-select-container .react-select__menu {
+  z-index: 9999 !important;
+}
+
 /* TinyMCE Z-Index Fix for Dialogs */
 /* Ensure TinyMCE editor and dropdowns appear above Dialog components (z-50) */
 /* Dialog uses z-50 (50), so TinyMCE needs much higher values */

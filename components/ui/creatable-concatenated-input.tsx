@@ -115,6 +115,8 @@ export function CreatableConcatenatedInput({
         classNamePrefix="react-select"
         isDisabled={disabled}
         isClearable={false}
+        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+        menuPosition="fixed"
       />
       <Input
         type="text"
