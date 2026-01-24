@@ -100,8 +100,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const [lines, setLines] = useState<Line[]>([]);
   const [currentLine, setCurrentLine] = useState<Point[] | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingColor, setDrawingColor] = useState('#d63636');
-  const [synchronizedColor, setSynchronizedColor] = useState('#d63636'); // Global synchronized color
+  const [drawingColor, setDrawingColor] = useState('#FF8C00');
+  const [synchronizedColor, setSynchronizedColor] = useState('#FF8C00'); // Global synchronized color
   const [brushSize, setBrushSize] = useState(3);
   const [currentArrowSize, setCurrentArrowSize] = useState(3);
   
@@ -121,8 +121,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   const [interactionMode, setInteractionMode] = useState<'move' | 'rotate' | 'resize' | null>(null);
   
   // Circle and square states
-  const [circleColor, setCircleColor] = useState('#d63636');
-  const [squareColor, setSquareColor] = useState('#d63636');
+  const [circleColor, setCircleColor] = useState('#FF8C00');
+  const [squareColor, setSquareColor] = useState('#FF8C00');
   // Unified thickness for circle/square strokes (fixed default of 3)
   const [shapeThickness, setShapeThickness] = useState(3);
   const [defaultThickness, setDefaultThickness] = useState(3);
@@ -586,6 +586,30 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
       window.removeEventListener('setCircleThickness', handleThicknessChange as EventListener);
       window.removeEventListener('setSquareThickness', handleThicknessChange as EventListener);
     };
+  }, []);
+
+  // Fetch default defect color when component mounts
+  useEffect(() => {
+    const fetchDefaultColor = async () => {
+      try {
+        const response = await fetch('/api/reusable-dropdowns', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const color = data.defaultDefectColor || '#FF8C00';
+          setDrawingColor(color);
+          setSynchronizedColor(color);
+          setCircleColor(color);
+          setSquareColor(color);
+        }
+      } catch (error) {
+        console.error('Failed to fetch default defect color:', error);
+        // Use fallback - already set as default in useState
+      }
+    };
+    
+    fetchDefaultColor();
   }, []);
 
   // Keep slider in sync with the selected shape's thickness

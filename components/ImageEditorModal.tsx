@@ -79,6 +79,9 @@ interface ImageEditorModalProps {
   originalImageUrl?: string;
 }
 
+ // Color options for all tools (arrow, circle, square)
+export const toolColors = ['#d63636', '#FF8C00', '#0066CC', '#4CBB17', '#800080'];
+
 export default function ImageEditorModal({
   isOpen,
   onClose,
@@ -141,7 +144,7 @@ export default function ImageEditorModal({
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [selectedColor, setSelectedColor] = useState('#d63636');
+  const [selectedColor, setSelectedColor] = useState('#FF8C00');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
@@ -202,6 +205,57 @@ export default function ImageEditorModal({
     };
     fetchParentDefect();
   }, [isOpen, isAdditionalLocationMode, isEditAdditionalMode, defectId, inspectionId, editIndex]);
+
+  // Sync section and subsection props with state for create mode
+  useEffect(() => {
+    if (!isOpen || mode !== 'create') return;
+    
+    // Only sync if props are provided and we're in create mode
+    if (sectionName !== undefined) {
+      setSelectedLocation(sectionName || '');
+    }
+    if (subsectionName !== undefined) {
+      setSelectedSubLocation(subsectionName || '');
+    }
+  }, [isOpen, mode, sectionName, subsectionName]);
+
+  // Fetch default defect color when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const fetchDefaultColor = async () => {
+      try {
+        const response = await fetch('/api/reusable-dropdowns', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const color = data.defaultDefectColor || '#FF8C00';
+          setSelectedColor(color);
+          // Dispatch to ImageEditor to sync colors
+          const arrowEvent = new CustomEvent('setArrowColor', { detail: color });
+          const circleEvent = new CustomEvent('setCircleColor', { detail: color });
+          const squareEvent = new CustomEvent('setSquareColor', { detail: color });
+          window.dispatchEvent(arrowEvent);
+          window.dispatchEvent(circleEvent);
+          window.dispatchEvent(squareEvent);
+        }
+      } catch (error) {
+        console.error('Failed to fetch default defect color:', error);
+        // Use fallback
+        const fallbackColor = '#FF8C00';
+        setSelectedColor(fallbackColor);
+        const arrowEvent = new CustomEvent('setArrowColor', { detail: fallbackColor });
+        const circleEvent = new CustomEvent('setCircleColor', { detail: fallbackColor });
+        const squareEvent = new CustomEvent('setSquareColor', { detail: fallbackColor });
+        window.dispatchEvent(arrowEvent);
+        window.dispatchEvent(circleEvent);
+        window.dispatchEvent(squareEvent);
+      }
+    };
+    
+    fetchDefaultColor();
+  }, [isOpen]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -613,6 +667,11 @@ export default function ImageEditorModal({
 
     // Original defect analysis flow (create mode)
     if (mode === 'create') {
+      console.log({
+        selectedLocation,
+        selectedSubLocation,
+        selectedLocation2
+      }, "===========================")
       if (!selectedLocation || !selectedSubLocation || !selectedLocation2) {
         toast.error('Please select all required location fields.');
         return;
@@ -778,8 +837,7 @@ export default function ImageEditorModal({
     }
   };
 
-  // Color options for all tools (arrow, circle, square)
-  const toolColors = ['#d63636', '#FF8C00', '#0066CC', '#4CBB17', '#800080'];
+  
 
   // Function to handle color selection for all tools
   const handleColorSelection = (color: string) => {

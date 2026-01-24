@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     // Ensure default inspection sections for the company
     //@ts-ignore
-    await ensureDefaultInspectionSectionsForCompany(company._id);
+    // await ensureDefaultInspectionSectionsForCompany(company._id);
 
     await ReusableDropdown.create({
       company: company._id,
@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
       referralSources: 'Real Estate Agent, Previous Client, Friend/Family Member, Lender, Google Search, Social Media, Our Website, Google Ad',
       location: [],
       serviceCategory: SERVICE_CATEGORIES.join(", "),
+      defaultDefectColor: "#FF8C00",
     });
 
     await sendVerificationEmail(email, emailVerificationToken);

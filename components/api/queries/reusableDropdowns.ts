@@ -9,6 +9,7 @@ export interface ReusableDropdown {
   referralSources: string;
   location: Array<{ id: string; value: string }>;
   serviceCategory: string;
+  defaultDefectColor: string;
 }
 
 export const useReusableDropdownsQuery = () => 

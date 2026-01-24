@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
         referralSources: '',
         location: [],
         serviceCategory: '',
+        defaultDefectColor: '#FF8C00',
       });
     }
 
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest) {
       referralSources: dropdown.referralSources || '',
       location: locationArray,
       serviceCategory: dropdown.serviceCategory || '',
+      defaultDefectColor: dropdown.defaultDefectColor || '#FF8C00',
     });
   } catch (error: any) {
     console.error('ReusableDropdown GET error:', error);
@@ -70,7 +72,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { foundation, role, referralSources, location, serviceCategory } = body;
+    const { foundation, role, referralSources, location, serviceCategory, defaultDefectColor } = body;
 
     // Validate that all fields are strings
     if (foundation !== undefined && typeof foundation !== 'string') {
@@ -98,6 +100,9 @@ export async function PUT(request: NextRequest) {
     }
     if (serviceCategory !== undefined && typeof serviceCategory !== 'string') {
       return NextResponse.json({ error: 'ServiceCategory must be a string' }, { status: 400 });
+    }
+    if (defaultDefectColor !== undefined && typeof defaultDefectColor !== 'string') {
+      return NextResponse.json({ error: 'DefaultDefectColor must be a string' }, { status: 400 });
     }
 
     // Get existing dropdown to preserve values for fields not being updated
@@ -162,6 +167,14 @@ export async function PUT(request: NextRequest) {
       updateData.serviceCategory = '';
     }
 
+    if (defaultDefectColor !== undefined) {
+      updateData.defaultDefectColor = defaultDefectColor;
+    } else if (existing) {
+      updateData.defaultDefectColor = existing.defaultDefectColor || '#FF8C00';
+    } else {
+      updateData.defaultDefectColor = '#FF8C00';
+    }
+
     // Set createdBy only on creation
     if (!existing) {
       updateData.createdBy = currentUser._id;
@@ -206,6 +219,7 @@ export async function PUT(request: NextRequest) {
       referralSources: dropdown.referralSources || '',
       location: locationArray,
       serviceCategory: dropdown.serviceCategory || '',
+      defaultDefectColor: dropdown.defaultDefectColor || '#FF8C00',
     });
   } catch (error: any) {
     console.error('ReusableDropdown PUT error:', error);

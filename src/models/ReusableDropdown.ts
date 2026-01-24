@@ -6,6 +6,7 @@ export interface IReusableDropdown extends Document {
   referralSources: string;
   location: Array<{ id: string; value: string }>;
   serviceCategory: string;
+  defaultDefectColor: string;
   company: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   updatedBy?: mongoose.Types.ObjectId;
@@ -47,6 +48,11 @@ const ReusableDropdownSchema = new Schema<IReusableDropdown>(
     serviceCategory: {
       type: String,
       default: '',
+      trim: true,
+    },
+    defaultDefectColor: {
+      type: String,
+      default: '#FF8C00',
       trim: true,
     },
     company: {

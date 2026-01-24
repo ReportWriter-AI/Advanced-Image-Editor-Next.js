@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { Loader2, AlertCircle } from "lucide-react"
+import { toolColors } from "@/components/ImageEditorModal"
 
 type SaveState = {
   status: "idle" | "saving" | "saved" | "error"
@@ -17,6 +18,7 @@ interface DropdownData {
   role: string
   referralSources: string
   serviceCategory: string
+  defaultDefectColor: string
 }
 
 export default function ReusableDropdownsPage() {
@@ -24,6 +26,7 @@ export default function ReusableDropdownsPage() {
   const [role, setRole] = useState<string>("")
   const [referralSources, setReferralSources] = useState<string>("")
   const [serviceCategory, setServiceCategory] = useState<string>("")
+  const [defaultDefectColor, setDefaultDefectColor] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({
@@ -31,6 +34,7 @@ export default function ReusableDropdownsPage() {
     role: { status: "idle" },
     referralSources: { status: "idle" },
     serviceCategory: { status: "idle" },
+    defaultDefectColor: { status: "idle" },
   })
   const initializedRef = useRef(false)
   const lastSavedRef = useRef<DropdownData>({
@@ -38,6 +42,7 @@ export default function ReusableDropdownsPage() {
     role: "",
     referralSources: "",
     serviceCategory: "",
+    defaultDefectColor: "",
   })
   const saveTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
 
@@ -61,12 +66,14 @@ export default function ReusableDropdownsPage() {
       setRole(data.role || "")
       setReferralSources(data.referralSources || "")
       setServiceCategory(data.serviceCategory || "")
+      setDefaultDefectColor(data.defaultDefectColor || "#FF8C00")
 
       lastSavedRef.current = {
         foundation: data.foundation || "",
         role: data.role || "",
         referralSources: data.referralSources || "",
         serviceCategory: data.serviceCategory || "",
+        defaultDefectColor: data.defaultDefectColor || "#FF8C00",
       }
 
       initializedRef.current = true
@@ -151,6 +158,8 @@ export default function ReusableDropdownsPage() {
         setReferralSources(value)
       } else if (field === "serviceCategory") {
         setServiceCategory(value)
+      } else if (field === "defaultDefectColor") {
+        setDefaultDefectColor(value)
       }
 
       // Clear existing timer for this field
@@ -158,10 +167,10 @@ export default function ReusableDropdownsPage() {
         clearTimeout(saveTimersRef.current[field])
       }
 
-      // Set new timer for auto-save (5 seconds)
+      // Set new timer for auto-save (2 seconds)
       saveTimersRef.current[field] = setTimeout(() => {
         handleAutoSave(field, value)
-      }, 5000)
+      }, 2000)
     },
     [handleAutoSave]
   )
@@ -291,6 +300,34 @@ export default function ReusableDropdownsPage() {
               />
               {saveStates.serviceCategory.status === "error" && saveStates.serviceCategory.message && (
                 <p className="text-sm text-destructive">{saveStates.serviceCategory.message}</p>
+              )}
+            </div>
+
+            {/* Default Defect Color Field */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Default Defect Color</Label>
+                {getStatusIcon(saveStates.defaultDefectColor)}
+              </div>
+              <div className="flex items-center gap-3">
+                {toolColors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => handleFieldChange("defaultDefectColor", color)}
+                    className={`w-12 h-12 rounded border-2 transition-all hover:scale-110 cursor-pointer ${
+                      defaultDefectColor === color 
+                        ? "border-primary ring-2 ring-primary ring-offset-2" 
+                        : "border-gray-300"
+                    }`}
+                    style={{ backgroundColor: color }}
+                    title={color}
+                    aria-label={`Select color ${color}`}
+                  />
+                ))}
+              </div>
+              {saveStates.defaultDefectColor.status === "error" && saveStates.defaultDefectColor.message && (
+                <p className="text-sm text-destructive">{saveStates.defaultDefectColor.message}</p>
               )}
             </div>
           </CardContent>
