@@ -9,6 +9,7 @@ import { CreatableConcatenatedInput } from '@/components/ui/creatable-concatenat
 import { updateDefectImage, addAdditionalLocationPhoto, updateAdditionalLocationPhoto } from './utils/defectOperations';
 import ColorDropdown from './ColorDropdown';
 import { useInspectionTemplateSectionsAndSubsectionsQuery } from '@/components/api/queries/inspectionTemplates';
+import { useReusableDropdownsQuery } from '@/components/api/queries/reusableDropdowns';
 
 interface ImageEditorModalProps {
   isOpen: boolean;
@@ -136,6 +137,9 @@ export default function ImageEditorModal({
   );
   const sections = (isPage && sectionsData?.data?.sections) || [];
 
+  // Fetch reusable dropdowns (defaults) when modal opens
+  const { data: dropdownsData, isError } = useReusableDropdownsQuery({ enabled: isOpen });
+
   // Filter sections and subsections
   const filteredSections = sections.filter((section: any) =>
     section.name.toLowerCase().includes(sectionSearch.toLowerCase())
@@ -236,53 +240,56 @@ export default function ImageEditorModal({
     window.dispatchEvent(squareEvent);
   }, []);
 
-  // Fetch default defect color and annotation tool when modal opens
+  // Sync reusable dropdowns data to component state when modal opens
   useEffect(() => {
     if (!isOpen) return;
     
-    const fetchDefaults = async () => {
-      try {
-        const response = await fetch('/api/reusable-dropdowns', {
-          credentials: 'include',
-        });
-        if (response.ok) {
-          const data = await response.json();
-          const color = data.defaultDefectColor || '#FF8C00';
-          setSelectedColor(color);
-          dispatchColorToAllTools(color);
-          
-          // Set default annotation tool
-          const tool = data.defaultAnnotationTool || 'arrow';
-          if (tool === 'arrow' || tool === 'circle' || tool === 'square') {
-            setActiveMode(tool);
-          }
-          
-          // Extract location data from API response
-          let locationValues: string[] = [];
-          if (Array.isArray(data.location)) {
-            locationValues = data.location.map((item: { id: string; value: string }) => item.value);
-          } else if (typeof data.location === 'string') {
-            // Backward compatibility: handle string format
-            locationValues = data.location.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0);
-          }
-          
-          // Convert to format needed by CreatableConcatenatedInput
-          const locationOptionsFormatted = locationValues.map(value => ({ value, label: value }));
-          setLocationOptions(locationOptionsFormatted);
-        }
-      } catch (error) {
-        console.error('Failed to fetch defaults:', error);
-        // Use fallbacks
-        const fallbackColor = '#FF8C00';
-        setSelectedColor(fallbackColor);
-        dispatchColorToAllTools(fallbackColor);
-        setActiveMode('arrow');
-        setLocationOptions([]);
-      }
-    };
+    if (isError) {
+      console.error('Failed to fetch defaults');
+      // Use fallbacks on error
+      const fallbackColor = '#FF8C00';
+      setSelectedColor(fallbackColor);
+      dispatchColorToAllTools(fallbackColor);
+      setActiveMode('arrow');
+      setLocationOptions([]);
+      return;
+    }
     
-    fetchDefaults();
-  }, [isOpen, dispatchColorToAllTools]);
+    if (dropdownsData?.data) {
+      const data = dropdownsData.data;
+      
+      // Set default defect color
+      const color = data.defaultDefectColor || '#FF8C00';
+      setSelectedColor(color);
+      dispatchColorToAllTools(color);
+      
+      // Set default annotation tool
+      const tool = data.defaultAnnotationTool || 'arrow';
+      if (tool === 'arrow' || tool === 'circle' || tool === 'square') {
+        setActiveMode(tool);
+      }
+      
+      // Extract location data from API response
+      let locationValues: string[] = [];
+      if (Array.isArray(data.location)) {
+        locationValues = data.location.map((item: { id: string; value: string }) => item.value);
+      } else if (typeof data.location === 'string') {
+        // Backward compatibility: handle string format
+        locationValues = data.location.split(',').map((item: string) => item.trim()).filter((item: string) => item.length > 0);
+      }
+      
+      // Convert to format needed by CreatableConcatenatedInput
+      const locationOptionsFormatted = locationValues.map(value => ({ value, label: value }));
+      setLocationOptions(locationOptionsFormatted);
+    } else {
+      // Use fallbacks when data is not available
+      const fallbackColor = '#FF8C00';
+      setSelectedColor(fallbackColor);
+      dispatchColorToAllTools(fallbackColor);
+      setActiveMode('arrow');
+      setLocationOptions([]);
+    }
+  }, [isOpen, dropdownsData, isError, dispatchColorToAllTools]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {

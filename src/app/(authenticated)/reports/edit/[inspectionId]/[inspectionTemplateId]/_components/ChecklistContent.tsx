@@ -61,6 +61,7 @@ import { ChecklistImageUpload, ChecklistImage } from "./ChecklistImageUpload";
 import { cn } from "@/lib/utils";
 import { DefectsSection } from "./DefectsSection";
 import { getChecklistFieldIcon } from "@/lib/checklist-utils";
+import DefectsList from "@/components/DefectsList";
 
 interface ChecklistContentProps {
   inspectionId: string;
@@ -1050,13 +1051,19 @@ export function ChecklistContent({
             </Card>
 
             {/* Defects Section */}
-            <DefectsSection
+            {/* <DefectsSection
               inspectionId={inspectionId}
               templateId={inspectionTemplateId}
               sectionId={sectionId}
               subsectionId={subsectionId || ""}
               subsectionName={subsectionName}
               sectionName={sectionName}
+            /> */}
+            <DefectsList
+              inspectionId={inspectionId}
+              templateId={inspectionTemplateId}
+              sectionId={sectionId}
+              subsectionId={subsectionId || ""}
             />
           </>
         )}

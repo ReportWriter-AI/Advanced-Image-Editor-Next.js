@@ -13,10 +13,11 @@ export interface ReusableDropdown {
   defaultAnnotationTool: string;
 }
 
-export const useReusableDropdownsQuery = () => 
+export const useReusableDropdownsQuery = (options?: { enabled?: boolean }) => 
   useQuery({
     queryKey: [apiRoutes.reusableDropdowns.get],
     queryFn: () => axios.get(apiRoutes.reusableDropdowns.get),
+    enabled: options?.enabled !== undefined ? options.enabled : true,
   })
 
 export const useUpdateReusableDropdownsMutation = () => {
