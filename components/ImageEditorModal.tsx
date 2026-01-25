@@ -439,15 +439,13 @@ export default function ImageEditorModal({
     setIsThreeSixty(false);
     setCurrentAnnotations([]);
     setSelectedLocation2('');
-    // Reset section/subsection dropdown states
+    // Reset section/subsection dropdown states (but preserve selected values)
     setShowSectionDropdown(false);
     setSectionSearch('');
-    setSelectedSection('');
-    setSelectedSectionId('');
+    // Preserve selectedSection and selectedSectionId - don't clear them
     setShowSubsectionDropdown(false);
     setSubsectionSearch('');
-    setSelectedSubsection('');
-    setSelectedSubsectionId('');
+    // Preserve selectedSubsection and selectedSubsectionId - don't clear them
     // Keep activeMode selected so annotation tool remains active after submit
     setHasCropFrame(false);
     setOpenDropdown(null);

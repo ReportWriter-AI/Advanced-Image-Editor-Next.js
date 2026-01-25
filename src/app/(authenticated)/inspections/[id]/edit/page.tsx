@@ -4891,7 +4891,7 @@ export default function InspectionEditPage() {
                             </Button>
                             <Button
                               size="sm"
-                              className="gap-2"
+                                className="gap-2 bg-[#6422C7] hover:bg-[#6422C7]/90"
                               onClick={() => window.open(`/image-editor?templateId=${template._id}&inspectionId=${inspectionId}`, '_blank')}
                             >
                               <Plus className="h-4 w-4" />
