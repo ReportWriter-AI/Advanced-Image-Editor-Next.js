@@ -4746,7 +4746,72 @@ export default function InspectionEditPage() {
             {/* Right Grid - Combined Card - 2/3 width on desktop */}
             <div className="space-y-6 lg:col-span-2 order-1 lg:order-2">
 
+              {/* Inspection Templates Section */}
+              <div className="p-4 border rounded-lg bg-muted/50">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-lg">Reports</h3>
+                </div>
+                {loadingTemplates ? (
+                  <div className="flex items-center justify-center py-8">
+                    <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
+                  </div>
+                ) : inspectionTemplates.length > 0 ? (
+                  <div className="space-y-3">
+                    {inspectionTemplates.map((template: any) => (
+                      <div key={template._id} className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-base mb-1 truncate">{template.name}</p>
+                            {template.reportDescription && (
+                              <p className="text-sm text-muted-foreground line-clamp-2">{template.reportDescription}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              className="gap-2"
+                            >
+                              <Link href={`/reports/${inspectionId}/${template._id}`}>
+                                <Eye className="h-4 w-4" />
+                                View
+                              </Link>
+                            </Button>
+                            <Button
+                              size="sm"
+                              asChild
+                              className="gap-2"
+                            >
+                              <Link href={`/reports/edit/${inspectionId}/${template._id}`}>
+                                <i className="fas fa-edit"></i>
+                                Edit
+                              </Link>
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="gap-2 bg-[#6422C7] hover:bg-[#6422C7]/90"
+                              onClick={() => window.open(`/image-editor?templateId=${template._id}&inspectionId=${inspectionId}`, '_blank')}
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add Defects
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                      <i className="fas fa-file-alt text-2xl text-muted-foreground"></i>
+                    </div>
+                    <p className="text-sm text-muted-foreground">No inspection templates found</p>
+                  </div>
+                )}
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Confirmation Buttons Section */}
                 {!inspectionDetails.confirmedInspection && !inspectionDetails.cancelInspection && (
                   <div className="p-4 border rounded-lg bg-muted/50 mb-6">
@@ -4846,71 +4911,9 @@ export default function InspectionEditPage() {
                     </Button>
                   </div>
                 )}
+              </div>
 
-                {/* Inspection Templates Section */}
-                <div className="p-4 border rounded-lg bg-muted/50">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-lg">Reports</h3>
-                  </div>
-                  {loadingTemplates ? (
-                    <div className="flex items-center justify-center py-8">
-                      <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
-                    </div>
-                  ) : inspectionTemplates.length > 0 ? (
-                    <div className="space-y-3">
-                      {inspectionTemplates.map((template: any) => (
-                        <div key={template._id} className="p-4 bg-card border rounded-lg hover:shadow-sm transition-shadow">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-base mb-1 truncate">{template.name}</p>
-                              {template.reportDescription && (
-                                <p className="text-sm text-muted-foreground line-clamp-2">{template.reportDescription}</p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 ml-4">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              asChild
-                              className="gap-2"
-                            >
-                              <Link href={`/reports/${inspectionId}/${template._id}`}>
-                                <Eye className="h-4 w-4" />
-                                View
-                              </Link>
-                            </Button>
-                            <Button
-                              size="sm"
-                              asChild
-                              className="gap-2"
-                            >
-                              <Link href={`/reports/edit/${inspectionId}/${template._id}`}>
-                                <i className="fas fa-edit"></i>
-                                Edit
-                              </Link>
-                            </Button>
-                            <Button
-                              size="sm"
-                                className="gap-2 bg-[#6422C7] hover:bg-[#6422C7]/90"
-                              onClick={() => window.open(`/image-editor?templateId=${template._id}&inspectionId=${inspectionId}`, '_blank')}
-                            >
-                              <Plus className="h-4 w-4" />
-                              Add Defects
-                            </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
-                        <i className="fas fa-file-alt text-2xl text-muted-foreground"></i>
-                      </div>
-                      <p className="text-sm text-muted-foreground">No inspection templates found</p>
-                    </div>
-                  )}
-                </div>
+             
 
               {/* Address Section */}
               <div className="p-4 border rounded-lg bg-muted/50">
