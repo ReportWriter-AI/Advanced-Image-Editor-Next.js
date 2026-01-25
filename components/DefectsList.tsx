@@ -457,9 +457,6 @@ export default function DefectsList({
 		return defect;
 	};
 
-	// Determine if filters should be shown
-	// Hide if hideFilter is true, or if both sectionId and subsectionId are provided as props
-	const shouldShowFilters = !hideFilter && !(propSectionId && propSubsectionId);
 
 	if (!inspectionId || !templateId) {
 		return (
@@ -473,7 +470,7 @@ export default function DefectsList({
 		<div className="container mx-auto py-6 space-y-4">
 			<Card>
 				<CardContent className="pt-6">
-					{shouldShowFilters && (
+					{!hideFilter && (
 						<>
 							<div className="flex items-center justify-between mb-6">
 								<div>

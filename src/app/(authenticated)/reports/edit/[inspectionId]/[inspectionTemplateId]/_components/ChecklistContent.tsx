@@ -1064,6 +1064,7 @@ export function ChecklistContent({
               templateId={inspectionTemplateId}
               sectionId={sectionId}
               subsectionId={subsectionId || ""}
+              hideFilter={true}
             />
           </>
         )}
