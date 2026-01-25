@@ -1310,7 +1310,7 @@ import ImageEditorModal from '@/components/ImageEditorModal';
 export default function ImageEditorPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-      <ImageEditorModal isOpen={true} onClose={() => {}} mode="create" inspectionId="123" defectId="456" isPage={true} />
+      <ImageEditorModal isOpen={true} onClose={() => {}} mode="create" isPage={true} />
     </Suspense>
   );
 }

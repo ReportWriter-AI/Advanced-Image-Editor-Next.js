@@ -14,7 +14,7 @@ interface ImageEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode: 'create' | 'defect-main' | 'additional-location' | 'edit-additional' | 'annotation';
-  inspectionId: string;
+  inspectionId?: string;
   imageUrl?: string;
   defectId?: string;
   editIndex?: number;
@@ -37,7 +37,7 @@ export default function ImageEditorModal({
   isOpen,
   onClose,
   mode="create",
-  inspectionId,
+  inspectionId = '',
   imageUrl,
   defectId,
   editIndex,

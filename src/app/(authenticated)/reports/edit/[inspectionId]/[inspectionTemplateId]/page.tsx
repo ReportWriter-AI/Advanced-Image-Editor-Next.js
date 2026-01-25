@@ -21,6 +21,7 @@ import {
   Search,
   Settings,
   Check,
+  Eye,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -540,10 +541,17 @@ export default function InspectionTemplateEditPage() {
             </div>
             <div className="flex gap-2 items-center justify-between">
               <div className="flex gap-2 flex-1">
+                <Link href={`/defects/${inspectionId}/${inspectionTemplateId}`}>
+                  <Button variant="outline" size="sm">
+                    <Eye className="mr-2 h-4 w-4" />
+                    View Defects
+                  </Button>
+                </Link>
                 <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm">
                   <PlusCircle className="mr-2 h-4 w-4" />
                   Add Section
                 </Button>
+            
                 <Popover open={settingsPopoverOpen} onOpenChange={setSettingsPopoverOpen}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="icon">
@@ -756,6 +764,12 @@ export default function InspectionTemplateEditPage() {
                       </div>
                       <div className="flex-col justify-end space-y-2">
                         <div className="flex justify-end gap-2 shrink-0">
+                              <Link href={`/defects/${inspectionId}/${inspectionTemplateId}`}>
+                                <Button variant="outline" size="sm">
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  View Defects
+                                </Button>
+                              </Link>
                           <Button onClick={() => setCreateSectionDialogOpen(true)} size="sm">
                             <PlusCircle className="mr-2 h-4 w-4" />
                             <span className="hidden sm:inline">Add Section</span>

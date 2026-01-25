@@ -105,6 +105,13 @@ export default {
 	defects: {
 		bySubsection: (params: { inspectionId: string; templateId: string; sectionId: string; subsectionId: string }) => 
 			`/defects/by-subsection?inspectionId=${params.inspectionId}&templateId=${params.templateId}&sectionId=${params.sectionId}&subsectionId=${params.subsectionId}`,
+		byTemplate: (params: { inspectionId: string; templateId: string; sectionId?: string; subsectionId?: string }) => {
+			const baseUrl = `/defects/by-template?inspectionId=${params.inspectionId}&templateId=${params.templateId}`;
+			const queryParams: string[] = [];
+			if (params.sectionId) queryParams.push(`sectionId=${params.sectionId}`);
+			if (params.subsectionId) queryParams.push(`subsectionId=${params.subsectionId}`);
+			return queryParams.length > 0 ? `${baseUrl}&${queryParams.join('&')}` : baseUrl;
+		},
 		update: (defectId: string) => `/defects/${defectId}`,
 		delete: (defectId: string) => `/defects/${defectId}`,
 	},

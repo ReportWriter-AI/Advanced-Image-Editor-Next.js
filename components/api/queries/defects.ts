@@ -51,6 +51,21 @@ export const useDefectsBySubsectionQuery = (params: {
     enabled: !!params.subsectionId,
   })
 
+export const useDefectsByTemplateQuery = (params: {
+  inspectionId: string;
+  templateId: string;
+  sectionId?: string;
+  subsectionId?: string;
+}) => 
+  useQuery({
+    queryKey: [apiRoutes.defects.byTemplate(params)],
+    queryFn: async () => {
+      const response = await axios.get(apiRoutes.defects.byTemplate(params));
+      return response.data;
+    },
+    enabled: !!params.inspectionId && !!params.templateId,
+  })
+
 export const useUpdateDefectMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -61,7 +76,7 @@ export const useUpdateDefectMutation = () => {
       queryClient.invalidateQueries({ 
         predicate: (query) => {
           const key = query.queryKey[0];
-          return typeof key === 'string' && key.includes('/defects/by-subsection');
+          return typeof key === 'string' && (key.includes('/defects/by-subsection') || key.includes('/defects/by-template'));
         }
       });
       toast.success('Defect updated successfully');
@@ -82,7 +97,7 @@ export const useDeleteDefectMutation = () => {
       queryClient.invalidateQueries({ 
         predicate: (query) => {
           const key = query.queryKey[0];
-          return typeof key === 'string' && key.includes('/defects/by-subsection');
+          return typeof key === 'string' && (key.includes('/defects/by-subsection') || key.includes('/defects/by-template'));
         }
       });
       toast.success('Defect deleted successfully');

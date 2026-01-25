@@ -7,7 +7,7 @@ import { Plus, Loader2, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import ImageEditorModal from '@/components/ImageEditorModal';
 import DefectCard from '@/src/app/(authenticated)/inspections/[id]/edit/_components/DefectCard';
-import { useDefectsBySubsectionQuery, useUpdateDefectMutation, useDeleteDefectMutation, type Defect } from '@/components/api/queries/defects';
+import { useDeleteDefectMutation, type Defect } from '@/components/api/queries/defects';
 import { useReusableDropdownsQuery } from '@/components/api/queries/reusableDropdowns';
 
 interface DefectsSectionProps {

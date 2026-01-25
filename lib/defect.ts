@@ -82,6 +82,30 @@ export async function getDefectsByTemplate(
   }).sort({ createdAt: -1 }).lean();
 }
 
+// Get defects by template with optional sectionId and subsectionId filters
+export async function getDefectsByTemplateWithFilters(
+  inspectionId: string,
+  templateId: string,
+  sectionId?: string,
+  subsectionId?: string
+) {
+  await dbConnect();
+  const query: any = {
+    inspection_id: new mongoose.Types.ObjectId(inspectionId),
+    templateId: new mongoose.Types.ObjectId(templateId),
+  };
+
+  // Add optional filters if provided
+  if (sectionId) {
+    query.sectionId = new mongoose.Types.ObjectId(sectionId);
+  }
+  if (subsectionId) {
+    query.subsectionId = new mongoose.Types.ObjectId(subsectionId);
+  }
+
+  return await Defect.find(query).sort({ createdAt: -1 }).lean();
+}
+
 
 export async function deleteDefect(defectId: string) {
   await dbConnect();
