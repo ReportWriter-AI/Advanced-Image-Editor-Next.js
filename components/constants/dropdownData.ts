@@ -32,20 +32,20 @@ export const SUBSECTIONS: { [key: string]: string[] } = {
   'Verified Functionality': ['AC Temperature Differential', 'Furnace Output Temperature', 'Oven Operation Temperature', 'Water Heater Output Temperature']
 };
 
-export const LOCATIONS = [
-  'Front of House',
-  'Back of House',
-  'Left Side of House',
-  'Right Side of House',
-  'Garage',
-  'Attic',
-  'Basement',
-  'Kitchen',
-  'Living Room',
-  'Master Bedroom',
-  'Bathroom',
-  'Exterior',
-  'Roof',
-  'Driveway',
-  'Yard'
-];
+// export const LOCATIONS = [
+//   'Front of House',
+//   'Back of House',
+//   'Left Side of House',
+//   'Right Side of House',
+//   'Garage',
+//   'Attic',
+//   'Basement',
+//   'Kitchen',
+//   'Living Room',
+//   'Master Bedroom',
+//   'Bathroom',
+//   'Exterior',
+//   'Roof',
+//   'Driveway',
+//   'Yard'
+// ];

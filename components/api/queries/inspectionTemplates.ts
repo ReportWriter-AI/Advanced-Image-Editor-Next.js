@@ -60,6 +60,13 @@ export const useInspectionTemplateQuery = (inspectionId: string, templateId: str
     enabled: !!inspectionId && !!templateId,
   })
 
+export const useInspectionTemplateSectionsAndSubsectionsQuery = (inspectionId: string, templateId: string) => 
+  useQuery({
+    queryKey: [apiRoutes.inspectionTemplates.getSectionsAndSubsections(inspectionId, templateId)],
+    queryFn: () => axios.get(apiRoutes.inspectionTemplates.getSectionsAndSubsections(inspectionId, templateId)),
+    enabled: !!inspectionId && !!templateId,
+  })
+
 export const useInspectionTemplatePublishValidationQuery = (inspectionId: string, templateId: string) => 
   useQuery({
     queryKey: [apiRoutes.inspectionTemplates.validatePublish(inspectionId, templateId)],

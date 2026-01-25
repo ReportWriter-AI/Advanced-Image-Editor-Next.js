@@ -71,6 +71,7 @@ export default {
 		validatePublish: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/validate-publish`,
 		completionStatus: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/completion-status`,
 		searchChecklists: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/search-checklists`,
+		getSectionsAndSubsections: (inspectionId: string, templateId: string) => `/inspections/${inspectionId}/templates/${templateId}/sections-subsections`,
 	},
 	// Inspection Template Sections
 	inspectionTemplateSections: {

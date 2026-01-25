@@ -4889,6 +4889,14 @@ export default function InspectionEditPage() {
                                 Edit
                               </Link>
                             </Button>
+                            <Button
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => window.open(`/image-editor?templateId=${template._id}&inspectionId=${inspectionId}`, '_blank')}
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add Defects
+                            </Button>
                             </div>
                           </div>
                         </div>
