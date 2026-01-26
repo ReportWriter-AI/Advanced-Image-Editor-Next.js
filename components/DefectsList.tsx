@@ -556,26 +556,7 @@ export default function DefectsList({
 									)}
 								</div>
 								<div className="flex items-center gap-2">
-									{selectedDefectIds.size > 1 && (
-										<Button
-											size="sm"
-											className="gap-2 bg-green-600 hover:bg-green-700"
-											onClick={handleMerge}
-											disabled={mergeDefectsMutation.isPending}
-										>
-											{mergeDefectsMutation.isPending ? (
-												<>
-													<Loader2 className="h-4 w-4 animate-spin mr-1" />
-													Merging...
-												</>
-											) : (
-												<>
-													<i className="fas fa-code-branch mr-1"></i>
-													Merge ({selectedDefectIds.size})
-												</>
-											)}
-										</Button>
-									)}
+			
 									<Button
 										size="sm"
 										className="gap-2 bg-[#6422C7] hover:bg-[#6422C7]/90"
@@ -630,6 +611,29 @@ export default function DefectsList({
 							</div>
 						</>
 				
+					)}
+
+					{selectedDefectIds.size > 1 && (
+						<div className="flex items-center justify-end mb-6">
+							<Button
+								size="sm"
+								className="gap-2 bg-green-600 hover:bg-green-700"
+								onClick={handleMerge}
+								disabled={mergeDefectsMutation.isPending}
+							>
+								{mergeDefectsMutation.isPending ? (
+									<>
+										<Loader2 className="h-4 w-4 animate-spin mr-1" />
+										Merging...
+									</>
+								) : (
+									<>
+										<i className="fas fa-code-branch mr-1"></i>
+										Merge ({selectedDefectIds.size})
+									</>
+								)}
+							</Button>
+						</div>
 					)}
 
 					{isLoading ? (

@@ -1128,33 +1128,35 @@ function DefectMediaSlider({
           />
         ) : null}
       </div>
-      <div className={styles.defectMediaSliderControls} role="group" aria-label="Image navigation">
-        <UiButton
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          aria-label="Previous image"
-          disabled={currentIndex === 0}
-          onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </UiButton>
-        <span className="tabular-nums text-sm text-muted-foreground min-w-[5ch]" aria-live="polite">
-          {currentIndex + 1} / {total}
-        </span>
-        <UiButton
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          aria-label="Next image"
-          disabled={currentIndex === total - 1}
-          onClick={() => setCurrentIndex((i) => Math.min(total - 1, i + 1))}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </UiButton>
-      </div>
+      {total > 1 && (
+        <div className={styles.defectMediaSliderControls} role="group" aria-label="Image navigation">
+          <UiButton
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            aria-label="Previous image"
+            disabled={currentIndex === 0}
+            onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </UiButton>
+          <span className="tabular-nums text-sm text-muted-foreground min-w-[5ch]" aria-live="polite">
+            {currentIndex + 1} / {total}
+          </span>
+          <UiButton
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            aria-label="Next image"
+            disabled={currentIndex === total - 1}
+            onClick={() => setCurrentIndex((i) => Math.min(total - 1, i + 1))}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </UiButton>
+        </div>
+      )}
       
       {/* Lightbox for full-screen image viewing - shows only the clicked image */}
       {lightboxImage && (
