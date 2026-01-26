@@ -1,7 +1,10 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IAdditionalImage {
-	url: string;
+	id: string;
+	image: string;
+	originalImage: string;
+	annotations: any[];
 	location: string;
 	isThreeSixty?: boolean;
 }
@@ -31,15 +34,20 @@ export interface IDefect extends Document {
 	additional_images?: IAdditionalImage[];
 	base_cost?: number;
 	annotations?: any[];
-	originalImage?: string;
+	originalImage: string;
+	deletedAt?: Date;
+	parentDefect?: mongoose.Types.ObjectId;
 	createdAt: Date;
 	updatedAt: Date;
 }
 
 const AdditionalImageSchema = new Schema<IAdditionalImage>(
 	{
-		url: { type: String, required: true, trim: true },
-		location: { type: String, required: true, trim: true },
+		id: { type: String, required: true, trim: true },
+		image: { type: String, required: true, trim: true },
+		originalImage: { type: String, trim: true },
+		annotations: { type: [Schema.Types.Mixed] as any, default: [] },
+		location: { type: String, trim: true },
 		isThreeSixty: { type: Boolean, default: false },
 	},
 	{ _id: false }
@@ -162,6 +170,14 @@ const DefectSchema = new Schema<IDefect>(
 		originalImage: {
 			type: String,
 			trim: true,
+		},
+		deletedAt: {
+			type: Date,
+		},
+		parentDefect: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'Defect',
+			index: true,
 		},
 	},
 	{

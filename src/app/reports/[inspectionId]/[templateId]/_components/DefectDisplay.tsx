@@ -71,11 +71,10 @@ const formatCurrency = (amount: number) => {
 };
 
 const calculateTotalCost = (defect: Defect): number => {
-  const materialCost = defect.base_cost || defect.material_total_cost || 0;
+  const materialCost = defect.material_total_cost || 0;
   const laborCost = (defect.labor_rate || 0) * (defect.hours_required || 0);
   const baseCost = materialCost + laborCost;
-  const imageCount = 1 + (defect.additional_images?.length || 0);
-  return baseCost * imageCount;
+  return baseCost;
 };
 
 const handleImgError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {

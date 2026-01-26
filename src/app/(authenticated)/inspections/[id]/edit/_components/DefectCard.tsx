@@ -6,6 +6,7 @@ import FileUpload from '@/components/FileUpload';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CreatableConcatenatedInput } from '@/components/ui/creatable-concatenated-input';
+import { useUnmergeDefectMutation } from '@/components/api/queries/defects';
 
 const ThreeSixtyViewer = dynamic(() => import('@/components/ThreeSixtyViewer'), { 
   ssr: false,
@@ -51,6 +52,8 @@ export interface Defect {
   base_cost?: number;
   annotations?: any[];
   originalImage?: string;
+  title: string;
+  parentDefect?: string;
 }
 
 interface InspectionDetails {
@@ -79,6 +82,8 @@ interface DefectCardProps {
   inspectionDetails: InspectionDetails;
   allLocationOptions: string[];
   displayDefect: Defect;
+  isChecked?: boolean;
+  onCheckChange?: (defectId: string, checked: boolean) => void;
   onStartEditing: (defect: Defect) => void;
   onCancelEditing: () => void;
   onDelete: (defectId: string) => void;
@@ -109,6 +114,8 @@ export default function DefectCard({
   inspectionDetails,
   allLocationOptions,
   displayDefect,
+  isChecked = false,
+  onCheckChange,
   onStartEditing,
   onCancelEditing,
   onDelete,
@@ -128,6 +135,7 @@ export default function DefectCard({
   const [bulkAddOpen, setBulkAddOpen] = useState<boolean>(false);
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
   const [bulkSaving, setBulkSaving] = useState<boolean>(false);
+  const unmergeMutation = useUnmergeDefectMutation();
 
   const handleBulkAdd = async () => {
     if (!editingId) return;
@@ -157,7 +165,25 @@ export default function DefectCard({
   return (
     <div className="defect-card border rounded-lg p-6">
       <div className="defect-header flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold">Defect #{index + 1}</h3>
+        <div className="flex items-center gap-3">
+          {onCheckChange && !defect.parentDefect && (
+            <input
+              type="checkbox"
+              checked={isChecked}
+              onChange={(e) => onCheckChange(defect._id, e.target.checked)}
+              className="w-4 h-4 cursor-pointer"
+              aria-label={`Select defect ${defect.title}`}
+            />
+          )}
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold">{defect.title}</h3>
+            {defect.parentDefect && (
+              <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                Merged
+              </span>
+            )}
+          </div>
+        </div>
         <div className="defect-actions flex items-center gap-2">
           {!isEditing && (
             <button
@@ -208,6 +234,20 @@ export default function DefectCard({
               <i className="fas fa-trash"></i>
             )}
           </button>
+          {defect.parentDefect && (
+            <button
+              className="unmerge-defect-btn px-3 py-2 rounded-md bg-orange-600 text-white hover:bg-orange-700"
+              onClick={() => unmergeMutation.mutate(defect._id)}
+              disabled={unmergeMutation.isPending}
+              title="Unmerge defect"
+            >
+              {unmergeMutation.isPending ? (
+                <i className="fas fa-spinner fa-spin"></i>
+              ) : (
+                <i className="fas fa-unlink"></i>
+              )}
+            </button>
+          )}
         </div>
       </div>
 

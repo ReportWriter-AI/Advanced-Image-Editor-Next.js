@@ -8,7 +8,7 @@ import { Plus, Loader2 } from 'lucide-react';
 import ReactSelect from 'react-select';
 import ImageEditorModal from '@/components/ImageEditorModal';
 import DefectCard from '@/src/app/(authenticated)/inspections/[id]/edit/_components/DefectCard';
-import { useDeleteDefectMutation, useDefectsByTemplateQuery, useUpdateDefectMutation, type Defect } from '@/components/api/queries/defects';
+import { useDeleteDefectMutation, useDefectsByTemplateQuery, useUpdateDefectMutation, useMergeDefectsMutation, type Defect } from '@/components/api/queries/defects';
 import { useReusableDropdownsQuery } from '@/components/api/queries/reusableDropdowns';
 import { useInspectionTemplateSectionsAndSubsectionsQuery } from '@/components/api/queries/inspectionTemplates';
 
@@ -73,6 +73,7 @@ export default function DefectsList({
 
 	const deleteDefectMutation = useDeleteDefectMutation();
 	const updateDefectMutation = useUpdateDefectMutation();
+	const mergeDefectsMutation = useMergeDefectsMutation();
 	const { data: dropdownsData } = useReusableDropdownsQuery();
 
 	// Local UI state
@@ -86,6 +87,7 @@ export default function DefectsList({
 	const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const editedValuesRef = useRef<Partial<Defect>>({});
 	const [autoSaving, setAutoSaving] = useState(false);
+	const [selectedDefectIds, setSelectedDefectIds] = useState<Set<string>>(new Set());
 
 	const handleImageEditorSave = async (result: any) => {
 		console.log('📥 Image editor save result:', result);
@@ -173,11 +175,10 @@ export default function DefectsList({
 	};
 
 	const calculateTotalCost = (defect: Defect): number => {
-		const materialCost = defect.base_cost || defect.material_total_cost || 0;
+		const materialCost = defect.material_total_cost || 0;
 		const laborCost = (defect.labor_rate || 0) * (defect.hours_required || 0);
 		const baseCost = materialCost + laborCost;
-		const imageCount = 1 + (defect.additional_images?.length || 0);
-		return baseCost * imageCount;
+		return baseCost;
 	};
 
 	const handleUpdateDefect = async (defectId: string, updates: Partial<Defect>) => {
@@ -283,6 +284,35 @@ export default function DefectsList({
 		const img = e.currentTarget;
 		if (img.src && !img.src.includes('/api/proxy-image')) {
 			img.src = getProxiedSrc(img.src);
+		}
+	};
+
+	const handleDefectCheck = (defectId: string, checked: boolean) => {
+		setSelectedDefectIds(prev => {
+			const newSet = new Set(prev);
+			if (checked) {
+				newSet.add(defectId);
+			} else {
+				newSet.delete(defectId);
+			}
+			return newSet;
+		});
+	};
+
+	const handleMerge = () => {
+		if (selectedDefectIds.size > 1 && templateId) {
+			const defectIdsArray = Array.from(selectedDefectIds);
+			mergeDefectsMutation.mutate(
+				{ defectIds: defectIdsArray, templateId },
+				{
+					onSuccess: () => {
+						// Clear selected defects after successful merge
+						setSelectedDefectIds(new Set());
+						// Refetch defects list
+						refetch();
+					},
+				}
+			);
 		}
 	};
 
@@ -479,14 +509,36 @@ export default function DefectsList({
 										<p className="text-sm text-muted-foreground">Filtered by section and subsection</p>
 									)}
 								</div>
-								<Button
-									size="sm"
-									className="gap-2 bg-[#6422C7] hover:bg-[#6422C7]/90"
-									onClick={() => window.open(`/image-editor?templateId=${templateId}&inspectionId=${inspectionId}`, '_blank')}
-								>
-									<Plus className="h-4 w-4" />
-									Add Defects
-								</Button>
+								<div className="flex items-center gap-2">
+									{selectedDefectIds.size > 1 && (
+										<Button
+											size="sm"
+											className="gap-2 bg-green-600 hover:bg-green-700"
+											onClick={handleMerge}
+											disabled={mergeDefectsMutation.isPending}
+										>
+											{mergeDefectsMutation.isPending ? (
+												<>
+													<Loader2 className="h-4 w-4 animate-spin mr-1" />
+													Merging...
+												</>
+											) : (
+												<>
+													<i className="fas fa-code-branch mr-1"></i>
+													Merge ({selectedDefectIds.size})
+												</>
+											)}
+										</Button>
+									)}
+									<Button
+										size="sm"
+										className="gap-2 bg-[#6422C7] hover:bg-[#6422C7]/90"
+										onClick={() => window.open(`/image-editor?templateId=${templateId}&inspectionId=${inspectionId}`, '_blank')}
+									>
+										<Plus className="h-4 w-4" />
+										Add Defects
+									</Button>
+								</div>
 							</div>
 
 							<div className="mb-6">
@@ -564,6 +616,8 @@ export default function DefectsList({
 										inspectionId={inspectionId}
 										inspectionDetails={{}}
 										allLocationOptions={allLocationOptions}
+										isChecked={selectedDefectIds.has(defect._id)}
+										onCheckChange={handleDefectCheck}
 										onStartEditing={startEditing}
 										onCancelEditing={cancelEditing}
 										onDelete={handleDeleteDefect}

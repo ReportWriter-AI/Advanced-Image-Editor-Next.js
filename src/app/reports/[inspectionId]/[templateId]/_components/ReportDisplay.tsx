@@ -241,7 +241,7 @@ function transformDefectsWithSectionData(
     const numbering = `${sectionNum}.${subsectionNum}.${defectNum}`;
     
     // Calculate total cost
-    const materialCost = defect.base_cost || defect.material_total_cost || 0;
+    const materialCost = defect.material_total_cost || 0;
     const laborRate = defect.labor_rate || 0;
     const hoursRequired = defect.hours_required || 0;
     const photoCount = 1 + (defect.additional_images?.length || 0);

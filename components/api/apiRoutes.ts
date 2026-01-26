@@ -114,6 +114,8 @@ export default {
 		},
 		update: (defectId: string) => `/defects/${defectId}`,
 		delete: (defectId: string) => `/defects/${defectId}`,
+		merge: '/defects/merge',
+		unmerge: '/defects/unmerge',
 	},
 	// Inspections
 	inspections: {

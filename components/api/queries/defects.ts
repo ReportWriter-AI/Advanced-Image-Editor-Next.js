@@ -34,6 +34,8 @@ export interface Defect {
     location: string;
     isThreeSixty?: boolean;
   }>;
+  title: string;
+  parentDefect?: string;
 }
 
 export const useDefectsBySubsectionQuery = (params: {
@@ -104,6 +106,50 @@ export const useDeleteDefectMutation = () => {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Failed to delete defect');
+      return Promise.reject(error);
+    },
+  })
+}
+
+export const useMergeDefectsMutation = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ defectIds, templateId }: { defectIds: string[]; templateId: string }) => 
+      axios.post(apiRoutes.defects.merge, { defectIds, templateId }),
+    onSuccess: (response) => {
+      // Invalidate all defects queries to refresh the list
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return typeof key === 'string' && (key.includes('/defects/by-subsection') || key.includes('/defects/by-template'));
+        }
+      });
+      toast.success('Defects merged successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to merge defects');
+      return Promise.reject(error);
+    },
+  })
+}
+
+export const useUnmergeDefectMutation = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (mergedDefectId: string) => 
+      axios.post(apiRoutes.defects.unmerge, { mergedDefectId }),
+    onSuccess: (response) => {
+      // Invalidate all defects queries to refresh the list
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return typeof key === 'string' && (key.includes('/defects/by-subsection') || key.includes('/defects/by-template'));
+        }
+      });
+      toast.success('Defect unmerged successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to unmerge defect');
       return Promise.reject(error);
     },
   })

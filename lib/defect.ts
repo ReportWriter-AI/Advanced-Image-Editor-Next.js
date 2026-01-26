@@ -26,10 +26,11 @@ export async function createDefect(data: {
   trade?: string;
   color?: string; // Add selected arrow color field
   isThreeSixty?: boolean; // Mark as 360° photo
-  additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>; // Multiple location photos (support 360)
+  additional_images?: Array<{ id: string; image: string; originalImage: string; annotations: any[]; location: string; isThreeSixty?: boolean }>; // Multiple location photos (support 360)
   base_cost?: number; // Initial AI-calculated cost (before multiplying by image count)
   annotations?: any[]; // Store annotation shapes (arrows, circles, squares, freehand) as JSON
   originalImage?: string; // Original image without annotations (for re-editing)
+  parentDefect?: string; // Reference to parent defect if this is a merged defect
 }) {
   await dbConnect();
 
@@ -40,6 +41,7 @@ export async function createDefect(data: {
     ...(data.templateId && { templateId: new mongoose.Types.ObjectId(data.templateId) }),
     ...(data.sectionId && { sectionId: new mongoose.Types.ObjectId(data.sectionId) }),
     ...(data.subsectionId && { subsectionId: new mongoose.Types.ObjectId(data.subsectionId) }),
+    ...(data.parentDefect && { parentDefect: new mongoose.Types.ObjectId(data.parentDefect) }),
   };
 
   const result = await Defect.create(defectData);
@@ -50,7 +52,11 @@ export async function createDefect(data: {
 export async function getDefectsByInspection(inspectionId: string) {
   await dbConnect();
   return await Defect.find({ 
-    inspection_id: new mongoose.Types.ObjectId(inspectionId) 
+    inspection_id: new mongoose.Types.ObjectId(inspectionId),
+    $or: [
+      { deletedAt: null },
+      { deletedAt: { $exists: false } }
+    ]
   }).lean();
 }
 
@@ -67,6 +73,10 @@ export async function getDefectsBySubsection(
     templateId: new mongoose.Types.ObjectId(templateId),
     sectionId: new mongoose.Types.ObjectId(sectionId),
     subsectionId: new mongoose.Types.ObjectId(subsectionId),
+    $or: [
+      { deletedAt: null },
+      { deletedAt: { $exists: false } }
+    ]
   }).sort({ createdAt: -1 }).lean();
 }
 
@@ -79,6 +89,10 @@ export async function getDefectsByTemplate(
   return await Defect.find({
     inspection_id: new mongoose.Types.ObjectId(inspectionId),
     templateId: new mongoose.Types.ObjectId(templateId),
+    $or: [
+      { deletedAt: null },
+      { deletedAt: { $exists: false } }
+    ]
   }).sort({ createdAt: -1 }).lean();
 }
 
@@ -93,6 +107,10 @@ export async function getDefectsByTemplateWithFilters(
   const query: any = {
     inspection_id: new mongoose.Types.ObjectId(inspectionId),
     templateId: new mongoose.Types.ObjectId(templateId),
+    $or: [
+      { deletedAt: null },
+      { deletedAt: { $exists: false } }
+    ]
   };
 
   // Add optional filters if provided
@@ -136,7 +154,7 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   severity?: string;
   trade?: string;
   isThreeSixty?: boolean;
-  additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>; // Multiple location photos (support 360)
+  additional_images?: Array<{ id: string; image: string; originalImage: string; annotations: any[]; location: string; isThreeSixty?: boolean }>; // Multiple location photos (support 360)
   base_cost?: number; // Base cost for calculation
   image?: string; // Allow updating the main image
   annotations?: any[]; // Update annotation shapes
@@ -144,7 +162,6 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
 }) {
   await dbConnect();
 
-  // Convert string IDs to ObjectIds if provided
   const updateData: any = { ...updates };
   if (updates.templateId) {
     updateData.templateId = new mongoose.Types.ObjectId(updates.templateId);
@@ -159,7 +176,7 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   const result = await Defect.updateOne(
     {
       _id: new mongoose.Types.ObjectId(defectId),
-      inspection_id: new mongoose.Types.ObjectId(inspectionId), // ensure it belongs to the right inspection
+      inspection_id: new mongoose.Types.ObjectId(inspectionId),
     },
     {
       $set: updateData,
