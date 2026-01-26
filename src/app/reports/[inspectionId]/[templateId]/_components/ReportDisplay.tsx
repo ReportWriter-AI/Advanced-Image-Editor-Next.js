@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/card";
 import {
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -17,6 +19,10 @@ import ThreeSixtyViewer from "@/components/ThreeSixtyViewer";
 import styles from "@/src/app/user-report/user-report.module.css";
 import { useMemo, useCallback, useState } from "react";
 import { useAuth } from "@/src/contexts/AuthContext";
+import Lightbox from "yet-another-react-lightbox";
+import { Zoom, Captions } from "yet-another-react-lightbox/plugins";
+import "yet-another-react-lightbox/styles.css";
+import "yet-another-react-lightbox/plugins/captions.css";
 import {
   Dialog,
   DialogContent,
@@ -50,7 +56,7 @@ interface Defect {
   narrative: string;
   color?: string;
   isThreeSixty?: boolean;
-  additional_images?: Array<{url: string; location: string; isThreeSixty?: boolean}>;
+  additional_images?: Array<{id: string; image: string; originalImage: string; annotations: any[]; location: string; isThreeSixty?: boolean}>;
   base_cost?: number;
   material_total_cost?: number;
   labor_rate?: number;
@@ -244,9 +250,9 @@ function transformDefectsWithSectionData(
     const materialCost = defect.material_total_cost || 0;
     const laborRate = defect.labor_rate || 0;
     const hoursRequired = defect.hours_required || 0;
-    const photoCount = 1 + (defect.additional_images?.length || 0);
+    // const photoCount = 1 + (defect.additional_images?.length || 0);
     const baseCost = defect.base_cost || (materialCost + (laborRate * hoursRequired));
-    const totalEstimatedCost = baseCost * photoCount;
+    const totalEstimatedCost = baseCost;
     
     // Create heading2: "Section - Subsection"
     const heading2 = `${sectionName} - ${subsectionName}`;
@@ -1033,6 +1039,146 @@ const formatCurrency = (amount: number) => {
   }
 };
 
+type SlideItem = { image: string; isThreeSixty: boolean; alt: string; location?: string };
+
+function DefectMediaSlider({
+  defect,
+  getProxiedSrc,
+  handleImgError,
+}: {
+  defect: EnrichedDefect;
+  getProxiedSrc: (url: string | null | undefined) => string;
+  handleImgError: (e: React.SyntheticEvent<HTMLImageElement, Event>) => void;
+}) {
+  const slides = useMemo<SlideItem[]>(() => {
+    const out: SlideItem[] = [];
+    if (defect.image) {
+      out.push({
+        image: defect.image,
+        isThreeSixty: !!defect.isThreeSixty,
+        alt: `Defect - ${defect.subsectionName || 'defect'}`,
+        location: defect.location,
+      });
+    }
+    (defect.additional_images || []).forEach((img, idx) => {
+      if (img.image) {
+        out.push({
+          image: img.image,
+          isThreeSixty: !!img.isThreeSixty,
+          alt: img.location ? `${img.location}` : `Additional photo ${idx + 2}`,
+          location: img.location,
+        });
+      }
+    });
+    return out;
+  }, [defect]);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string; title: string } | null>(null);
+  
+  const total = slides.length;
+  const slide = total ? slides[currentIndex] : null;
+
+  // Handle image click to open lightbox - show only the clicked image
+  const handleImageClick = useCallback(() => {
+    const currentSlide = slides[currentIndex];
+    if (currentSlide && !currentSlide.isThreeSixty) {
+      // Create single image object for lightbox
+      setLightboxImage({
+        src: getProxiedSrc(currentSlide.image),
+        alt: currentSlide.alt,
+        title: currentSlide.location || currentSlide.alt, // Location displayed at bottom
+      });
+      setLightboxOpen(true);
+    }
+  }, [currentIndex, slides, getProxiedSrc]);
+
+  if (total === 0) {
+    return (
+      <div className={styles.defectCompactMedia}>
+        <div className={styles.defectThumbPlaceholder}>No media</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.defectCompactMedia}>
+      <div>
+        {slide?.isThreeSixty ? (
+          <div className={styles.compactPanoramaWrapper}>
+            <ThreeSixtyViewer
+              imageUrl={getProxiedSrc(slide.image)}
+              alt={slide.alt}
+              width="100%"
+              height="100%"
+              location={slide.location ?? undefined}
+            />
+            <span className={styles.mediaBadge}>360°</span>
+          </div>
+        ) : slide ? (
+          <img
+            src={getProxiedSrc(slide.image)}
+            alt={slide.alt}
+            className={styles.defectThumb}
+            onError={handleImgError}
+            loading={currentIndex === 0 ? 'eager' : 'lazy'}
+            onClick={handleImageClick}
+            style={{ cursor: 'pointer' }}
+          />
+        ) : null}
+      </div>
+      <div className={styles.defectMediaSliderControls} role="group" aria-label="Image navigation">
+        <UiButton
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          aria-label="Previous image"
+          disabled={currentIndex === 0}
+          onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </UiButton>
+        <span className="tabular-nums text-sm text-muted-foreground min-w-[5ch]" aria-live="polite">
+          {currentIndex + 1} / {total}
+        </span>
+        <UiButton
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          aria-label="Next image"
+          disabled={currentIndex === total - 1}
+          onClick={() => setCurrentIndex((i) => Math.min(total - 1, i + 1))}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </UiButton>
+      </div>
+      
+      {/* Lightbox for full-screen image viewing - shows only the clicked image */}
+      {lightboxImage && (
+        <Lightbox
+          open={lightboxOpen}
+          close={() => {
+            setLightboxOpen(false);
+            setLightboxImage(null);
+          }}
+          slides={[{
+            src: lightboxImage.src,
+            title: lightboxImage.title, // Location displayed at bottom
+            description: lightboxImage.alt
+          }]}
+          plugins={[Zoom, Captions]}
+          styles={{
+            container: { backgroundColor: "rgba(0, 0, 0, 1)" }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function renderDefects(enrichedDefects: EnrichedDefect[]) {
 
   return (
@@ -1052,29 +1198,11 @@ function renderDefects(enrichedDefects: EnrichedDefect[]) {
             } as React.CSSProperties}
           >
             <div className={styles.defectCompactBody}>
-              <div className={styles.defectCompactMedia}>
-                {defect.isThreeSixty && defect.image ? (
-                  <div className={styles.compactPanoramaWrapper}>
-                    <ThreeSixtyViewer
-                      imageUrl={getProxiedSrc(defect.image)}
-                      alt={`360° view for ${defect.subsectionName || 'defect'}`}
-                      width="100%"
-                      height="100%"
-                    />
-                    <span className={styles.mediaBadge}>360°</span>
-                  </div>
-                ) : defect.image ? (
-                  <img
-                    src={getProxiedSrc(defect.image)}
-                    alt="Defect thumbnail"
-                    className={styles.defectThumb}
-                    onError={handleImgError}
-                    loading="eager"
-                  />
-                ) : (
-                  <div className={styles.defectThumbPlaceholder}>No media</div>
-                )}
-              </div>
+              <DefectMediaSlider
+                defect={defect}
+                getProxiedSrc={getProxiedSrc}
+                handleImgError={handleImgError}
+              />
               <div className={styles.defectCompactInfo}>
                 {/* Header line moved to right column (number • section • defect), then divider */}
                 <div className={styles.defectInlineHeader}>

@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import { getInspection } from "@/lib/inspection";
 import dbConnect from "@/lib/db";
 import mongoose from "mongoose";
+import '@/src/models/User'
 
 interface RouteParams {
   params: Promise<{

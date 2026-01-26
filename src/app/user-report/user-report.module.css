@@ -1835,6 +1835,25 @@
   border-radius: 9999px;
 }
 
+.additionalImagesStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.defectMediaSliderControls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  /* background: rgba(243, 244, 246, 0.8); */
+}
+
 .defectCompactInfo {
   min-width: 0;
 }

@@ -14,7 +14,7 @@ import { useReusableDropdownsQuery } from '@/components/api/queries/reusableDrop
 interface ImageEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  mode: 'create' | 'defect-main' | 'additional-location' | 'edit-additional' | 'annotation';
+  mode: 'create' | 'defect-main' | 'additional-location' | 'edit-additional' | 'annotation' | 'merged-defect';
   inspectionId?: string;
   imageUrl?: string;
   defectId?: string;
@@ -29,6 +29,7 @@ interface ImageEditorModalProps {
   preloadedAnnotations?: any[];
   originalImageUrl?: string;
   isPage?: boolean;
+  location?: string;
 }
 
  // Color options for all tools (arrow, circle, square)
@@ -52,6 +53,7 @@ export default function ImageEditorModal({
   preloadedAnnotations: propAnnotations,
   originalImageUrl: propOriginalImageUrl,
   isPage = false,
+  location: propLocation,
 }: ImageEditorModalProps) {
   // Read URL params when used as a page
   const searchParams = useSearchParams();
@@ -66,6 +68,7 @@ export default function ImageEditorModal({
   const isEditAdditionalMode = mode === 'edit-additional' && defectId && editIndex !== undefined;
   const isDefectMainMode = mode === 'defect-main' && defectId;
   const isAnnotationMode = mode === 'annotation' && checklistId;
+  const isMergedDefectMode = mode === 'merged-defect' && defectId && editIndex !== undefined;
   
   const [description, setDescription] = useState('');
   
@@ -94,7 +97,7 @@ export default function ImageEditorModal({
   const [openDropdown, setOpenDropdown] = useState<'arrow' | 'circle' | 'square' | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<string>(sectionName || '');
   const [selectedSubLocation, setSelectedSubLocation] = useState<string>(subsectionName || '');
-  const [selectedLocation2, setSelectedLocation2] = useState<string>('');
+  const [selectedLocation2, setSelectedLocation2] = useState<string>(propLocation || '');
   const [locationOptions, setLocationOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const arrowDropdownRef = useRef<HTMLDivElement>(null);
@@ -175,7 +178,7 @@ export default function ImageEditorModal({
 
   // Fetch parent defect info when in additional location mode
   useEffect(() => {
-    if (!isOpen || !(isAdditionalLocationMode || isEditAdditionalMode) || !defectId || !finalInspectionId) return;
+    if (!isOpen || !(isAdditionalLocationMode || isEditAdditionalMode || isMergedDefectMode) || !defectId || !finalInspectionId) return;
     
     const fetchParentDefect = async () => {
       try {
@@ -186,10 +189,14 @@ export default function ImageEditorModal({
           if (parentDefect) {
             setSelectedLocation(parentDefect.section || '');
             setSelectedSubLocation(parentDefect.subsection || '');
-            if (isEditAdditionalMode && Array.isArray(parentDefect.additional_images) && editIndex !== undefined) {
+            if ((isEditAdditionalMode || isMergedDefectMode) && Array.isArray(parentDefect.additional_images) && editIndex !== undefined) {
               const target = parentDefect.additional_images[editIndex];
-              if (target && target.location) {
-                setSelectedLocation2(target.location);
+              if (target) {
+                // For merged defects, use 'location' field; for regular, also use 'location'
+                const locationValue = target.location || '';
+                if (locationValue) {
+                  setSelectedLocation2(locationValue);
+                }
               }
             }
           }
@@ -199,7 +206,7 @@ export default function ImageEditorModal({
       }
     };
     fetchParentDefect();
-  }, [isOpen, isAdditionalLocationMode, isEditAdditionalMode, defectId, finalInspectionId, editIndex]);
+  }, [isOpen, isAdditionalLocationMode, isEditAdditionalMode, isMergedDefectMode, defectId, finalInspectionId, editIndex]);
 
   // Sync section and subsection props with state for create mode
   useEffect(() => {
@@ -365,6 +372,17 @@ export default function ImageEditorModal({
       setPreloadedAnnotations([]);
     }
   }, [isOpen, isDefectMainMode, propAnnotations]);
+
+  // Load annotations for merged-defect mode
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    if (isMergedDefectMode && propAnnotations) {
+      setPreloadedAnnotations(propAnnotations);
+    } else if (isMergedDefectMode) {
+      setPreloadedAnnotations([]);
+    }
+  }, [isOpen, isMergedDefectMode, propAnnotations]);
 
   // Cleanup all state when modal closes
   useEffect(() => {
@@ -553,6 +571,90 @@ export default function ImageEditorModal({
     }
   };
 
+  const handleSubmitMergedDefect = async () => {
+    if (!editedFile) {
+      toast.error('Please upload and edit an image before submitting.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Upload the annotated image
+      const { publicUrl: annotatedImageUrl } = await uploadFileToR2(editedFile);
+      
+      // Upload the original image (without annotations) if annotations exist
+      let originalImageUrl = annotatedImageUrl;
+      if (originalFile && currentAnnotations.length > 0) {
+        //@ts-ignore
+        const { publicUrl: origUrl } = await uploadOriginalImageToR2(originalFile);
+        originalImageUrl = origUrl;
+      } else if (propOriginalImageUrl) {
+        // If no new original file but we have a prop, use that
+        originalImageUrl = propOriginalImageUrl;
+      }
+
+      // Fetch the defect to get current additional_images
+      const defectRes = await fetch(`/api/defects/${finalInspectionId}`);
+      if (!defectRes.ok) {
+        throw new Error('Failed to fetch defect data');
+      }
+      
+      const defects = await defectRes.json();
+      const defect = defects.find((d: any) => d._id === defectId);
+      
+      if (!defect) {
+        throw new Error('Defect not found');
+      }
+
+      // Update the specific additional_image at editIndex
+      const additionalImages = defect.additional_images || [];
+      if (!additionalImages[editIndex!]) {
+        throw new Error('Invalid image index');
+      }
+
+      const updatedImages = additionalImages.map((img: any, i: number) => 
+        i === editIndex! ? {
+          ...img,
+          image: annotatedImageUrl,
+          originalImage: originalImageUrl,
+          annotations: currentAnnotations,
+          location: selectedLocation2 || img.location || ''
+        } : img
+      );
+
+      // Update the defect via API
+      const updateRes = await fetch(`/api/defects/${defectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inspection_id: defect.inspection_id,
+          additional_images: updatedImages,
+        })
+      });
+
+      if (!updateRes.ok) {
+        throw new Error('Failed to update defect');
+      }
+
+      toast.success('Annotation saved successfully');
+      onSave?.({
+        defectId,
+        index: editIndex,
+        newImageUrl: annotatedImageUrl,
+        newOriginalImageUrl: originalImageUrl,
+        annotations: currentAnnotations,
+        location: selectedLocation2 || additionalImages[editIndex!].location || ''
+      });
+      onClose();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast.error(`Failed to save annotation: ${errorMessage}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmitAnnotation = async () => {
     if (!editedFile) {
       toast.error('Please make some changes to the image before saving (draw arrows, circles, etc.).');
@@ -703,6 +805,10 @@ export default function ImageEditorModal({
       return handleSubmitEditAdditional();
     }
 
+    if (isMergedDefectMode && defectId && editIndex !== undefined) {
+      return handleSubmitMergedDefect();
+    }
+
     if (isAnnotationMode && checklistId) {
       return handleSubmitAnnotation();
     }
@@ -732,6 +838,7 @@ export default function ImageEditorModal({
              mode === 'defect-main' ? 'Edit Defect Image' :
              mode === 'additional-location' ? 'Add Location Photo' :
              mode === 'edit-additional' ? 'Edit Location Photo' :
+             mode === 'merged-defect' ? 'Annotate Merged Defect Image' :
              'Create Defect'}
           </h2>
           <button
@@ -893,8 +1000,8 @@ export default function ImageEditorModal({
                 />
               </div>
 
-              {/* Description Box - Only show for defect workflow (but not in defect-main annotate mode) */}
-              {!isAnnotationMode && !isDefectMainMode && !isAdditionalLocationMode && !isEditAdditionalMode && (
+              {/* Description Box - Only show for defect workflow (but not in defect-main annotate mode or merged-defect mode) */}
+              {!isAnnotationMode && !isDefectMainMode && !isAdditionalLocationMode && !isEditAdditionalMode && !isMergedDefectMode && (
                 <>
                   <p className="mb-2 px-3 py-2 rounded bg-blue-50 border-l-4 border-blue-400 text-blue-800 text-sm font-medium shadow-sm">
                     For optimal results, speak clearly and pause between lines. Your dictation will automatically appear in the description below.
@@ -1057,7 +1164,7 @@ export default function ImageEditorModal({
                       </>
                     )}
 
-                    {/* Location Select - Hide in defect-main annotate mode */}
+                    {/* Location Select - Hide in defect-main annotate mode, show for merged-defect mode */}
                     {!isDefectMainMode && (
                       <div className="w-[300px]">
                         <CreatableConcatenatedInput
@@ -1080,12 +1187,12 @@ export default function ImageEditorModal({
                       {isSubmitting ? (
                         <>
                           <i className="fas fa-spinner fa-spin"></i>
-                          {isDefectMainMode ? 'Saving...' : isAdditionalLocationMode ? 'Adding Photo...' : isEditAdditionalMode ? 'Saving...' : 'Processing...'}
+                          {isDefectMainMode ? 'Saving...' : isAdditionalLocationMode ? 'Adding Photo...' : isEditAdditionalMode ? 'Saving...' : isMergedDefectMode ? 'Saving...' : 'Processing...'}
                         </>
                       ) : (
                         <>
                           {mode === 'create' && <i className="fas fa-plus-circle"></i>}
-                          {isDefectMainMode ? 'Save Changes' : isAdditionalLocationMode ? 'Add Photo' : isEditAdditionalMode ? 'Save Photo' : 'Create Defect'}
+                          {isDefectMainMode ? 'Save Changes' : isAdditionalLocationMode ? 'Add Photo' : isEditAdditionalMode ? 'Save Photo' : isMergedDefectMode ? 'Save Annotation' : 'Create Defect'}
                         </>
                       )}
                     </button>

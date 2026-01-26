@@ -48,7 +48,7 @@ export interface Defect {
   thumbnail: string;
   video: string;
   isThreeSixty?: boolean;
-  additional_images?: Array<{ url: string; location: string; isThreeSixty?: boolean }>;
+  additional_images?: Array<{ id: string; image: string; originalImage: string; annotations: any[]; location: string; isThreeSixty?: boolean }>;
   base_cost?: number;
   annotations?: any[];
   originalImage?: string;
@@ -132,35 +132,35 @@ export default function DefectCard({
   calculateTotalCost,
 }: DefectCardProps) {
 
-  const [bulkAddOpen, setBulkAddOpen] = useState<boolean>(false);
-  const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
-  const [bulkSaving, setBulkSaving] = useState<boolean>(false);
+  // const [bulkAddOpen, setBulkAddOpen] = useState<boolean>(false);
+  // const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
+  // const [bulkSaving, setBulkSaving] = useState<boolean>(false);
   const unmergeMutation = useUnmergeDefectMutation();
 
-  const handleBulkAdd = async () => {
-    if (!editingId) return;
-    if (!defect) return;
-    setBulkSaving(true);
-    try {
-      const updatedImages = [...(defect.additional_images || [])];
-      for (const item of bulkItems) {
-        const fd = new FormData();
-        fd.append('file', item.file);
-        const uploadRes = await fetch('/api/r2api', { method: 'POST', body: fd });
-        if (!uploadRes.ok) throw new Error('Upload failed');
-        const { url } = await uploadRes.json();
-        updatedImages.push({ url, location: item.location || defect.location || '', isThreeSixty: item.isThreeSixty });
-      }
-      onUpdateDefect(editingId, { additional_images: updatedImages });
-      setBulkItems([]);
-      setBulkAddOpen(false);
-    } catch (e) {
-      alert('Failed to add photos. Please try again.');
-      console.error(e);
-    } finally {
-      setBulkSaving(false);
-    }
-  };
+  // const handleBulkAdd = async () => {
+  //   if (!editingId) return;
+  //   if (!defect) return;
+  //   setBulkSaving(true);
+  //   try {
+  //     const updatedImages = [...(defect.additional_images || [])];
+  //     for (const item of bulkItems) {
+  //       const fd = new FormData();
+  //       fd.append('file', item.file);
+  //       const uploadRes = await fetch('/api/r2api', { method: 'POST', body: fd });
+  //       if (!uploadRes.ok) throw new Error('Upload failed');
+  //       const { url } = await uploadRes.json();
+  //       updatedImages.push({ url, location: item.location || defect.location || '', isThreeSixty: item.isThreeSixty });
+  //     }
+  //     onUpdateDefect(editingId, { additional_images: updatedImages });
+  //     setBulkItems([]);
+  //     setBulkAddOpen(false);
+  //   } catch (e) {
+  //     alert('Failed to add photos. Please try again.');
+  //     console.error(e);
+  //   } finally {
+  //     setBulkSaving(false);
+  //   }
+  // };
 
   return (
     <div className="defect-card border rounded-lg p-6">
@@ -438,89 +438,20 @@ export default function DefectCard({
             <div className="mt-6 p-4 bg-muted rounded-md border">
               <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                 <strong className="text-sm">
-                  📍 Additional Location Photos ({displayDefect.additional_images?.length || 0})
+                  📍 Merged Defects ({displayDefect.additional_images?.length || 0})
                 </strong>
-                <button
-                  onClick={() => setBulkAddOpen((v) => !v)}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-semibold hover:bg-primary/90"
-                >
-                  {bulkAddOpen ? 'Close' : 'Add Another Locations For This Defect'}
-                </button>
               </div>
 
-              {bulkAddOpen && (
-                <div className="mb-4 p-3 bg-card border rounded-md">
-                  <p className="mb-2 text-sm font-semibold">Select multiple photos and set a location for each:</p>
-                  <FileUpload
-                    onFilesSelect={(files) => {
-                      const mapped = files.map((file) => ({
-                        file,
-                        preview: URL.createObjectURL(file),
-                        location: '',
-                        isThreeSixty: false,
-                      }));
-                      setBulkItems((prev) => [...prev, ...mapped]);
-                    }}
-                  />
-                  {bulkItems.length > 0 && (
-                    <div className="bulk-items-list mt-3 space-y-3">
-                      {bulkItems.map((item, i) => (
-                        <div key={i} className="bulk-item-row flex flex-wrap gap-3 items-center py-3 border-b">
-                          <img src={item.preview} alt={`bulk-${i}`} className="w-20 h-20 object-cover rounded-md shadow-sm" />
-                          <div className="flex-1 min-w-[260px]">
-                            <label className="block text-xs mb-1 font-medium">Location</label>
-                            <CreatableConcatenatedInput
-                              value={item.location}
-                              onChange={(val) => setBulkItems((prev) => {
-                                const copy = [...prev];
-                                copy[i] = { ...copy[i], location: val };
-                                return copy;
-                              })}
-                              label=""
-                              placeholder="Search location..."
-                              inputPlaceholder="Enter location"
-                              options={allLocationOptions.map(loc => ({ value: loc, label: loc }))}
-                            />
-                            <label className="inline-flex items-center gap-2 mt-2 text-xs">
-                              <input type="checkbox" checked={item.isThreeSixty} onChange={(e) => setBulkItems((prev) => {
-                                const copy = [...prev];
-                                copy[i] = { ...copy[i], isThreeSixty: e.target.checked };
-                                return copy;
-                              })} />
-                              This is a 360° photo
-                            </label>
-                          </div>
-                          <button
-                            onClick={() => setBulkItems((prev) => prev.filter((_, idx) => idx !== i))}
-                            className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                      <div className="bulk-items-actions flex justify-center gap-2 mt-3">
-                        <button
-                          disabled={bulkSaving || bulkItems.length === 0}
-                          onClick={handleBulkAdd}
-                          className="px-4 py-2 bg-green-600 text-white rounded-md font-semibold disabled:opacity-50"
-                        >
-                          {bulkSaving ? 'Saving…' : 'Add All'}
-                        </button>
-                        <button onClick={() => { setBulkItems([]); setBulkAddOpen(false); }} className="px-4 py-2 bg-muted text-foreground rounded-md">Cancel</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+             
               
               {displayDefect.additional_images && displayDefect.additional_images.length > 0 && (
                 <div className="additional-items-list space-y-3">
                   {displayDefect.additional_images.map((img, idx) => {
                     const locationValue = img.location || "";
                     return (
-                    <div key={`${img.url}-${idx}`} className="additional-item-row flex flex-wrap gap-3 items-center py-3 border-b">
+                    <div key={`${img.id}-${idx}`} className="additional-item-row flex flex-wrap gap-3 items-center py-3 border-b">
                       <img 
-                        src={getProxiedSrc(img.url)} 
+                        src={getProxiedSrc(img.image)} 
                         alt={`Location ${idx + 2}`}
                         onError={handleImgError}
                         className="w-20 h-20 object-cover rounded-md shadow-sm"
@@ -530,7 +461,7 @@ export default function DefectCard({
                           Location:
                         </label>
                         <CreatableConcatenatedInput
-                          key={`location-${displayDefect._id}-${idx}-${img.url}`}
+                          key={`location-${displayDefect._id}-${idx}-${img.id}`}
                           value={locationValue}
                           onChange={(val) => {
                             onUpdateLocationForImage(idx, val);
@@ -548,23 +479,12 @@ export default function DefectCard({
                       >
                         Annotate
                       </button>
-                      <button
-                        onClick={() => onRemoveLocationPhoto(idx)}
-                        className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium"
-                      >
-                        Remove
-                      </button>
                     </div>
                     );
                   })}
                 </div>
               )}
               
-              {(!displayDefect.additional_images || displayDefect.additional_images.length === 0) && (
-                <p className="text-xs text-muted-foreground italic">
-                  No additional location photos yet. Click "Add Location Photo" to add photos from different locations with the same defect.
-                </p>
-              )}
             </div>
           )}
 

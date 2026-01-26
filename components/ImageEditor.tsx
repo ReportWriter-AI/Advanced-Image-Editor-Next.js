@@ -859,13 +859,16 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     // onEditedFile?.(file);
   };
 
-  const exportEditedFile = (): File | null => {
+  const exportEditedFile = (linesToUse?: Line[]): File | null => {
     if (!image) {
       console.warn('⚠️ exportEditedFile called but no image available');
       return null;
     }
     
-    console.log('🎨 Exporting edited file with', lines.length, 'annotations');
+    // Use provided lines or fall back to state
+    const linesToRender = linesToUse || lines;
+    
+    console.log('🎨 Exporting edited file with', linesToRender.length, 'annotations');
     
     try {
       const displayCanvas = canvasRef.current;
@@ -973,7 +976,7 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
         ctx.translate(-exportCanvas.width / 2, -exportCanvas.height / 2);
       }
 
-      lines.forEach((line) => {
+      linesToRender.forEach((line) => {
         const scaledPoints = line.points.map((pt) => sanitizePoint(transformPoint(pt)));
 
         const scaledLine: Line = {
@@ -1224,7 +1227,8 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
     if (typeof window !== 'undefined') {
       window.requestAnimationFrame(() => {
-        const file = exportEditedFile();
+        // Pass updatedLines directly to ensure file is generated with correct annotations
+        const file = exportEditedFile(updatedLines);
         if (file && onEditedFile) {
           onEditedFile(file);
         }

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from 'react';
 
@@ -9,6 +9,7 @@ interface ThreeSixtyViewerProps {
   height?: string;
   autoLoad?: boolean;
   className?: string;
+  location?: string;
 }
 
 export default function ThreeSixtyViewer({
@@ -17,7 +18,8 @@ export default function ThreeSixtyViewer({
   width = '100%',
   height = '500px',
   autoLoad = true,
-  className = ''
+  className = '',
+  location
 }: ThreeSixtyViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
@@ -37,6 +39,8 @@ export default function ThreeSixtyViewer({
 
   useEffect(() => {
     let viewerInstance: any = null;
+    let locationBarEl: HTMLDivElement | null = null;
+    let fullscreenHandler: ((e: { fullscreenEnabled: boolean }) => void) | null = null;
 
     const loadCSS = () => {
       // Check if CSS is already loaded
@@ -49,6 +53,13 @@ export default function ThreeSixtyViewer({
       link.href = 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.7.4/index.min.css';
       document.head.appendChild(link);
       console.log('🎨 Photo Sphere Viewer CSS loaded');
+    };
+
+    const removeLocationBar = () => {
+      if (locationBarEl && locationBarEl.parentNode) {
+        locationBarEl.parentNode.removeChild(locationBarEl);
+        locationBarEl = null;
+      }
     };
 
     const initViewer = async () => {
@@ -90,6 +101,33 @@ export default function ThreeSixtyViewer({
           setLoading(false);
         });
 
+        fullscreenHandler = (e: { fullscreenEnabled: boolean }) => {
+          if (e.fullscreenEnabled && location?.trim()) {
+            removeLocationBar();
+            const bar = document.createElement('div');
+            bar.setAttribute('data-psv-location-bar', 'true');
+            Object.assign(bar.style, {
+              position: 'absolute',
+              bottom: '48px',
+              left: '0',
+              right: '0',
+              zIndex: '100',
+              background: 'rgba(0, 0, 0, 0.7)',
+              color: 'white',
+              padding: '8px 12px',
+              fontSize: '14px',
+              textAlign: 'center',
+              pointerEvents: 'none',
+            });
+            bar.textContent = location.trim();
+            viewerInstance.container.appendChild(bar);
+            locationBarEl = bar;
+          } else {
+            removeLocationBar();
+          }
+        };
+        viewerInstance.addEventListener('fullscreen', fullscreenHandler);
+
       } catch (err) {
         console.error('💥 Error initializing viewer:', err);
         setError('Failed to initialize 360° viewer');
@@ -104,13 +142,17 @@ export default function ThreeSixtyViewer({
     return () => {
       if (viewerInstance) {
         try {
+          if (fullscreenHandler) {
+            viewerInstance.removeEventListener('fullscreen', fullscreenHandler);
+          }
+          removeLocationBar();
           viewerInstance.destroy();
         } catch (err) {
           console.error('Error destroying viewer:', err);
         }
       }
     };
-  }, [imageUrl, autoLoad]);
+  }, [imageUrl, autoLoad, location]);
   return (
     <div 
       className={`threesixty-viewer-container ${className}`}
@@ -144,8 +186,8 @@ export default function ThreeSixtyViewer({
           pointerEvents: 'none'
         }}
       >
-        <i className="fas fa-sync-alt" style={{ animation: 'spin 3s linear infinite' }}></i>
-        {isMobile ? '360°' : '360 Photo'}
+        <i className="fas fa-sync-alt" style={{ animation: 'spin 3s linear infinite', fontSize: isMobile ? '18px' : '22px' }}></i>
+        {/* {isMobile ? '360°' : '360 Photo'} */}
       </div>
 
       {loading && (
