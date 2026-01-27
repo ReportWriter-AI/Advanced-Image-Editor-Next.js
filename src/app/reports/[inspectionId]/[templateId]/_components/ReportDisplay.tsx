@@ -851,7 +851,7 @@ function renderSubsectionData(checklists: ChecklistWithAnswers[], type: "status"
               {checklist.comment}
             </p>
           )}
-          {(checklist.type === 'status' || checklist.type === 'information') && checklist.media && renderMedia(checklist.media)}
+          {(checklist.type === 'status' || checklist.type === 'information') && checklist.media && <MediaGallery mediaArray={checklist.media} getProxiedSrc={getProxiedSrc} />}
         </div>
       ))}
     </div>
@@ -940,7 +940,15 @@ function renderAnswer(checklist: ChecklistWithAnswers) {
   }
 }
 
-function renderMedia(mediaArray: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }> | undefined) {
+interface MediaGalleryProps {
+  mediaArray: Array<{ url: string; mediaType: 'image' | 'video' | '360pic'; location?: string; order: number }> | undefined;
+  getProxiedSrc: (url: string | null | undefined) => string;
+}
+
+function MediaGallery({ mediaArray, getProxiedSrc }: MediaGalleryProps) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string; title: string } | null>(null);
+
   if (!mediaArray || !Array.isArray(mediaArray) || mediaArray.length === 0) {
     return null;
   }
@@ -954,55 +962,89 @@ function renderMedia(mediaArray: Array<{ url: string; mediaType: 'image' | 'vide
     return null;
   }
 
+  // Handle image click to open lightbox - only for regular images
+  const handleImageClick = useCallback((mediaItem: { url: string; location?: string }, index: number) => {
+    setLightboxImage({
+      src: getProxiedSrc(mediaItem.url),
+      alt: mediaItem.location || `Image ${index + 1}`,
+      title: mediaItem.location || `Image ${index + 1}`, // Location displayed at bottom
+    });
+    setLightboxOpen(true);
+  }, [getProxiedSrc]);
+
   return (
-    <div className="mt-4 space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {validMedia.map((mediaItem, index) => (
-          <div key={index} className="space-y-2">
-            {mediaItem.mediaType === '360pic' ? (
-              <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
-                <ThreeSixtyViewer
-                  imageUrl={getProxiedSrc(mediaItem.url)}
-                  alt={mediaItem.location ? `360° photo - ${mediaItem.location}` : '360° photo'}
-                  height="300px"
-                  width="300px"
-                />
-              </div>
-            ) : mediaItem.mediaType === 'video' ? (
-              <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
-                <video
-                  src={getProxiedSrc(mediaItem.url)}
-                  controls
-                  preload="metadata"
-                  className="rounded-lg"
-                  style={{ width: '300px', maxWidth: '100%', height: 'auto' }}
-                >
-                  Your browser does not support the video tag.
-                </video>
-              </div>
-            ) : (
-              <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
-                <img
-                  src={getProxiedSrc(mediaItem.url)}
-                  alt={mediaItem.location || `Image ${index + 1}`}
-                  className="rounded-lg"
-                  style={{ width: '300px', maxWidth: '100%', height: 'auto' }}
-                  onError={(e) => {
-                    console.error('Failed to load image:', mediaItem.url);
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              </div>
-            )}
-            {mediaItem.location && (
-              <p className="text-xs text-muted-foreground text-center">
-                {mediaItem.location}
-              </p>
-            )}
-          </div>
-        ))}
+    <>
+      <div className="mt-4 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {validMedia.map((mediaItem, index) => (
+            <div key={index} className="space-y-2">
+              {mediaItem.mediaType === '360pic' ? (
+                <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
+                  <ThreeSixtyViewer
+                    imageUrl={getProxiedSrc(mediaItem.url)}
+                    alt={mediaItem.location ? `360° photo - ${mediaItem.location}` : '360° photo'}
+                    height="300px"
+                    width="300px"
+                    location={mediaItem.location ?? undefined}
+                  />
+                </div>
+              ) : mediaItem.mediaType === 'video' ? (
+                <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
+                  <video
+                    src={getProxiedSrc(mediaItem.url)}
+                    controls
+                    preload="metadata"
+                    className="rounded-lg"
+                    style={{ width: '300px', maxWidth: '100%', height: 'auto' }}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+              ) : (
+                <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
+                  <img
+                    src={getProxiedSrc(mediaItem.url)}
+                    alt={mediaItem.location || `Image ${index + 1}`}
+                    className="rounded-lg"
+                    style={{ width: '300px', maxWidth: '100%', height: 'auto', cursor: 'pointer' }}
+                    onClick={() => handleImageClick(mediaItem, index)}
+                    onError={(e) => {
+                      console.error('Failed to load image:', mediaItem.url);
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+              {mediaItem.location && (
+                <p className="text-xs text-muted-foreground text-center">
+                  {mediaItem.location}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+      
+      {/* Lightbox for full-screen image viewing - shows only the clicked image */}
+      {lightboxImage && (
+        <Lightbox
+          open={lightboxOpen}
+          close={() => {
+            setLightboxOpen(false);
+            setLightboxImage(null);
+          }}
+          slides={[{
+            src: lightboxImage.src,
+            title: lightboxImage.title, // Location displayed at bottom
+            description: lightboxImage.alt
+          }]}
+          plugins={[Zoom, Captions]}
+          styles={{
+            container: { backgroundColor: "rgba(0, 0, 0, 1)" }
+          }}
+        />
+      )}
+    </>
   );
 }
 
