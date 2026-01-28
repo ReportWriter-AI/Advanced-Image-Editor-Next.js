@@ -54,7 +54,8 @@ async function handler(request: Request) {
       originalImage,
       state: passedState,
       city: passedCity,
-      zipCode: passedZipCode
+      zipCode: passedZipCode,
+      isFlagged
     } = body;
 
 
@@ -204,6 +205,7 @@ async function handler(request: Request) {
       additional_images: [], // Initialize empty array for additional location photos
       annotations: annotations || [], // Save editable annotations
       originalImage: originalImage || finalImageUrl!, // Save original unannotated image
+      isFlagged: isFlagged === true,
     };
 
     console.log('💾 About to call createDefect with:');

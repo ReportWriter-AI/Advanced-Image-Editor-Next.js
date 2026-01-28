@@ -36,6 +36,7 @@ export interface Defect {
   }>;
   title: string;
   parentDefect?: string;
+  isFlagged?: boolean;
 }
 
 export const useDefectsBySubsectionQuery = (params: {

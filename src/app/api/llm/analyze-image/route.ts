@@ -80,9 +80,10 @@ export async function POST(request: Request) {
     let state: string | undefined;
     let city: string | undefined;
     let zipCode: string | undefined;
-  
+    let isFlagged = false;
+
     const contentType = request.headers.get("content-type") || "";
-  
+
     if (contentType.includes("application/json")) {
       const body = await request.json();
       imageUrl = body.imageUrl;
@@ -105,6 +106,7 @@ export async function POST(request: Request) {
       state = body.state;
       city = body.city;
       zipCode = body.zipCode;
+      isFlagged = body.isFlagged === true;
 
       console.log('🔍 analyze-image received JSON body');
       console.log('📊 annotations:', annotations);
@@ -228,6 +230,7 @@ export async function POST(request: Request) {
         state, // Pass state for classify API
         city, // Pass city for classify API
         zipCode, // Pass zipCode for classify API
+        isFlagged, // User-flagged defect
       },
     });
 

@@ -37,6 +37,7 @@ export interface IDefect extends Document {
 	originalImage: string;
 	deletedAt?: Date;
 	parentDefect?: mongoose.Types.ObjectId;
+	isFlagged?: boolean;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -178,6 +179,10 @@ const DefectSchema = new Schema<IDefect>(
 			type: mongoose.Schema.Types.ObjectId,
 			ref: 'Defect',
 			index: true,
+		},
+		isFlagged: {
+			type: Boolean,
+			default: false,
 		},
 	},
 	{

@@ -128,6 +128,7 @@ export async function PATCH(
       base_cost,
       annotations,
       originalImage,
+      isFlagged,
     } = body;
 
     const normalizedInspectionId = normalizeObjectId(inspection_id);
@@ -159,6 +160,7 @@ export async function PATCH(
       base_cost,
       annotations,
       originalImage,
+      isFlagged,
     };
 
     // remove undefined keys to avoid overwriting fields accidentally

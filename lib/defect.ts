@@ -31,6 +31,7 @@ export async function createDefect(data: {
   annotations?: any[]; // Store annotation shapes (arrows, circles, squares, freehand) as JSON
   originalImage?: string; // Original image without annotations (for re-editing)
   parentDefect?: string; // Reference to parent defect if this is a merged defect
+  isFlagged?: boolean; // User-flagged defect for attention
 }) {
   await dbConnect();
 
@@ -159,6 +160,7 @@ export async function updateDefect(defectId: string, inspectionId: string, updat
   image?: string; // Allow updating the main image
   annotations?: any[]; // Update annotation shapes
   originalImage?: string; // Update original image
+  isFlagged?: boolean; // User-flagged defect for attention
 }) {
   await dbConnect();
 

@@ -54,6 +54,7 @@ export interface Defect {
   originalImage?: string;
   title: string;
   parentDefect?: string;
+  isFlagged?: boolean;
 }
 
 interface InspectionDetails {
@@ -162,6 +163,8 @@ export default function DefectCard({
   //   }
   // };
 
+  const flagged = displayDefect.isFlagged === true;
+
   return (
     <div className="defect-card border rounded-lg p-6">
       <div className="defect-header flex justify-between items-center mb-4">
@@ -176,7 +179,12 @@ export default function DefectCard({
             />
           )}
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold">{defect.title}</h3>
+            <h3
+              className="text-lg font-semibold"
+              style={flagged ? { backgroundColor: '#FF8C00', padding: '4px 8px', borderRadius: '4px', color: '#000' } : undefined}
+            >
+              {defect.title}
+            </h3>
             {defect.parentDefect && (
               <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
                 Merged
@@ -185,6 +193,15 @@ export default function DefectCard({
           </div>
         </div>
         <div className="defect-actions flex items-center gap-2">
+          <button
+            type="button"
+            className={`px-3 py-2 rounded-md border ${flagged ? 'bg-amber-500 text-white border-amber-600' : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'}`}
+            onClick={() => onUpdateDefect(defect._id, { isFlagged: !(displayDefect.isFlagged ?? false) })}
+            title={flagged ? 'Unflag defect' : 'Flag defect'}
+            aria-label={flagged ? 'Unflag defect' : 'Flag defect'}
+          >
+            <span aria-hidden>⚠️</span>
+          </button>
           {!isEditing && (
             <button
               className="professional-edit-btn px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"

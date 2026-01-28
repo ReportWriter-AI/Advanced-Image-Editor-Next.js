@@ -92,10 +92,11 @@ export default function ImageEditorModal({
     }
   }, [speechError]);
 
-  // Clear image date when modal closes
+  // Clear image date and flag when modal closes
   useEffect(() => {
     if (!isOpen) {
       setImageDate(null);
+      setIsFlagged(false);
     }
   }, [isOpen]);
 
@@ -136,6 +137,7 @@ export default function ImageEditorModal({
   const [currentAnnotations, setCurrentAnnotations] = useState<any[]>([]);
   const [resetKey, setResetKey] = useState(0);
   const [imageDate, setImageDate] = useState<string | null>(null);
+  const [isFlagged, setIsFlagged] = useState(false);
 
   // Callback handler for EXIF date extraction (only store in create mode)
   const handleImageDateExtracted = useCallback((date: string | null) => {
@@ -491,6 +493,7 @@ export default function ImageEditorModal({
     setOpenDropdown(null);
     setPreloadedAnnotations(undefined);
     setImageDate(null); // Clear image date on reset
+    setIsFlagged(false);
     setResetKey(prev => prev + 1); // Force ImageEditor remount
   }, []);
 
@@ -729,6 +732,7 @@ export default function ImageEditorModal({
     const capturedAnnotations = currentAnnotations;
     const capturedIsThreeSixty = isThreeSixty;
     const capturedSelectedColor = selectedColor;
+    const capturedIsFlagged = isFlagged;
 
     // Start async upload/analysis without awaiting (fire-and-forget)
     (async () => {
@@ -777,6 +781,7 @@ export default function ImageEditorModal({
             state: inspectionState,
             city: inspectionCity,
             zipCode: inspectionZipCode,
+            isFlagged: capturedIsFlagged,
           }),
         });
         
@@ -982,6 +987,17 @@ export default function ImageEditorModal({
                     type="square"
                   />
                 </div>
+
+                {mode === 'create' && (
+                  <button
+                    type="button"
+                    className={`action-btn flag-btn ${isFlagged ? 'active' : ''}`}
+                    onClick={() => setIsFlagged(prev => !prev)}
+                    title={isFlagged ? 'Unflag defect' : 'Flag defect'}
+                  >
+                    <span aria-hidden>⚠️</span>
+                  </button>
+                )}
 
                 <button
                   className="action-btn delete-btn"
