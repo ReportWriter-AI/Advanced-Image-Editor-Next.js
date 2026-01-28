@@ -71,6 +71,8 @@ interface ImageEditorProps {
   preloadedFile?: File | null; // New prop for preloaded file
   preloadedAnnotations?: Line[]; // Editable annotations to load
   onAnnotationsChange?: (annotations: Line[]) => void; // Callback when annotations change
+  imageDate?: string | null; // EXIF date extracted from image
+  onImageDateExtracted?: (date: string | null) => void; // Callback when date is extracted
 }
 
 const ImageEditor: React.FC<ImageEditorProps> = ({
@@ -90,7 +92,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
   preloadedImage,
   preloadedFile,
   preloadedAnnotations,
-  onAnnotationsChange
+  onAnnotationsChange,
+  imageDate,
+  onImageDateExtracted
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -371,6 +375,66 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
   if (!original) return;
 
   let file: File = original;
+
+  // Extract EXIF date from original file BEFORE any processing (HEIC conversion, orientation fix, etc.)
+  // This ensures we get the date even if EXIF data is lost during processing
+  try {
+    const exifr: any = (await import('exifr/dist/full.esm.mjs')) as any;
+    const exifData = await exifr.parse(original, ['DateTimeOriginal', 'CreateDate']);
+    
+    let extractedDate: string | null = null;
+    if (exifData?.DateTimeOriginal) {
+      extractedDate = exifData.DateTimeOriginal;
+    } else if (exifData?.CreateDate) {
+      extractedDate = exifData.CreateDate;
+    }
+
+    // Format the date to USA standard format (MM/DD/YYYY)
+    if (extractedDate) {
+      try {
+        // EXIF dates are typically in format "YYYY:MM:DD HH:MM:SS" or ISO format
+        // Handle both formats
+        let dateObj: Date;
+        if (typeof extractedDate === 'string' && extractedDate.includes(':')) {
+          // EXIF format: "YYYY:MM:DD HH:MM:SS" - replace first 3 colons with dashes for ISO
+          const isoString = extractedDate.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+          dateObj = new Date(isoString);
+        } else {
+          dateObj = new Date(extractedDate);
+        }
+        
+        if (!isNaN(dateObj.getTime())) {
+          // Format as USA standard: MM/DD/YYYY
+          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getDate()).padStart(2, '0');
+          const year = dateObj.getFullYear();
+          const formattedDate = `${month}/${day}/${year}`;
+          
+          if (onImageDateExtracted) {
+            onImageDateExtracted(formattedDate);
+          }
+        } else {
+          if (onImageDateExtracted) {
+            onImageDateExtracted(null);
+          }
+        }
+      } catch (dateErr) {
+        console.warn('Date formatting failed:', dateErr);
+        if (onImageDateExtracted) {
+          onImageDateExtracted(null);
+        }
+      }
+    } else {
+      if (onImageDateExtracted) {
+        onImageDateExtracted(null);
+      }
+    }
+  } catch (exifErr) {
+    console.warn('EXIF date extraction failed:', exifErr);
+    if (onImageDateExtracted) {
+      onImageDateExtracted(null);
+    }
+  }
 
   // Detect HEIC/HEIF from type or extension (Safari/iOS, some Samsung cameras)
   const lowerName = file.name.toLowerCase();
@@ -1049,6 +1113,87 @@ const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
       });
 
       ctx.restore();
+
+      // Draw EXIF date in bottom right corner (if available)
+      // Note: Date is drawn after ctx.restore(), so we're in the original coordinate system
+      // The image content is rotated, but canvas dimensions remain naturalWidth x naturalHeight
+      // We want the date to appear in the bottom right of the FINAL exported image
+      if (imageDate) {
+        ctx.save();
+        
+        // Calculate font size based on image dimensions (2% of width, min 12px, max 20px)
+        const baseFontSize = Math.max(12, Math.min(20, naturalWidth * 0.02));
+        const padding = 10;
+        const textPadding = 8;
+        
+        // Set font properties
+        ctx.font = `${baseFontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Measure text to calculate background size
+        const textMetrics = ctx.measureText(imageDate);
+        const textWidth = textMetrics.width;
+        const textHeight = baseFontSize;
+        
+        // Position in bottom right corner of the final exported image
+        // Since the image is rotated via context transforms but canvas size stays the same,
+        // we need to account for where "bottom right" appears after rotation
+        const normalizedRotation = ((imageRotation % 360) + 360) % 360;
+        let dateX: number;
+        let dateY: number;
+        
+        // Calculate position based on rotation - we want bottom right in final view
+        if (normalizedRotation === 90) {
+          // 90° rotation: bottom right in final = top right in canvas coords
+          dateX = naturalWidth - padding - textHeight / 2;
+          dateY = padding + textWidth / 2;
+        } else if (normalizedRotation === 180) {
+          // 180° rotation: bottom right in final = top left in canvas coords
+          dateX = padding + textHeight / 2;
+          dateY = padding + textWidth / 2;
+        } else if (normalizedRotation === 270) {
+          // 270° rotation: bottom right in final = bottom left in canvas coords
+          dateX = padding + textHeight / 2;
+          dateY = naturalHeight - padding - textWidth / 2;
+        } else {
+          // 0° or no rotation: bottom right corner
+          dateX = naturalWidth - padding - textHeight / 2;
+          dateY = naturalHeight - padding - textWidth / 2;
+        }
+        
+        // Draw background rectangle (semi-transparent black) with rounded corners
+        const bgWidth = textHeight + textPadding * 2;
+        const bgHeight = textWidth + textPadding * 2;
+        const bgX = dateX - bgWidth / 2;
+        const bgY = dateY - bgHeight / 2;
+        const borderRadius = 4;
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.beginPath();
+        // Draw rounded rectangle manually for better browser compatibility
+        ctx.moveTo(bgX + borderRadius, bgY);
+        ctx.lineTo(bgX + bgWidth - borderRadius, bgY);
+        ctx.quadraticCurveTo(bgX + bgWidth, bgY, bgX + bgWidth, bgY + borderRadius);
+        ctx.lineTo(bgX + bgWidth, bgY + bgHeight - borderRadius);
+        ctx.quadraticCurveTo(bgX + bgWidth, bgY + bgHeight, bgX + bgWidth - borderRadius, bgY + bgHeight);
+        ctx.lineTo(bgX + borderRadius, bgY + bgHeight);
+        ctx.quadraticCurveTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - borderRadius);
+        ctx.lineTo(bgX, bgY + borderRadius);
+        ctx.quadraticCurveTo(bgX, bgY, bgX + borderRadius, bgY);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Rotate context to draw text vertically
+        ctx.translate(dateX, dateY);
+        ctx.rotate(-Math.PI / 2); // Rotate -90 degrees for vertical text
+        
+        // Draw text
+        ctx.fillStyle = 'white';
+        ctx.fillText(imageDate, 0, 0);
+        
+        ctx.restore();
+      }
 
       const quality = 0.98;
       const dataUrl = exportCanvas.toDataURL('image/jpeg', quality);
@@ -3713,6 +3858,12 @@ const drawSquare = (
             width={80}
             height={80}
           />
+        </div>
+      )}
+      {/* EXIF Date Overlay - Vertical text in bottom right */}
+      {imageDate && (
+        <div className={styles.dateOverlay}>
+          {imageDate}
         </div>
       )}
     </div>

@@ -92,6 +92,13 @@ export default function ImageEditorModal({
     }
   }, [speechError]);
 
+  // Clear image date when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setImageDate(null);
+    }
+  }, [isOpen]);
+
   const [activeMode, setActiveMode] = useState<'none' | 'crop' | 'arrow' | 'circle' | 'square'>('none');
   const [hasCropFrame, setHasCropFrame] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<'arrow' | 'circle' | 'square' | null>(null);
@@ -128,6 +135,14 @@ export default function ImageEditorModal({
   const [preloadedAnnotations, setPreloadedAnnotations] = useState<any[] | undefined>(undefined);
   const [currentAnnotations, setCurrentAnnotations] = useState<any[]>([]);
   const [resetKey, setResetKey] = useState(0);
+  const [imageDate, setImageDate] = useState<string | null>(null);
+
+  // Callback handler for EXIF date extraction (only store in create mode)
+  const handleImageDateExtracted = useCallback((date: string | null) => {
+    if (mode === 'create') {
+      setImageDate(date);
+    }
+  }, [mode]);
 
   const [inspectionState, setInspectionState] = useState<string>('');
   const [inspectionCity, setInspectionCity] = useState<string>('');
@@ -475,6 +490,7 @@ export default function ImageEditorModal({
     setHasCropFrame(false);
     setOpenDropdown(null);
     setPreloadedAnnotations(undefined);
+    setImageDate(null); // Clear image date on reset
     setResetKey(prev => prev + 1); // Force ImageEditor remount
   }, []);
 
@@ -997,6 +1013,8 @@ export default function ImageEditorModal({
                   preloadedFile={editedFile}
                   preloadedAnnotations={preloadedAnnotations}
                   onAnnotationsChange={setCurrentAnnotations}
+                  imageDate={imageDate}
+                  onImageDateExtracted={handleImageDateExtracted}
                 />
               </div>
 
