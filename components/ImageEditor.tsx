@@ -3860,12 +3860,6 @@ const drawSquare = (
           />
         </div>
       )}
-      {/* EXIF Date Overlay - Vertical text in bottom right */}
-      {imageDate && (
-        <div className={styles.dateOverlay}>
-          {imageDate}
-        </div>
-      )}
     </div>
   )}
 </div>
