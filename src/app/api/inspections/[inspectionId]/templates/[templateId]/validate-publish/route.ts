@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Inspection from '@/src/models/Inspection';
-import InspectionTemplate from '@/src/models/InspectionTemplate';
 import { getCurrentUser } from '@/lib/auth-helpers';
+import { getCompletionStatus } from '@/lib/report-completion';
 import mongoose from 'mongoose';
 
 interface RouteParams {
@@ -13,7 +13,7 @@ interface RouteParams {
 }
 
 // GET /api/inspections/[inspectionId]/templates/[templateId]/validate-publish
-// Check if all status checklists have defaultChecked=true
+// Can publish when all sections complete (checklist + no flagged defects)
 export async function GET(request: NextRequest, context: RouteParams) {
   try {
     await dbConnect();
@@ -68,51 +68,25 @@ export async function GET(request: NextRequest, context: RouteParams) {
       );
     }
 
-    // Fetch template
-    const template = await InspectionTemplate.findById(templateId).lean();
-
-    if (!template) {
-      return NextResponse.json(
-        { error: 'Template not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if report is already published
     const isAlreadyPublished = (inspection as any).isReportPublished === true;
+    const completionStatus = await getCompletionStatus(inspectionId, templateId);
 
-    // Count status checklists and how many are checked
+    // Can publish when not already published and every section is complete
+    let allSectionsComplete = true;
     let totalStatusChecklists = 0;
     let checkedStatusChecklists = 0;
 
-    const sections = (template as any).sections || [];
-    
-    for (const section of sections) {
-      // Skip deleted sections
-      if (section.deletedAt) continue;
-
-      const subsections = section.subsections || [];
-      
-      for (const subsection of subsections) {
-        // Skip deleted subsections
-        if (subsection.deletedAt) continue;
-
-        const checklists = subsection.checklists || [];
-        
-        for (const checklist of checklists) {
-          // Only count 'status' type checklists
-          if (checklist.type === 'status') {
-            totalStatusChecklists++;
-            if (checklist.defaultChecked === true) {
-              checkedStatusChecklists++;
-            }
-          }
-        }
+    for (const sectionId of Object.keys(completionStatus.sections)) {
+      const section = completionStatus.sections[sectionId];
+      if (!section.isComplete) allSectionsComplete = false;
+      for (const subsectionId of Object.keys(section.subsections)) {
+        const sub = section.subsections[subsectionId];
+        totalStatusChecklists += sub.totalStatusChecklists;
+        checkedStatusChecklists += sub.completedStatusChecklists;
       }
     }
 
-    // Can publish if all status checklists are checked
-    const canPublish = totalStatusChecklists > 0 && checkedStatusChecklists === totalStatusChecklists;
+    const canPublish = !isAlreadyPublished && allSectionsComplete;
 
     return NextResponse.json(
       {

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Inspection from '@/src/models/Inspection';
-import InspectionTemplate from '@/src/models/InspectionTemplate';
 import { getCurrentUser } from '@/lib/auth-helpers';
+import { getCompletionStatus } from '@/lib/report-completion';
 import mongoose from 'mongoose';
 
 interface RouteParams {
@@ -13,7 +13,7 @@ interface RouteParams {
 }
 
 // GET /api/inspections/[inspectionId]/templates/[templateId]/completion-status
-// Get completion status for all sections and subsections
+// Get completion status for all sections and subsections (checklist + no flagged defects)
 export async function GET(request: NextRequest, context: RouteParams) {
   try {
     await dbConnect();
@@ -68,89 +68,7 @@ export async function GET(request: NextRequest, context: RouteParams) {
       );
     }
 
-    // Fetch template
-    const template = await InspectionTemplate.findById(templateId).lean();
-
-    if (!template) {
-      return NextResponse.json(
-        { error: 'Template not found' },
-        { status: 404 }
-      );
-    }
-
-    // Build completion status map
-    const completionStatus: {
-      sections: {
-        [sectionId: string]: {
-          isComplete: boolean;
-          subsections: {
-            [subsectionId: string]: {
-              isComplete: boolean;
-              totalStatusChecklists: number;
-              completedStatusChecklists: number;
-            };
-          };
-        };
-      };
-    } = { sections: {} };
-
-    const sections = (template as any).sections || [];
-    
-    for (const section of sections) {
-      // Skip deleted sections
-      if (section.deletedAt) continue;
-
-      const sectionId = section._id.toString();
-      completionStatus.sections[sectionId] = {
-        isComplete: false,
-        subsections: {},
-      };
-
-      const subsections = section.subsections || [];
-      let completedSubsectionsCount = 0;
-      let totalSubsectionsCount = 0;
-      
-      for (const subsection of subsections) {
-        // Skip deleted subsections
-        if (subsection.deletedAt) continue;
-
-        totalSubsectionsCount++;
-        const subsectionId = subsection._id.toString();
-        
-        const checklists = subsection.checklists || [];
-        let totalStatusChecklists = 0;
-        let completedStatusChecklists = 0;
-        
-        for (const checklist of checklists) {
-          // Only count 'status' type checklists
-          if (checklist.type === 'status') {
-            totalStatusChecklists++;
-            if (checklist.defaultChecked === true) {
-              completedStatusChecklists++;
-            }
-          }
-        }
-
-        // Subsection is complete if it has status checklists and all are checked
-        const isSubsectionComplete = totalStatusChecklists > 0 && 
-                                     completedStatusChecklists === totalStatusChecklists;
-
-        completionStatus.sections[sectionId].subsections[subsectionId] = {
-          isComplete: isSubsectionComplete,
-          totalStatusChecklists,
-          completedStatusChecklists,
-        };
-
-        if (isSubsectionComplete) {
-          completedSubsectionsCount++;
-        }
-      }
-
-      // Section is complete if all its subsections are complete
-      completionStatus.sections[sectionId].isComplete = 
-        totalSubsectionsCount > 0 && completedSubsectionsCount === totalSubsectionsCount;
-    }
-
+    const completionStatus = await getCompletionStatus(inspectionId, templateId);
     return NextResponse.json(completionStatus, { status: 200 });
   } catch (error: any) {
     console.error('Error fetching completion status:', error);

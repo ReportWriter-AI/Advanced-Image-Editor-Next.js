@@ -150,16 +150,21 @@ export default function DefectsList({
 			return;
 		}
 
-		// Call the mutation with callbacks
-		deleteDefectMutation.mutate(defectId, {
-			onSuccess: () => {
-				// Refetch to ensure sync with server
-				refetch();
+		// Call the mutation with callbacks (pass inspectionId/templateId when in report-edit context so validation refetches)
+		deleteDefectMutation.mutate(
+			{
+				defectId,
+				...(inspectionId && templateId ? { inspectionId, templateId } : {}),
 			},
-			onError: (error) => {
-				console.error('Failed to delete defect:', error);
-			},
-		});
+			{
+				onSuccess: () => {
+					refetch();
+				},
+				onError: (error) => {
+					console.error('Failed to delete defect:', error);
+				},
+			}
+		);
 	};
 
 	const startEditing = (defect: Defect) => {
@@ -218,9 +223,13 @@ export default function DefectsList({
 			return;
 		}
 
-		// Use the mutation
+		// Use the mutation (pass inspectionId/templateId when in report-edit context so validation refetches)
 		updateDefectMutation.mutate(
-			{ defectId, updates: {...updates, inspection_id: defect.inspection_id} },
+			{
+				defectId,
+				updates: { ...updates, inspection_id: defect.inspection_id },
+				...(inspectionId && templateId ? { inspectionId, templateId } : {}),
+			},
 			{
 				onSuccess: () => {
 					// Update editedValues if we're currently editing this defect and additional_images was updated
@@ -349,12 +358,14 @@ export default function DefectsList({
 		if (selectedDefectIds.size > 1 && templateId) {
 			const defectIdsArray = Array.from(selectedDefectIds);
 			mergeDefectsMutation.mutate(
-				{ defectIds: defectIdsArray, templateId },
+				{
+					defectIds: defectIdsArray,
+					templateId,
+					...(inspectionId ? { inspectionId } : {}),
+				},
 				{
 					onSuccess: () => {
-						// Clear selected defects after successful merge
 						setSelectedDefectIds(new Set());
-						// Refetch defects list
 						refetch();
 					},
 				}
@@ -481,6 +492,7 @@ export default function DefectsList({
 						additional_images: updated.additional_images,
 						base_cost: updated.base_cost,
 					},
+					...(inspectionId && templateId ? { inspectionId, templateId } : {}),
 				},
 				{
 					onSuccess: () => {

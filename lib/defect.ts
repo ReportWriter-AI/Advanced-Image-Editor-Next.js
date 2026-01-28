@@ -125,6 +125,36 @@ export async function getDefectsByTemplateWithFilters(
   return await Defect.find(query).sort({ createdAt: -1 }).lean();
 }
 
+// Get subsection and section IDs that have at least one defect with isFlagged === true
+// Used by report completion/validation to block ticks and publish when defects are flagged
+export async function getFlaggedDefectSubsectionIds(
+  inspectionId: string,
+  templateId: string
+): Promise<{ subsectionIds: string[]; sectionIds: string[] }> {
+  await dbConnect();
+  const defects = await Defect.find({
+    inspection_id: new mongoose.Types.ObjectId(inspectionId),
+    templateId: new mongoose.Types.ObjectId(templateId),
+    isFlagged: true,
+    $or: [
+      { deletedAt: null },
+      { deletedAt: { $exists: false } },
+    ],
+  })
+    .select("subsectionId sectionId")
+    .lean();
+
+  const subsectionIds = new Set<string>();
+  const sectionIds = new Set<string>();
+  for (const d of defects as { subsectionId?: unknown; sectionId?: unknown }[]) {
+    if (d.subsectionId) subsectionIds.add(String(d.subsectionId));
+    if (d.sectionId) sectionIds.add(String(d.sectionId));
+  }
+  return {
+    subsectionIds: Array.from(subsectionIds),
+    sectionIds: Array.from(sectionIds),
+  };
+}
 
 export async function deleteDefect(defectId: string) {
   await dbConnect();

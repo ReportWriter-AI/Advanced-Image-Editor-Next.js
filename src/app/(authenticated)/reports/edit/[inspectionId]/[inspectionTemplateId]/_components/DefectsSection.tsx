@@ -118,13 +118,14 @@ export function DefectsSection({
       cancelEditing();
     }
 
-    // Call the mutation with callbacks
-    deleteDefectMutation.mutate(defectId, {
-      onSuccess: () => {
-        // State is already updated, optionally refetch to ensure sync with server
-        fetchDefects();
-      },
-      onError: (error) => {
+    // Call the mutation with callbacks (pass inspectionId/templateId so report validation refetches)
+    deleteDefectMutation.mutate(
+      { defectId, inspectionId, templateId },
+      {
+        onSuccess: () => {
+          fetchDefects();
+        },
+        onError: (error) => {
         // Revert optimistic update on error
         setDefects(prev => {
           // Restore the defect in its original position
@@ -138,8 +139,9 @@ export function DefectsSection({
           return newDefects;
         });
         console.error('Failed to delete defect:', error);
-      },
-    });
+        },
+      }
+    );
   };
 
   const filterDefects = (defects: Defect[], query: string): Defect[] => {

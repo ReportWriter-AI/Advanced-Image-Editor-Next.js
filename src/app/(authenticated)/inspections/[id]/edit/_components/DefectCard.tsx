@@ -254,7 +254,7 @@ export default function DefectCard({
           {defect.parentDefect && (
             <button
               className="unmerge-defect-btn px-3 py-2 rounded-md bg-orange-600 text-white hover:bg-orange-700"
-              onClick={() => unmergeMutation.mutate(defect._id)}
+              onClick={() => unmergeMutation.mutate({ mergedDefectId: defect._id })}
               disabled={unmergeMutation.isPending}
               title="Unmerge defect"
             >

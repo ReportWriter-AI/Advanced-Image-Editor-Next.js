@@ -72,16 +72,32 @@ export const useDefectsByTemplateQuery = (params: {
 export const useUpdateDefectMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ defectId, updates }: { defectId: string; updates: Partial<Defect> }) => 
-      axios.patch(apiRoutes.defects.update(defectId), updates),
+    mutationFn: ({
+      defectId,
+      updates,
+      inspectionId,
+      templateId,
+    }: {
+      defectId: string;
+      updates: Partial<Defect>;
+      inspectionId?: string;
+      templateId?: string;
+    }) => axios.patch(apiRoutes.defects.update(defectId), updates),
     onSuccess: (response, variables) => {
-      // Invalidate all defects queries to refresh the list
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         predicate: (query) => {
           const key = query.queryKey[0];
           return typeof key === 'string' && (key.includes('/defects/by-subsection') || key.includes('/defects/by-template'));
-        }
+        },
       });
+      if (variables.inspectionId && variables.templateId) {
+        queryClient.invalidateQueries({
+          queryKey: [apiRoutes.inspectionTemplates.validatePublish(variables.inspectionId, variables.templateId)],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [apiRoutes.inspectionTemplates.completionStatus(variables.inspectionId, variables.templateId)],
+        });
+      }
       toast.success('Defect updated successfully');
     },
     onError: (error: any) => {
@@ -94,15 +110,30 @@ export const useUpdateDefectMutation = () => {
 export const useDeleteDefectMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (defectId: string) => axios.delete(apiRoutes.defects.delete(defectId)),
-    onSuccess: (response) => {
-      // Invalidate all defects queries to refresh the list
-      queryClient.invalidateQueries({ 
+    mutationFn: ({
+      defectId,
+      inspectionId,
+      templateId,
+    }: {
+      defectId: string;
+      inspectionId?: string;
+      templateId?: string;
+    }) => axios.delete(apiRoutes.defects.delete(defectId)),
+    onSuccess: (response, variables) => {
+      queryClient.invalidateQueries({
         predicate: (query) => {
           const key = query.queryKey[0];
           return typeof key === 'string' && (key.includes('/defects/by-subsection') || key.includes('/defects/by-template'));
-        }
+        },
       });
+      if (variables.inspectionId && variables.templateId) {
+        queryClient.invalidateQueries({
+          queryKey: [apiRoutes.inspectionTemplates.validatePublish(variables.inspectionId, variables.templateId)],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [apiRoutes.inspectionTemplates.completionStatus(variables.inspectionId, variables.templateId)],
+        });
+      }
       toast.success('Defect deleted successfully');
     },
     onError: (error: any) => {
@@ -115,16 +146,30 @@ export const useDeleteDefectMutation = () => {
 export const useMergeDefectsMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ defectIds, templateId }: { defectIds: string[]; templateId: string }) => 
-      axios.post(apiRoutes.defects.merge, { defectIds, templateId }),
-    onSuccess: (response) => {
-      // Invalidate all defects queries to refresh the list
-      queryClient.invalidateQueries({ 
+    mutationFn: ({
+      defectIds,
+      templateId,
+      inspectionId,
+    }: {
+      defectIds: string[];
+      templateId: string;
+      inspectionId?: string;
+    }) => axios.post(apiRoutes.defects.merge, { defectIds, templateId }),
+    onSuccess: (response, variables) => {
+      queryClient.invalidateQueries({
         predicate: (query) => {
           const key = query.queryKey[0];
           return typeof key === 'string' && (key.includes('/defects/by-subsection') || key.includes('/defects/by-template'));
-        }
+        },
       });
+      if (variables.inspectionId && variables.templateId) {
+        queryClient.invalidateQueries({
+          queryKey: [apiRoutes.inspectionTemplates.validatePublish(variables.inspectionId, variables.templateId)],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [apiRoutes.inspectionTemplates.completionStatus(variables.inspectionId, variables.templateId)],
+        });
+      }
       toast.success('Defects merged successfully');
     },
     onError: (error: any) => {
@@ -137,16 +182,30 @@ export const useMergeDefectsMutation = () => {
 export const useUnmergeDefectMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (mergedDefectId: string) => 
-      axios.post(apiRoutes.defects.unmerge, { mergedDefectId }),
-    onSuccess: (response) => {
-      // Invalidate all defects queries to refresh the list
-      queryClient.invalidateQueries({ 
+    mutationFn: ({
+      mergedDefectId,
+      inspectionId,
+      templateId,
+    }: {
+      mergedDefectId: string;
+      inspectionId?: string;
+      templateId?: string;
+    }) => axios.post(apiRoutes.defects.unmerge, { mergedDefectId }),
+    onSuccess: (response, variables) => {
+      queryClient.invalidateQueries({
         predicate: (query) => {
           const key = query.queryKey[0];
           return typeof key === 'string' && (key.includes('/defects/by-subsection') || key.includes('/defects/by-template'));
-        }
+        },
       });
+      if (variables.inspectionId && variables.templateId) {
+        queryClient.invalidateQueries({
+          queryKey: [apiRoutes.inspectionTemplates.validatePublish(variables.inspectionId, variables.templateId)],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [apiRoutes.inspectionTemplates.completionStatus(variables.inspectionId, variables.templateId)],
+        });
+      }
       toast.success('Defect unmerged successfully');
     },
     onError: (error: any) => {
