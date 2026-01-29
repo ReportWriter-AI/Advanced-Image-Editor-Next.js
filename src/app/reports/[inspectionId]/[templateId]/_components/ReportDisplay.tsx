@@ -721,8 +721,8 @@ export function ReportDisplay({
                     {sectionName}: {subsectionName}
                   </h2>
                   
-                  <Card>
-                    <CardContent className="pt-6 space-y-8">
+                  <Card className="min-w-0 overflow-hidden">
+                    <CardContent className="pt-6 space-y-8 min-w-0">
                       {/* Status Checklists */}
                       {hasStatusData && (
                         <div className="space-y-4">
@@ -828,10 +828,10 @@ function renderSubsectionData(checklists: ChecklistWithAnswers[], type: "status"
     ? "flex flex-wrap gap-4 pr-4 border-r-2" 
     : "flex flex-col space-y-4 pr-4 border-r-2";
   
-  // For status, items take content width with minimum of 300px
+  // min-w-0 allows flex items to shrink so long text (e.g. comments) stays inside the card
   const itemClass = type === "status"
-    ? "space-y-2 min-w-[300px] flex-shrink-0"
-    : "space-y-2";
+    ? "space-y-2 min-w-[300px] max-w-full min-w-0 flex-shrink"
+    : "space-y-2 min-w-0";
 
   return (
     <div className={containerClass}>
@@ -847,7 +847,7 @@ function renderSubsectionData(checklists: ChecklistWithAnswers[], type: "status"
           )}
           {renderAnswer(checklist)}
           {checklist.comment && (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground break-words min-w-0">
               {checklist.comment}
             </p>
           )}
