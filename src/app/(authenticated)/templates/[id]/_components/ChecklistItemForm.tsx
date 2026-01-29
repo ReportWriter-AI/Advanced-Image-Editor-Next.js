@@ -489,6 +489,7 @@ export function ChecklistItemForm({
                       onSelectionChange={setSelectedAnswers}
                       disabled={isSubmitting}
                       placeholder=""
+                      hideSearchInput={true}
                     />
                     <p className="text-sm text-muted-foreground">
                       Select default answers by checking the boxes above
@@ -830,6 +831,7 @@ export function ChecklistItemForm({
                       onSelectionChange={setSelectedAnswers}
                       disabled={isSubmitting}
                       placeholder=""
+                      hideSearchInput={true}
                     />
                     <p className="text-sm text-muted-foreground">
                       Select default answers by checking the boxes above

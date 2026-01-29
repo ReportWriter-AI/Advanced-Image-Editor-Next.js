@@ -34,6 +34,7 @@ export interface CreatableTagInputProps {
   showCheckboxes?: boolean;
   selectedValues?: string[];
   onSelectionChange?: (selected: string[]) => void;
+  hideSearchInput?: boolean;
 }
 
 interface SortableTagItemProps {
@@ -143,6 +144,7 @@ export function CreatableTagInput({
   showCheckboxes = false,
   selectedValues = [],
   onSelectionChange,
+  hideSearchInput = false,
 }: CreatableTagInputProps) {
   const [selectKey, setSelectKey] = useState(0);
   const [shouldFocus, setShouldFocus] = useState(false);
@@ -261,19 +263,21 @@ export function CreatableTagInput({
   return (
     <div className={cn("space-y-2", className)}>
       {label && <Label>{label}</Label>}
-      <CreatableSelect
-        ref={selectRef}
-        key={selectKey}
-        value={null}
-        onChange={handleChange}
-        onCreateOption={handleCreateOption}
-        options={options}
-        placeholder={placeholder}
-        className="react-select-container"
-        classNamePrefix="react-select"
-        isDisabled={disabled}
-        isClearable={false}
-      />
+      {!hideSearchInput && (
+        <CreatableSelect
+          ref={selectRef}
+          key={selectKey}
+          value={null}
+          onChange={handleChange}
+          onCreateOption={handleCreateOption}
+          options={options}
+          placeholder={placeholder}
+          className="react-select-container"
+          classNamePrefix="react-select"
+          isDisabled={disabled}
+          isClearable={false}
+        />
+      )}
       {helperText && (
         <p className="text-sm text-muted-foreground">{helperText}</p>
       )}
