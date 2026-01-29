@@ -29,7 +29,10 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100', 10);
     const skip = (page - 1) * limit;
 
-    const query = { company: currentUser.company };
+    const query = {
+      company: currentUser.company,
+      $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+    };
 
     const total = await DefectNarrative.countDocuments(query);
     const totalPages = Math.ceil(total / limit);

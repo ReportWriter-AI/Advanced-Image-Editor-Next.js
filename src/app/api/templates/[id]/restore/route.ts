@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../../lib/db';
 import { getCurrentUser } from '../../../../../../lib/auth-helpers';
 import Template from '../../../../../../src/models/Template';
+import DefectNarrative from '../../../../../../src/models/DefectNarrative';
 import mongoose from 'mongoose';
 
 interface RouteParams {
@@ -41,6 +42,11 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
     if (result.matchedCount === 0) {
       return NextResponse.json({ error: 'Template not found or not deleted' }, { status: 404 });
     }
+
+    await DefectNarrative.updateMany(
+      { template: id },
+      { $set: { deletedAt: null } }
+    );
 
     return NextResponse.json({ 
       message: 'Template restored successfully',

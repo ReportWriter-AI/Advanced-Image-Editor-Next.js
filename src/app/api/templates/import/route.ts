@@ -412,6 +412,7 @@ export async function POST(request: NextRequest) {
           })
           .map((row) => ({
             company: currentUser.company,
+            template: newTemplate._id,
             sectionName: row.sectionName.trim(),
             subsectionName: row.itemName.trim(),
             narrative: row.commentText.trim(),

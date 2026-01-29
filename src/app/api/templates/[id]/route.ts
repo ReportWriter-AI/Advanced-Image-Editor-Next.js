@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/db';
 import { getCurrentUser } from '../../../../../lib/auth-helpers';
 import Template from '../../../../../src/models/Template';
+import DefectNarrative from '../../../../../src/models/DefectNarrative';
 import { getAuthorizedTemplate } from '../../../../../lib/template-helpers';
 import mongoose from 'mongoose';
 
@@ -120,6 +121,11 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
 
     await Template.updateOne(
       { _id: id, company: currentUser.company },
+      { $set: { deletedAt: new Date() } }
+    );
+
+    await DefectNarrative.updateMany(
+      { template: id },
       { $set: { deletedAt: new Date() } }
     );
 
