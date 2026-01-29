@@ -1424,6 +1424,8 @@ export default function CreateInspectionPage() {
                         <Label htmlFor={`ccEmail-${index}`}>CC Email</Label>
                         <Input
                           id={`ccEmail-${index}`}
+                          name={`clients[${index}].ccEmail`}
+                          autoComplete='new-password'
                           type="email"
                           value={client.ccEmail || ''}
                           onChange={(e) => {
@@ -1453,7 +1455,7 @@ export default function CreateInspectionPage() {
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    {/* <div className="space-y-2">
                       <Label htmlFor={`categories-${index}`}>Categories</Label>
                       <CreatableSelect
                         isMulti
@@ -1477,7 +1479,7 @@ export default function CreateInspectionPage() {
                         classNamePrefix="react-select"
                         formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
                       />
-                    </div>
+                    </div> */}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -1721,6 +1723,8 @@ export default function CreateInspectionPage() {
                           <Input
                             id={`agentCCEmail-${index}`}
                             type="email"
+                            name={`agents[${index}].ccEmail`}
+                            autoComplete='new-password'
                             value={agent.ccEmail || ''}
                             onChange={(e) => {
                               const currentAgents = form.getValues('agents');
@@ -1887,7 +1891,7 @@ export default function CreateInspectionPage() {
                         />
                       </div>
 
-                      <div className="space-y-2">
+                      {/* <div className="space-y-2">
                         <Label htmlFor={`agentCategories-${index}`}>Categories</Label>
                         <CreatableSelect
                           isMulti
@@ -1918,7 +1922,7 @@ export default function CreateInspectionPage() {
                           classNamePrefix="react-select"
                           formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
                         />
-                      </div>
+                      </div> */}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
@@ -2170,6 +2174,8 @@ export default function CreateInspectionPage() {
                           <Input
                             id={`listingAgentCCEmail-${index}`}
                             type="email"
+                            name={`listingAgents[${index}].ccEmail`}
+                            autoComplete='new-password'
                             value={agent.ccEmail || ''}
                             onChange={(e) => {
                               const currentAgents = form.getValues('listingAgents');
@@ -2336,7 +2342,7 @@ export default function CreateInspectionPage() {
                         />
                       </div>
 
-                      <div className="space-y-2">
+                      {/* <div className="space-y-2">
                         <Label htmlFor={`listingAgentCategories-${index}`}>Categories</Label>
                         <CreatableSelect
                           isMulti
@@ -2367,7 +2373,7 @@ export default function CreateInspectionPage() {
                           classNamePrefix="react-select"
                           formatCreateLabel={(inputValue) => `Create "${inputValue}"`}
                         />
-                      </div>
+                      </div> */}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
