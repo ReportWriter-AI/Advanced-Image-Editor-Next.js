@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CreatableTagInput } from "@/components/ui/creatable-tag-input";
-import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
+// import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 // import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
@@ -376,7 +376,7 @@ export function ChecklistItemForm({
                 disabled={isSubmitting}
               />
             )}
-
+{/* 
             <div className="space-y-2">
               <Controller
                 control={statusForm.control}
@@ -400,7 +400,7 @@ export function ChecklistItemForm({
                   </div>
                 )}
               />
-            </div>
+            </div> */}
 
             <div className="space-y-2">
               <Label htmlFor="comment">Comment</Label>
@@ -719,7 +719,7 @@ export function ChecklistItemForm({
               />
             )}
 
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <Controller
                 control={informationForm.control}
                 name="location"
@@ -742,7 +742,7 @@ export function ChecklistItemForm({
                   </div>
                 )}
               />
-            </div>
+            </div> */}
 
             <div className="space-y-2">
               <Label htmlFor="comment">Comment</Label>

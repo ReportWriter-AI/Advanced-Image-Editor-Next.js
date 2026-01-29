@@ -55,7 +55,7 @@ import { ChecklistFieldInput } from "./ChecklistFieldInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
+// import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
 import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDropdowns";
 import { ChecklistImageUpload, ChecklistImage } from "./ChecklistImageUpload";
 import { cn } from "@/lib/utils";
@@ -595,7 +595,7 @@ function SortableChecklistItem({
         {isExpanded && (
           <div className="mt-3 space-y-3">
             {/* Location field for status and information checklists */}
-            {(checklist.type === 'status' || checklist.type === 'information') && (
+            {/* {(checklist.type === 'status' || checklist.type === 'information') && (
               <div className="space-y-2">
                 <CreatableConcatenatedInput
                   value={locationValue}
@@ -607,7 +607,7 @@ function SortableChecklistItem({
                   disabled={disabled}
                 />
               </div>
-            )}
+            )} */}
 
             {/* Comment field for all checklist types */}
             <div className="space-y-2">

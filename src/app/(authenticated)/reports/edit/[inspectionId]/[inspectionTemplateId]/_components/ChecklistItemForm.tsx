@@ -324,7 +324,7 @@ export function ChecklistItemForm({
                 </div>
               </>
             )}
-
+{/* 
             <div className="space-y-2">
               <Controller
                 control={statusForm.control}
@@ -348,7 +348,7 @@ export function ChecklistItemForm({
                   </div>
                 )}
               />
-            </div>
+            </div> */}
 
             <div className="space-y-2">
               <Label htmlFor="comment">Comment</Label>
