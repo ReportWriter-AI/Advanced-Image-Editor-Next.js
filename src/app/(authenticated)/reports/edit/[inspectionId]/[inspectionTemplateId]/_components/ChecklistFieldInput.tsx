@@ -139,7 +139,10 @@ export function ChecklistFieldInput({
       // Validate max length (optional, can be adjusted)
       if (debouncedTextValue.length <= 1000) {
         prevTextAnswerRef.current = debouncedTextValue;
-        onAnswerChange({ textAnswer: debouncedTextValue });
+        onAnswerChange({
+          textAnswer: debouncedTextValue,
+          defaultChecked: debouncedTextValue.trim().length > 0,
+        });
       }
     }
   }, [debouncedTextValue]);
@@ -156,12 +159,15 @@ export function ChecklistFieldInput({
       ? selectedAnswers.filter((a) => a !== choice)
       : [...selectedAnswers, choice];
     setSelectedAnswers(newSelected);
-    onAnswerChange({ selectedAnswers: newSelected });
+    onAnswerChange({
+      selectedAnswers: newSelected,
+      defaultChecked: newSelected.length > 0,
+    });
   };
 
   const handleDateChange = (date: Date | undefined) => {
     setDateValue(date);
-    onAnswerChange({ dateAnswer: date });
+    onAnswerChange({ dateAnswer: date, defaultChecked: !!date });
   };
 
   const debouncedNumberValue = useDebounce(numberValue, 500);
@@ -175,11 +181,19 @@ export function ChecklistFieldInput({
       if (numValue !== undefined && !isNaN(numValue)) {
         prevNumberAnswerRef.current = numValue;
         prevNumberUnitRef.current = currentUnit;
-        onAnswerChange({ numberAnswer: numValue, numberUnit: currentUnit });
+        onAnswerChange({
+          numberAnswer: numValue,
+          numberUnit: currentUnit,
+          defaultChecked: true,
+        });
       } else if (debouncedNumberValue === "") {
         prevNumberAnswerRef.current = undefined;
         prevNumberUnitRef.current = undefined;
-        onAnswerChange({ numberAnswer: undefined, numberUnit: undefined });
+        onAnswerChange({
+          numberAnswer: undefined,
+          numberUnit: undefined,
+          defaultChecked: false,
+        });
       }
     }
   }, [debouncedNumberValue, numberUnit]);
@@ -195,7 +209,11 @@ export function ChecklistFieldInput({
     setNumberUnit(unit);
     const numValue = numberValue === "" ? undefined : parseFloat(numberValue);
     if (numValue !== undefined && !isNaN(numValue)) {
-      onAnswerChange({ numberAnswer: numValue, numberUnit: unit || undefined });
+      onAnswerChange({
+        numberAnswer: numValue,
+        numberUnit: unit || undefined,
+        defaultChecked: true,
+      });
     }
   };
 
@@ -223,6 +241,7 @@ export function ChecklistFieldInput({
             rangeFrom: fromValue,
             rangeTo: toValue,
             rangeUnit: currentUnit,
+            defaultChecked: true,
           });
         }
       } else {
@@ -233,6 +252,7 @@ export function ChecklistFieldInput({
           rangeFrom: prevRangeFromRef.current,
           rangeTo: prevRangeToRef.current,
           rangeUnit: currentUnit,
+          defaultChecked: false,
         });
       }
     }
@@ -254,10 +274,17 @@ export function ChecklistFieldInput({
     setRangeUnit(unit);
     const fromValue = rangeFrom === "" ? undefined : parseFloat(rangeFrom);
     const toValue = rangeTo === "" ? undefined : parseFloat(rangeTo);
+    const hasValidRange =
+      fromValue !== undefined &&
+      toValue !== undefined &&
+      !isNaN(fromValue) &&
+      !isNaN(toValue) &&
+      fromValue <= toValue;
     onAnswerChange({
       rangeFrom: fromValue,
       rangeTo: toValue,
       rangeUnit: unit || undefined,
+      defaultChecked: hasValidRange,
     });
   };
 
@@ -329,9 +356,6 @@ export function ChecklistFieldInput({
               <Label>{checklist.name}</Label>
             </div>
           )}
-          {checklist.comment && (
-            <p className="text-sm text-muted-foreground">{checklist.comment}</p>
-          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 py-2">
             {checklist.answerChoices && checklist.answerChoices.length > 0 ? (
               checklist.answerChoices.map((choice, index) => (
@@ -389,6 +413,20 @@ export function ChecklistFieldInput({
                 onSelect={handleDateChange}
                 initialFocus
               />
+              {dateValue && (
+                <div className="border-t p-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleDateChange(undefined)}
+                    disabled={disabled}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              )}
             </PopoverContent>
           </Popover>
         </div>
