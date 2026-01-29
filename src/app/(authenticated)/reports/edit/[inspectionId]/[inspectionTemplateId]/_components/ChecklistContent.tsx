@@ -515,7 +515,7 @@ function SortableChecklistItem({
   return (
     <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
       <div className="rounded-lg border p-4 hover:bg-muted/30 transition-colors duration-200">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 bg-muted/40 rounded-md py-1.5 px-2">
           <div className="flex flex-col gap-1 flex-1 min-w-0">
             <div className="flex items-center gap-2">
               {/* Checkbox */}
@@ -525,15 +525,16 @@ function SortableChecklistItem({
                 disabled={disabled}
               />
               {/* Clickable title area */}
-              <div 
+              <div
                 className="flex items-center gap-2 flex-1 cursor-pointer hover:opacity-70 transition-opacity"
                 onClick={handleToggle}
+                aria-expanded={isExpanded}
               >
                 <span className="text-sm font-medium">{checklist.name}</span>
               </div>
             </div>
-            {/* Truncated comment in minimized view */}
-            {!isExpanded && checklist.comment && (
+            {/* Truncated comment in minimized view (checkbox or no field only) */}
+            {!isExpanded && checklist.comment && (!checklist.field || checklist.field === 'checkbox') && (
               <div className="ml-6 text-sm text-muted-foreground">
                 {truncateComment(checklist.comment)}
               </div>
@@ -578,20 +579,21 @@ function SortableChecklistItem({
           </div>
         </div>
 
-        {/* Expanded view - all fields */}
+        {/* Field component - always visible when item has a field */}
+        {isWithField && onAnswerChange && (
+          <div className="mt-2">
+            <ChecklistFieldInput
+              checklist={checklist}
+              onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
+              disabled={disabled}
+              hideTitleAndCheckbox={true}
+            />
+          </div>
+        )}
+
+        {/* Expanded view - Location, Comment, Images only */}
         {isExpanded && (
           <div className="mt-3 space-y-3">
-            {/* Field input for status and information with field - appears below location/comment */}
-            {isWithField && onAnswerChange && (
-              <div>
-                <ChecklistFieldInput
-                  checklist={checklist}
-                  onAnswerChange={(answerData) => onAnswerChange(checklist._id || "", answerData)}
-                  disabled={disabled}
-                  hideTitleAndCheckbox={true}
-                />
-              </div>
-            )}
             {/* Location field for status and information checklists */}
             {(checklist.type === 'status' || checklist.type === 'information') && (
               <div className="space-y-2">
