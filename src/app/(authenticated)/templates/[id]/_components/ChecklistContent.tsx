@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import {
   AlertCircle,
+  ArrowLeftRight,
   Loader2,
   PlusCircle,
   Edit2,
@@ -64,6 +65,7 @@ interface SortableChecklistItemProps {
   checklist: TemplateChecklist;
   onEdit: () => void;
   onDelete: () => void;
+  onMoveType?: () => void;
   disabled: boolean;
   reorderDisabled: boolean;
 }
@@ -72,6 +74,7 @@ function SortableChecklistItem({
   checklist,
   onEdit,
   onDelete,
+  onMoveType,
   disabled,
   reorderDisabled,
 }: SortableChecklistItemProps) {
@@ -123,6 +126,17 @@ function SortableChecklistItem({
           >
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
+          {(checklist.type === "status" || checklist.type === "information") && onMoveType && (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={onMoveType}
+              disabled={disabled}
+              title={checklist.type === "status" ? "Move to Information" : "Move to Status"}
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+            </Button>
+          )}
           <div
             {...attributes}
             role="button"
@@ -246,6 +260,27 @@ export function ChecklistContent({
       console.error("Delete checklist error:", error);
     }
   };
+
+  const handleMoveType = useCallback(
+    async (checklist: TemplateChecklist) => {
+      if (!checklist._id) return;
+      const newType = checklist.type === "status" ? "information" : "status";
+      const targetList = newType === "status" ? statusChecklists : informationChecklists;
+      const lastOrderIndex =
+        targetList.length > 0
+          ? Math.max(...targetList.map((c) => c.orderIndex ?? 0)) + 1
+          : 0;
+      try {
+        await updateChecklistMutation.mutateAsync({
+          checklistId: checklist._id,
+          checklistData: { type: newType, orderIndex: lastOrderIndex },
+        });
+      } catch (error) {
+        console.error("Move checklist type error:", error);
+      }
+    },
+    [statusChecklists, informationChecklists, updateChecklistMutation]
+  );
 
   const isReorderDisabled = 
     createChecklistMutation.isPending ||
@@ -456,6 +491,7 @@ export function ChecklistContent({
                             checklist={checklist}
                             onEdit={() => setEditingChecklist(checklist)}
                             onDelete={() => setDeletingChecklistId(checklist._id || null)}
+                            onMoveType={() => handleMoveType(checklist)}
                             disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
                             reorderDisabled={isReorderDisabled}
                           />
@@ -492,6 +528,7 @@ export function ChecklistContent({
                             checklist={checklist}
                             onEdit={() => setEditingChecklist(checklist)}
                             onDelete={() => setDeletingChecklistId(checklist._id || null)}
+                            onMoveType={() => handleMoveType(checklist)}
                             disabled={createChecklistMutation.isPending || updateChecklistMutation.isPending}
                             reorderDisabled={isReorderDisabled}
                           />

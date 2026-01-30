@@ -60,6 +60,7 @@ export async function PUT(request: NextRequest, context: RouteParams) {
     const body = await request.json();
     const {
       name,
+      type: bodyType,
       field,
       location,
       comment,
@@ -76,21 +77,22 @@ export async function PUT(request: NextRequest, context: RouteParams) {
       rangeUnit,
     } = body;
 
-    if (!name || !name.trim()) {
+    if (name !== undefined && (!name || !name.trim())) {
       return NextResponse.json({ error: 'Checklist name is required' }, { status: 400 });
     }
 
     // Validate field for status and information types
-    if ((existingChecklist.type === 'status' || existingChecklist.type === 'information') && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'text'].includes(field)) {
+    const effectiveType = bodyType !== undefined && (bodyType === 'status' || bodyType === 'information') ? bodyType : existingChecklist.type;
+    if ((effectiveType === 'status' || effectiveType === 'information') && field && !['checkbox', 'multipleAnswers', 'date', 'number', 'numberRange', 'text'].includes(field)) {
       return NextResponse.json({ error: 'Invalid field type' }, { status: 400 });
     }
 
     const updatedChecklist: any = {
       _id: existingChecklist._id || new mongoose.Types.ObjectId(checklistId),
-      type: existingChecklist.type,
-      name: name.trim(),
-      field: (existingChecklist.type === 'status' || existingChecklist.type === 'information') ? (field || existingChecklist.field) : undefined,
-      location: (existingChecklist.type === 'status' || existingChecklist.type === 'information') ? (location?.trim() || undefined) : undefined,
+      type: bodyType !== undefined && (bodyType === 'status' || bodyType === 'information') ? bodyType : existingChecklist.type,
+      name: name !== undefined ? name.trim() : existingChecklist.name,
+      field: (effectiveType === 'status' || effectiveType === 'information') ? (field || existingChecklist.field) : undefined,
+      location: (effectiveType === 'status' || effectiveType === 'information') ? (location !== undefined ? (location?.trim() || undefined) : existingChecklist.location) : undefined,
       comment: comment !== undefined ? (comment || undefined) : existingChecklist.comment,
       defaultChecked: defaultChecked !== undefined ? defaultChecked : existingChecklist.defaultChecked,
       answerChoices: answerChoices !== undefined ? (answerChoices && Array.isArray(answerChoices) ? answerChoices : undefined) : existingChecklist.answerChoices,
