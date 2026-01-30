@@ -982,7 +982,7 @@ function MediaGallery({ mediaArray, getProxiedSrc }: MediaGalleryProps) {
                 <div className="rounded-lg overflow-hidden" style={{ width: '300px', maxWidth: '100%', height: 'auto' }}>
                   <ThreeSixtyViewer
                     imageUrl={getProxiedSrc(mediaItem.url)}
-                    alt={mediaItem.location ? `360° photo - ${mediaItem.location}` : '360° photo'}
+                    // alt={mediaItem.location ? `360° photo - ${mediaItem.location}` : '360° photo'}
                     height="300px"
                     width="300px"
                     location={mediaItem.location ?? undefined}
@@ -1156,7 +1156,6 @@ function DefectMediaSlider({
               height="100%"
               location={slide.location ?? undefined}
             />
-            <span className={styles.mediaBadge}>360°</span>
           </div>
         ) : slide ? (
           <img

@@ -41,19 +41,7 @@ export default function ThreeSixtyViewer({
     let viewerInstance: any = null;
     let locationBarEl: HTMLDivElement | null = null;
     let fullscreenHandler: ((e: { fullscreenEnabled: boolean }) => void) | null = null;
-
-    const loadCSS = () => {
-      // Check if CSS is already loaded
-      const existingLink = document.querySelector('link[href*="photo-sphere-viewer"]');
-      if (existingLink) return;
-
-      // Create CSS link element
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.7.4/index.min.css';
-      document.head.appendChild(link);
-      console.log('🎨 Photo Sphere Viewer CSS loaded');
-    };
+    let resizeHandler: (() => void) | null = null;
 
     const removeLocationBar = () => {
       if (locationBarEl && locationBarEl.parentNode) {
@@ -64,11 +52,6 @@ export default function ThreeSixtyViewer({
 
     const initViewer = async () => {
       try {
-        // Load CSS first
-        loadCSS();
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
         if (!viewerRef.current) {
           setError('Container not ready');
           setLoading(false);
@@ -93,6 +76,8 @@ export default function ThreeSixtyViewer({
         viewerInstance.addEventListener('ready', () => {
           console.log('🎉 360° viewer loaded successfully!');
           setLoading(false);
+          // Ensure canvas size matches container (fixes mobile when layout settles)
+          requestAnimationFrame(() => viewerInstance?.resize());
         });
 
         viewerInstance.addEventListener('error', (err: any) => {
@@ -100,6 +85,9 @@ export default function ThreeSixtyViewer({
           setError('Failed to load 360 photo');
           setLoading(false);
         });
+
+        resizeHandler = () => viewerInstance?.resize();
+        window.addEventListener('resize', resizeHandler);
 
         fullscreenHandler = (e: { fullscreenEnabled: boolean }) => {
           if (e.fullscreenEnabled && location?.trim()) {
@@ -140,6 +128,9 @@ export default function ThreeSixtyViewer({
     }
 
     return () => {
+      if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
+      }
       if (viewerInstance) {
         try {
           if (fullscreenHandler) {
@@ -163,7 +154,7 @@ export default function ThreeSixtyViewer({
         height,
         borderRadius: '8px',
         overflow: 'hidden',
-        backgroundColor: '#000',
+        // backgroundColor: '#000',
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
         margin: '0 auto',
       }}
@@ -238,6 +229,8 @@ export default function ThreeSixtyViewer({
       <div
         ref={viewerRef}
         style={{
+          position: 'absolute',
+          inset: 0,
           width: '100%',
           height: '100%',
         }}
