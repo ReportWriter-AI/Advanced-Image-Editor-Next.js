@@ -755,6 +755,52 @@ export function ReportDisplay({
           </div>
         );
       })}
+
+      {/* Total Estimated Cost table - Full Report only */}
+      {filterMode === 'full' && filteredDefects.length > 0 && (
+        <div className={styles.reportSection} style={{ marginTop: '2rem' }}>
+          <div style={{ marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '2px solid #e5e7eb' }}>
+            <h2 style={{ fontSize: '1.75rem', fontWeight: '700', color: '#1f2937', margin: '0', letterSpacing: '-0.025em' }}>
+              Total Estimated Cost
+            </h2>
+          </div>
+          <div>
+            <table className={styles.defectsTable}>
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>Section</th>
+                  <th>Narrative</th>
+                  <th style={{ textAlign: 'right' }}>Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDefects.map((defect) => {
+                  const baseCost = defect.base_cost ?? defect.estimatedCosts?.totalEstimatedCost ?? 0;
+                  return (
+                    <tr key={defect._id}>
+                      <td>{defect.numbering}</td>
+                      <td>{ `${defect.sectionName || ''} - ${defect.subsectionName || ''}`}</td>
+                      <td>{defect.narrative || ''}</td>
+                      <td style={{ textAlign: 'right' }}>${Number(baseCost).toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={2} className={styles.totalLabel}>Total</td>
+                  <td className={styles.hiddenOnMobile}></td>
+                  <td style={{ textAlign: 'right' }}>
+                    ${filteredDefects.reduce((sum, d) => sum + (d.base_cost ?? d.estimatedCosts?.totalEstimatedCost ?? 0), 0).toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
     </div>
     
     {/* Sample Report Modal */}
