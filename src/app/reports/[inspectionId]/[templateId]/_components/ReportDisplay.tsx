@@ -34,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 import { Button as UiButton } from "@/components/ui/button";
 
 interface ReportDisplayProps {
@@ -893,9 +894,16 @@ function renderSubsectionData(checklists: ChecklistWithAnswers[], type: "status"
           )}
           {renderAnswer(checklist)}
           {checklist.comment && (
-            <p className="text-sm text-muted-foreground break-words min-w-0">
-              {checklist.comment}
-            </p>
+            checklist.comment.trimStart().startsWith("<") ? (
+              <div
+                className="text-sm text-muted-foreground break-words min-w-0 [&_a]:text-blue-600 [&_a]:underline [&_a]:hover:text-blue-700 dark:[&_a]:text-blue-400 dark:[&_a]:hover:text-blue-300 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-0.5"
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(checklist.comment) }}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground break-words min-w-0">
+                {checklist.comment}
+              </p>
+            )
           )}
           {(checklist.type === 'status' || checklist.type === 'information') && checklist.media && <MediaGallery mediaArray={checklist.media} getProxiedSrc={getProxiedSrc} />}
         </div>

@@ -12,8 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CreatableTagInput } from "@/components/ui/creatable-tag-input";
 import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
-// import TinyMCERichTextEditor from "@/components/TinyMCERichTextEditor";
-import { Textarea } from "@/components/ui/textarea";
+import { TipTapEditor } from "@/components/TipTapEditor";
 import {
   Dialog,
   DialogContent,
@@ -357,19 +356,13 @@ export function ChecklistItemForm({
                 name="comment"
                 render={({ field, fieldState }) => (
                   <div>
-                    {/* <TinyMCERichTextEditor
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                      height={300}
-                      plugins={['textcolor', 'link', 'image', 'media']}
-                      toolbar="bold italic underline | forecolor backcolor | link image media"
-                    /> */}
-                    <Textarea
+                    <TipTapEditor
                       id="comment"
-                      value={field.value || ""}
+                      value={field.value ?? ""}
                       onChange={field.onChange}
-                      rows={8}
                       disabled={isSubmitting}
+                      placeholder="Comment (optional)"
+                      variant="full"
                     />
                     {fieldState.error && (
                       <p className="mt-1 text-sm text-red-600">
@@ -533,19 +526,13 @@ export function ChecklistItemForm({
                 name="comment"
                 render={({ field, fieldState }) => (
                   <div>
-                    {/* <TinyMCERichTextEditor
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                      height={300}
-                      plugins={['textcolor', 'link', 'image', 'media']}
-                      toolbar="bold italic underline | forecolor backcolor | link image media"
-                    /> */}
-                    <Textarea
+                    <TipTapEditor
                       id="comment"
-                      value={field.value || ""}
+                      value={field.value ?? ""}
                       onChange={field.onChange}
-                      rows={8}
                       disabled={isSubmitting}
+                      placeholder="Comment (optional)"
+                      variant="full"
                     />
                     {fieldState.error && (
                       <p className="mt-1 text-sm text-red-600">

@@ -96,3 +96,22 @@ export function truncateText(text: string, maxLength: number = 150): string {
   if (!text || text.length <= maxLength) return text;
   return text.slice(0, maxLength) + '…';
 }
+
+/**
+ * Strips HTML tags and decodes entities to produce plain text.
+ * Works in both client and server environments.
+ * Use for truncation previews or search indexing of rich text.
+ */
+export function stripHtmlToText(html: string | undefined | null): string {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}

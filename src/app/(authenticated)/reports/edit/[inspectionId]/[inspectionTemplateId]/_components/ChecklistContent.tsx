@@ -54,12 +54,12 @@ import {
 import { ChecklistItemForm } from "./ChecklistItemForm";
 import { ChecklistFieldInput } from "./ChecklistFieldInput";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
+import { TipTapEditor } from "@/components/TipTapEditor";
 import { Label } from "@/components/ui/label";
 // import { CreatableConcatenatedInput } from "@/components/ui/creatable-concatenated-input";
 import { useReusableDropdownsQuery } from "@/components/api/queries/reusableDropdowns";
 import { ChecklistImageUpload, ChecklistImage } from "./ChecklistImageUpload";
-import { cn } from "@/lib/utils";
+import { cn, stripHtmlToText } from "@/lib/utils";
 import { DefectsSection } from "./DefectsSection";
 import { getChecklistFieldIcon } from "@/lib/checklist-utils";
 import DefectsList from "@/components/DefectsList";
@@ -537,11 +537,14 @@ function SortableChecklistItem({
               </div>
             </div>
             {/* Truncated comment in minimized view (checkbox or no field only) */}
-            {!isExpanded && checklist.comment && (!checklist.field || checklist.field === 'checkbox') && (
-              <div className="ml-6 text-sm text-muted-foreground">
-                {truncateComment(checklist.comment)}
-              </div>
-            )}
+            {!isExpanded && checklist.comment && (!checklist.field || checklist.field === 'checkbox') && (() => {
+              const plain = stripHtmlToText(checklist.comment || '');
+              return plain ? (
+                <div className="ml-6 text-sm text-muted-foreground">
+                  {truncateComment(plain, 80)}
+                </div>
+              ) : null;
+            })()}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {/* Field type icon */}
@@ -626,13 +629,13 @@ function SortableChecklistItem({
             {/* Comment field for all checklist types */}
             <div className="space-y-2">
               <Label htmlFor={`comment-${checklist._id}`}>Comment</Label>
-              <Textarea
+              <TipTapEditor
                 id={`comment-${checklist._id}`}
                 value={commentValue}
-                onChange={(e) => setCommentValue(e.target.value)}
-                rows={4}
+                onChange={(html) => setCommentValue(html)}
                 disabled={disabled}
                 placeholder="Enter comment..."
+                variant="full"
               />
             </div>
 
