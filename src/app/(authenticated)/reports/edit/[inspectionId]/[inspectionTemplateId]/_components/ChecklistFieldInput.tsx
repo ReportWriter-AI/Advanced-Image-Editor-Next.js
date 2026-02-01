@@ -141,7 +141,7 @@ export function ChecklistFieldInput({
         prevTextAnswerRef.current = debouncedTextValue;
         onAnswerChange({
           textAnswer: debouncedTextValue,
-          defaultChecked: debouncedTextValue.trim().length > 0,
+          ...(debouncedTextValue.trim().length > 0 && { defaultChecked: true }),
         });
       }
     }
@@ -192,7 +192,6 @@ export function ChecklistFieldInput({
         onAnswerChange({
           numberAnswer: undefined,
           numberUnit: undefined,
-          defaultChecked: false,
         });
       }
     }
@@ -252,7 +251,6 @@ export function ChecklistFieldInput({
           rangeFrom: prevRangeFromRef.current,
           rangeTo: prevRangeToRef.current,
           rangeUnit: currentUnit,
-          defaultChecked: false,
         });
       }
     }
